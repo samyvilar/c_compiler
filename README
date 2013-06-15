@@ -1,0 +1,21 @@
+The c_compiler is divided into two main parts, the front_end and the back_end.
+
+The front_end is divided into several components organized in a hierarchical manner.
+
+Starting with the lowest:
+
+The Loader is in charge of reading the file into memory, merging all the lines that end with a forward slash.
+ It returns a Load object which is a wrapper to an array of Char objects each object
+ represents a char and has being giving a location object (file, line, column) for debugging purposes.
+   (It checks if its input is a string and/or a file-like object, if string no file exists then its input is the source.)
+   (it creates an array of Chars (Load object))
+
+Tokenizer is in charge of tokenizing an array of characters, it returns a Tokenize object which is a wrapper
+to an array of Tokens, each containing the source token and a location object derived from the first Char either its None
+tokens that are descendants of IGNORE (COMMENTS, WHITESPACE tokens) are ignored.
+  (It can either use a raw char array or a Load object (Char array))
+  (It creates an array of Token Objects (Tokenize object), excluding any of those descending from IGNORE
+  such as Comments or WhiteSpace)
+
+Preprocessor in charge of modifying the array of tokens accordingly to any directives such as #include, #define, #if
+and so on ... It generates a new sequence of tokens.

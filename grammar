@@ -1,0 +1,249 @@
+
+This grammar is a sub-set of the standard C grammar,
+specifically it does not have storage_class nor type_qualifiers.
+
+Fundamentally C is made up of three things, Declarations, Statements and Expressions.
+
+/****** DECLARATIONS ***************************************************************************/
+translation_unit
+    : (external_declaration)*
+
+external_declaration
+	: declaration
+	| function_definition
+
+declaration
+    : type_specifier init_declarator_list ';'
+
+function_definition
+    : type_specifier declarator compound_statement
+
+type_specifier
+	: 'void'
+	| 'char'
+	| 'short'
+	| 'int'
+	| 'long'
+	| 'float'
+	| 'double'
+	| 'signed' 'char'
+	| 'signed' 'short'
+	| 'signed' 'int'
+	| 'signed' 'long'
+	| 'unsigned' 'char'
+	| 'unsigned' 'short'
+	| 'unsigned' 'int'
+	| 'unsigned' 'long'
+	| struct_specifier
+
+struct_specifier
+	: 'struct' IDENTIFIER
+	| 'struct' IDENTIFIER  '{' (type_specifier declarator ';')* '}'
+
+
+init_declarator_list
+	: init_declarator (',' init_declarator)*
+
+init_declarator
+	: declarator ('=' initializer)?
+
+
+declarator
+    : pointer? direct_declarator | pointer
+
+direct_declarator
+	:   (IDENTIFIER | '(' declarator ')' ) declarator_suffix*
+
+declarator_suffix
+	:   '[' constant_expression ']'
+    |   '(' parameter_type_list ')'
+    |   '(' ')'
+
+pointer
+	| '*' pointer
+	| '*'
+
+parameter_type_list
+	: parameter_declaration (',' parameter_declaration)*
+
+
+parameter_declaration
+	:  type_specifier (declarator | abstract_declarator)*
+
+type_name
+	: type_specifier abstract_declarator?
+
+abstract_declarator
+	: pointer direct_abstract_declarator?
+	| direct_abstract_declarator
+	;
+
+direct_abstract_declarator
+	:	( '(' abstract_declarator ')' | abstract_declarator_suffix ) abstract_declarator_suffix*
+	;
+
+abstract_declarator_suffix
+	:	'[' ']'
+	|	'[' constant_expression ']'
+	|	'(' ')'
+	|	'(' parameter_type_list ')'
+	;
+
+initializer
+	: assignment_expression
+	| '{' initializer_list ','? '}'
+	;
+
+initializer_list
+	: initializer (',' initializer)*
+	;
+/***********************************************************************************************/
+
+/****** EXPRESSIONS ****************************************************************************/
+expression
+    : assignment_expression
+
+assignment_expression
+	: unary_expression assignment_operator assignment_expression
+	| logical_or_expression
+
+assignment_operator
+	: '='
+	| '*='
+	| '/='
+	| '%='
+	| '+='
+	| '-='
+	| '<<='
+	| '>>='
+	| '&='
+	| '^='
+	| '|='
+	;
+
+constant_expression
+    : logical_or_expression
+
+logical_or_expression
+	: logical_and_expression ('||' logical_and_expression)*
+
+logical_and_expression
+	: inclusive_or_expression ('&&' inclusive_or_expression)*
+
+inclusive_or_expression
+	: exclusive_or_expression ('|' exclusive_or_expression)*
+
+exclusive_or_expression
+	: and_expression ('^' and_expression)*
+
+and_expression
+	: equality_expression ('&' equality_expression)*
+
+equality_expression
+    : relational_expression (('=='|'!=') relational_expression)*
+
+relational_expression
+    : shift_expression (('<'|'>'|'<='|'>=') shift_expression)*
+
+shift_expression
+    : additive_expression (('<<'|'>>') additive_expression)*
+
+additive_expression
+    : multiplicative_expression ('+' multiplicative_expression | '-' multiplicative_expression)*
+
+multiplicative_expression
+    : cast_expression ('*' cast_expression | '/' cast_expression | '%' cast_expression)*
+
+cast_expression
+    : '(' type_name ')' cast_expression | unary_expression
+
+
+unary_expression
+	: postfix_expression
+	| '++' unary_expression
+	| '--' unary_expression
+	| unary_operator cast_expression
+	| 'sizeof' '(' type_name | unary_expression ')'
+
+
+// Function Call
+argument_expression_list :  assignment_expression (',' assignment_expression)*
+postfix_expression
+	:   primary_expression
+        (   '[' expression ']'
+        |   '(' ')'
+        |   '(' argument_expression_list ')'
+        |   '.' IDENTIFIER
+        |   '->' IDENTIFIER
+        |   '++'
+        |   '--'
+        )*
+
+unary_operator
+	: '&'
+	| '*'
+	| '+'
+	| '-'
+	| '~'
+	| '!'
+
+
+primary_expression
+	: IDENTIFIER
+	| constant
+	| '(' expression ')'
+
+constant :
+    |   DECIMAL_LITERAL
+    |	CHARACTER_LITERAL
+	|	STRING_LITERAL
+    |   FLOATING_POINT_LITERAL
+/******************************************************************************************/
+
+
+/****** STATEMENTS ************************************************************************/
+statement
+    : declaration
+    | labeled_statement
+    | compound_statement
+    | selection_statement
+    | iteration_statement
+    | jump_statement
+    | expression_statement
+    | expression ';'
+    | ;
+
+labeled_statement
+	: IDENTIFIER ':' statement
+	| 'case' constant_expression ':' statement
+	| 'default' ':' statement
+
+compound_statement : '{' statement* '}'
+
+selection_statement
+	: 'if' '(' expression ')' statement ('else' statement)?
+	| 'switch' '(' expression ')' statement
+
+iteration_statement
+	: 'while' '(' expression ')' statement
+	| 'do' statement 'while' '(' expression ')' ';'
+	| 'for' '(' expression?; expression?; expression?; ')' statement
+
+jump_statement
+	: 'goto' IDENTIFIER ';'
+	| 'continue' ';'
+	| 'break' ';'
+	| 'return' ';'
+	| 'return' expression ';'
+/************************************************************************************************************/
+
+
+/************************************************************************************************************/
+WHITESPACE
+    :  ' '|'\r'|'\t'|'\n'
+
+COMMENT
+    :   '/*'  '*/'
+
+LINE_COMMENT : '//'
+/***********************************************************************************************************/
