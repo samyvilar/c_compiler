@@ -18,7 +18,7 @@ from back_end.emitter.expressions.cast import cast
 
 
 def relative_jump_instrs(address):
-    return Push(loc(address), Integer(1, loc(address))), JumpTrue(loc(address), address)
+    return [Push(loc(address), Integer(1, loc(address))), JumpTrue(loc(address), address)]
 
 
 def break_statement(stmnt, symbol_table, stack, statement_func, jump_props):
@@ -26,7 +26,7 @@ def break_statement(stmnt, symbol_table, stack, statement_func, jump_props):
         raise ValueError('{l} break statement outside loop/switch statement, could not calc jump addr'.format(
             l=loc(stmnt)
         ))
-    number_of_pops = len(stack.saved_stack_pointers) - jump_props[2]
+    number_of_pops = len(stack) - jump_props[2]
     assert number_of_pops > 0
     # noinspection PyTypeChecker
     return [RestoreStackPointer(loc(stmnt)) for _ in xrange(number_of_pops)] + \
@@ -38,7 +38,7 @@ def continue_statement(stmnt, symbol_table, stack, statement_func, jump_props):
         raise ValueError('{l} continue statement outside loop/switch statement, could not calc jump addr'.format(
             l=loc(stmnt)
         ))
-    number_of_pops = len(stack.saved_stack_pointers) - jump_props[2]
+    number_of_pops = len(stack) - jump_props[2]
     assert number_of_pops > 0
     # noinspection PyTypeChecker
     return [RestoreStackPointer(loc(stmnt)) for _ in xrange(number_of_pops)] + \
@@ -74,15 +74,15 @@ def patch_goto_instrs(goto_stmnt, label_stmnt):
 
     if level > 0:  # Jumping into a nested compound statement.
         previous_stack_pointer = source_state.stack_pointer
-        for stack_pointer in target_state[len(target_state):]:
-            assert stack_pointer - previous_stack_pointer > 0
+        for stack_pointer in target_state[len(source_state):]:
+            assert stack_pointer - previous_stack_pointer >= 0
             instrs.extend((
                 Allocate(loc(goto_stmnt), Integer(stack_pointer - previous_stack_pointer, loc(goto_stmnt))),
                 SaveStackPointer(loc(goto_stmnt)),
             ))
             previous_stack_pointer = stack_pointer
     elif level < 0:  # Jumping out of a nested compound statement.
-        instrs = [RestoreStackPointer(loc(goto_stmnt)) for _ in xrange(-1 * level)]
+        instrs = [RestoreStackPointer(loc(goto_stmnt)) for _ in xrange(abs(level))]
         # noinspection PyTypeChecker
     instrs.append(
         Allocate(
@@ -97,10 +97,10 @@ def patch_goto_instrs(goto_stmnt, label_stmnt):
 # The only way to deal with with it is to save the stack state on the labelled instruction and goto, and recreate it
 # before Jumping to it.
 # Native goto binaries can only be generated once all the binaries of the function have being created.
-def goto_statement(stmnt, symbol_table, statement_func, stack, jump_props):
+def goto_statement(stmnt, symbol_table, stack, statement_func, jump_props):
     stmnt.stack = deepcopy(stack)  # Attach copy of state to goto TODO: find better method then deepcopy
     stmnt.instr = [Pass(loc(stmnt))]  # Set reference to jump Instruction.
-    symbol_table[name(stmnt)] = stmnt
+    symbol_table[stmnt] = stmnt
     return stmnt.instr
 
 

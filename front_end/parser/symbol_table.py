@@ -30,6 +30,7 @@ class SymbolTable(dict):
             TOKENS.DOUBLE: DoubleType(LocationNotSet),
             TOKENS.STRUCT: StructType(None, None, LocationNotSet),
         }]
+        self._stmnts = {'return': [], 'goto': [], 'label': {}}
         super(SymbolTable, self).__init__(*args, **kwargs)
 
     def __setitem__(self, key, value):
@@ -121,7 +122,3 @@ class SymbolTable(dict):
 
     def __nonzero__(self):
         return bool(self.stack)
-
-
-def label_stmnts(symbol_table):
-    return getattr(symbol_table, 'label_stmnts')

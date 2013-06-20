@@ -53,16 +53,14 @@ class ReturnStatement(JumpStatement):
         super(ReturnStatement, self).__init__(location)
 
 
-class StatementBody(CompoundStatement):
+class StatementBody(Statement):
     def __init__(self, statement, location):
         if isinstance(statement, Declaration):
             raise ValueError('{l} statement {i} cannot have a declaration/definition as a body'.format(
                 l=loc(statement), i=self
             ))
         self.statement = statement
-        super(StatementBody, self).__init__(
-            statement if isinstance(statement, Iterable) else (statement,), location
-        )
+        super(StatementBody, self).__init__(location)
 
 
 class ExpressionBody(StatementBody):
@@ -107,7 +105,7 @@ class ElseStatement(SelectionStatement):
 class SwitchStatement(SelectionStatement):
     def __init__(self, exp, comp_statement, location):
         self.cases = {}
-        if not isinstance(comp_statement, Iterable):
+        if not isinstance(comp_statement, CompoundStatement):
             raise ValueError('{l} switch expected a CompoundStatement as a body got {got}'.format(
                 l=loc(comp_statement), got=comp_statement
             ))
@@ -118,7 +116,8 @@ class SwitchStatement(SelectionStatement):
                 ))
             if isinstance(stmnt, CaseStatement):
                 break
-        _ = [self._populate_cases(stmnt) for stmnt in comp_statement]
+        for stmnt in comp_statement:
+            self._populate_cases(stmnt)
         super(SwitchStatement, self).__init__(exp, comp_statement, location)
 
     def _populate_cases(self, p_object):
@@ -137,7 +136,7 @@ class SwitchStatement(SelectionStatement):
 
     def append(self, p_object):
         self._populate_cases(p_object)
-        super(SwitchStatement, self).append(p_object)
+        super(SwitchStatement, self).statement.append(p_object)
 
 
 class LabelStatement(StatementBody):
@@ -163,10 +162,6 @@ class DefaultStatement(CaseStatement):
         super(DefaultStatement, self).__init__(TrueExpression(location), statement, location)
 
 
-def check_switch(stmnt):  # if (body and expression) is either empty or constant, then no effect.
-    return not (len(stmnt) and (exp(stmnt) or isinstance(exp(stmnt), ConstantExpression)))
-
-
 def no_effect(stmnt):
     return no_effect.rules[type(stmnt)]
 no_effect.rules = defaultdict(lambda: False)
@@ -176,5 +171,4 @@ no_effect.rules.update({
     ConstantExpression: lambda stmnt: True,
     SizeOfExpression: lambda stmnt: True,
     IdentifierExpression:  lambda stmnt: True,
-    SwitchStatement: check_switch,
 })

@@ -6,7 +6,7 @@ from front_end.loader.locations import loc, LocationNotSet
 from front_end.tokenizer.tokens import TOKENS
 
 from front_end.parser.ast.statements import IfStatement, ElseStatement, SwitchStatement, EmptyStatement
-from front_end.parser.ast.statements import BreakStatement, ContinueStatement
+from front_end.parser.ast.statements import CaseStatement, DefaultStatement, BreakStatement
 from front_end.parser.expressions.expression import expression
 
 from front_end.errors import error_if_not_value
@@ -46,7 +46,7 @@ def switch(tokens, symbol_table, statement, disallowed_statements):
         statement(
             tokens,
             symbol_table,
-            disallowed_statements=set(disallowed_statements) - {BreakStatement, ContinueStatement},
+            disallowed_statements=set(disallowed_statements) - {CaseStatement, DefaultStatement, BreakStatement},
         ),
         location
     )

@@ -211,9 +211,13 @@ class JumpTable(RelativeJump, VariableLengthInstruction):
         value = super(JumpTable, cls).__new__(
             cls,
             location,
-            [Integer(len(cases), location), cases.cases.default_factory()] + cases.items()
+            [Integer(len(cases), location), cases.default_factory()] + cases.items()
         )
         value.cases = cases
+        return value
+
+    def __repr__(self):
+        return super(JumpTable, self).name() + str(self.cases)
 
 
 class StackInstruction(Instruction):

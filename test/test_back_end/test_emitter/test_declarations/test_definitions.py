@@ -4,7 +4,7 @@ from unittest import TestCase
 
 from front_end.tokenizer.tokenize import Tokenize
 from front_end.preprocessor.preprocess import Preprocess
-from front_end.parser.declarations.declarations import translation_unit
+from front_end.parser.parse import Parse
 
 from back_end.emitter.emit import Emit
 
@@ -23,4 +23,4 @@ class TestDefinitions(TestCase):
             return 0;
         }
         """
-        ext_decs = Emit(translation_unit(Preprocess(Tokenize(source))))
+        ext_decs = Emit(Parse(Preprocess(Tokenize(source))))

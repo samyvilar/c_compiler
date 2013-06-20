@@ -6,10 +6,10 @@ from front_end.tokenizer.tokens import TOKENS, IDENTIFIER
 
 from front_end.parser.symbol_table import SymbolTable
 
-from front_end.parser.ast.declarations import EmptyDeclaration, Declaration, Static, Auto, name, FunctionDefinition
-from front_end.parser.ast.declarations import TypeDef, Extern, Definition
+from front_end.parser.ast.declarations import EmptyDeclaration, Declaration, Auto, Register, name, FunctionDefinition
+from front_end.parser.ast.declarations import TypeDef, Extern, Definition, Declarations
 from front_end.parser.ast.declarations import initialization
-from front_end.parser.ast.expressions import ConstantExpression, exp
+from front_end.parser.ast.expressions import ConstantExpression, exp, EmptyExpression
 from front_end.parser.ast.statements import no_effect, LabelStatement
 
 from front_end.parser.types import CType, FunctionType, StructType, set_core_type, c_type, VoidType
@@ -54,31 +54,59 @@ def get_declaration_or_definition(decl, storage_class):
     )
 
 
-# specific to compound_statements.
-def declaration(tokens, symbol_table):  # storage_class? type_specifier init_declarator_list ';'
+def declarations(tokens, symbol_table):
+    #storage_class_specifier? type_specifier init_declarator_list (';' or compound_statement) # declaration
     if tokens and tokens[0] == TOKENS.TYPEDEF:
         return [type_def(tokens, symbol_table)]
 
     location = tokens and loc(tokens[0]) or '__EOF__'
     storage_class, base_type = storage_class_specifier(tokens, symbol_table), type_specifier(tokens, symbol_table)
+
     if tokens and tokens[0] == TOKENS.SEMICOLON:
-        _ = tokens.pop(0)
+        declarations, _ = [EmptyDeclaration(location)], tokens.pop(0)
         if not name(base_type):
-            logger.warning('{l} Empty Declaration'.format(l=location))
-            return [EmptyDeclaration(loc(_))]
+            logger.warning('{l} Empty declaration'.format(l=loc(base_type)))
         if storage_class:
-            logger.warning('{l} Useless storage class {s} for declaration ...'.format(l=loc(_), s=storage_class))
-        return [Declaration(name(base_type), base_type, loc(base_type), storage_class)]
+            logger.warning('{l} Useless storage class {s} for declaration ...'.format(
+                l=loc(base_type)), s=storage_class
+            )
+        return declaration
 
-    init_dec_list = init_declarator_list(tokens, symbol_table)
-    _ = error_if_not_value(tokens, TOKENS.SEMICOLON)
+    declarators = init_declarator_list(tokens, symbol_table)
+    for dec in declarators:
+        set_core_type(dec, base_type)
 
+    if tokens and tokens[0] in {TOKENS.SEMICOLON, TOKENS.LEFT_BRACE}:
+        decls = [
+            Definition(name(dec), c_type(dec), initialization(dec), loc(dec), storage_class)
+            if initialization(dec) else Declaration(name(dec), c_type(dec), loc(dec), storage_class)
+            for dec in (declarators[:-1] if tokens[0] == TOKENS.LEFT_BRACE else declarators)
+        ]
+        for dec in decls:
+            symbol_table[name(dec)] = dec
+
+        if tokens[0] == TOKENS.LEFT_BRACE:  # Function definition.
+            decls.append(function_definition(tokens, symbol_table, declarators[-1], storage_class))
+        else:
+            _ = error_if_not_value(tokens, TOKENS.SEMICOLON)
+        return decls
+
+    raise ValueError('{l} Expected "," "=" ";" "{" got {got}'.format(
+        l=tokens and loc(tokens[0]) or location, got=tokens and tokens[0])
+    )
+
+
+# specific to compound_statements.
+def declaration(tokens, symbol_table):  # storage_class? type_specifier init_declarator_list ';'
     decls = []
-    for decl in init_dec_list:
-        set_core_type(decl, base_type)
-        symbol_table[name(decl)] = get_declaration_or_definition(decl, storage_class)
-        decls.append(symbol_table[name(decl)])
-    return decls
+    for decl in declarations(tokens, symbol_table):
+        if isinstance(decl, FunctionDefinition):
+            raise ValueError('{l} Nested function definitions are not allowed.'.format(l=loc(decl)))
+        # Non Function declaration without storage class is set to auto
+        if type(decl) is Declaration and not decl.storage_class and not isinstance(c_type(decl), FunctionType):
+            decl = Definition(name(decl), c_type(decl), EmptyExpression(c_type(decl), loc(decl)), loc(decl), Auto(loc(decl)))
+        decls.append(decl)
+    return Declarations(decls)
 
 
 def is_declaration(tokens, symbol_table, rules=set(storage_class_specifier.rules) | set(type_specifier.rules)):
@@ -89,34 +117,26 @@ def is_declaration(tokens, symbol_table, rules=set(storage_class_specifier.rules
 def function_definition(tokens, symbol_table, decl, storage_class):  # : type_specifier declarator compound_statement
     from front_end.parser.statements.compound import statement
 
-    obj = FunctionDefinition(decl, (), loc(c_type(decl)), storage_class)
-    symbol_table[name(decl)] = obj
-
     symbol_table.push_frame()
-    for arg in c_type(obj):  # add arguments to current scope.
+    for arg in c_type(decl):  # add arguments to current scope.
         symbol_table[name(arg)] = arg
-    _ = error_if_not_value(tokens, TOKENS.LEFT_BRACE)
-    statements = []
-    while tokens and tokens[0] != TOKENS.RIGHT_BRACE:
-        for stmnt in statement(tokens, symbol_table):  # declarations returns a list of declarations.
-            if no_effect(stmnt):
-                logger.warning('{l} Statement {t} removed, empty or no effect.'.format(l=loc(stmnt), t=stmnt))
-            else:
-                statements.append(stmnt)
-    _ = error_if_not_value(tokens, TOKENS.RIGHT_BRACE)
-    obj.extend(statements)
+    obj = FunctionDefinition(decl, statement(tokens, symbol_table), loc(c_type(decl)), storage_class)
+    symbol_table.pop_frame()
+
+    symbol_table[name(decl)] = obj
 
     for goto_stmnt in symbol_table.goto_stmnts:
         if LabelStatement.get_name(goto_stmnt.label) not in symbol_table.label_stmnts:
             raise ValueError('{l} Could not find label {label} for goto statement {stmnt}'.format(
                 l=loc(goto_stmnt), stmnt=goto_stmnt, label=goto_stmnt.label
             ))
-    if not (symbol_table.return_stmnts or isinstance(c_type(c_type(obj)), VoidType)):
-        logger.warning('{l} non void function has no return statement.'.format(l=loc(obj)))
+
     for stmnt in symbol_table.return_stmnts:
         obj.check_return_stmnt(exp(stmnt))
         stmnt.c_type = c_type(exp(stmnt))
-    symbol_table.pop_frame()
+    else:
+        if not (symbol_table.return_stmnts or isinstance(c_type(c_type(obj)), VoidType)):
+            logger.warning('{l} non void function has no return statement.'.format(l=loc(obj)))
 
     return obj
 
@@ -131,51 +151,19 @@ def type_def(tokens, symbol_table):
 
 
 def external_declaration(tokens, symbol_table):
-    """
-        : (storage_class_specifier or Auto) type_specifier init_declarator_list ';'  # declaration
-        | type_specifier declarator compound_statement                               # function_definition
-    """
-    if tokens and tokens[0] == TOKENS.TYPEDEF:
-        return [type_def(tokens, symbol_table)]
-
-    location = tokens and loc(tokens[0]) or '__EOF__'
-    if tokens and tokens[0] in {TOKENS.REGISTER, TOKENS.AUTO}:
-        raise ValueError('{l} Storage class {s} found at file scope'.format(l=location, s=tokens[0]))
-    storage_class, base_type = storage_class_specifier(tokens, symbol_table), type_specifier(tokens, symbol_table)
-
-    if tokens and tokens[0] == TOKENS.SEMICOLON:
-        declaration, _ = EmptyDeclaration(location), tokens.pop(0)
-        if not name(base_type):
-            logger.warning('{l} Empty declaration'.format(l=loc(base_type)))
-        if storage_class:
-            logger.warning('{l} Useless storage class {s} for declaration ...'.format(
-                l=loc(base_type)), s=storage_class
-            )
-        return declaration
-
-    declarators = init_declarator_list(tokens, symbol_table)
-    _ = [set_core_type(dec, base_type) for dec in declarators]
-
-    if tokens and tokens[0] in {TOKENS.SEMICOLON, TOKENS.LEFT_BRACE}:
-        declarations = [
-            Definition(name(dec), c_type(dec), initialization(dec), loc(dec), storage_class)
-            if initialization(dec) else Declaration(name(dec), c_type(dec), loc(dec), storage_class)
-            for dec in (declarators[:-1] if tokens[0] == TOKENS.LEFT_BRACE else declarators)
-        ]
-        for dec in declarations:
-            if initialization(dec) and not isinstance(initialization(dec), ConstantExpression):
-                raise ValueError('{l} Initialization is not a constant expression.'.format(l=loc(initialization(dec))))
-            symbol_table[name(dec)] = dec
-
-        if tokens[0] == TOKENS.LEFT_BRACE:  # Function definition.
-            declarations.append(function_definition(tokens, symbol_table, declarators[-1], storage_class))
-        else:
-            _ = error_if_not_value(tokens, TOKENS.SEMICOLON)
-        return declarations
-
-    raise ValueError('{l} Expected "," "=" ";" "{" got {got}'.format(
-        l=tokens and loc(tokens[0]) or location, got=tokens and tokens[0])
-    )
+    #storage_class_specifier? type_specifier init_declarator_list (';' or compound_statement)
+    decls = declarations(tokens, symbol_table)
+    for decl in decls:
+        if decl and isinstance(decl.storage_class, (Auto, Register)):
+            raise ValueError('{l} declarations at file scope may not have {s} storage class'.format(
+                l=loc(decl), s=decl.storage_class
+            ))
+        if initialization(decl) and not isinstance(initialization(decl), ConstantExpression) \
+           and not isinstance(decl, FunctionDefinition):
+            raise ValueError('{l} definition at file scope may only be initialized with constant expressions'.format(
+                l=loc(decl)
+            ))
+    return decls
 
 
 def translation_unit(tokens, symbol_table=None):  #: (external_declaration)*

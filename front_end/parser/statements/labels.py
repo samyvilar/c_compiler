@@ -31,7 +31,7 @@ def case(tokens, symbol_table, statement_func, disallowed_statements):
     if CaseStatement in disallowed_statements:
         raise ValueError('{l} case is not allowed in this context'.format(l=location))
     cons_exp = constant_expression(tokens, symbol_table)
-    _, _ = error_if_not_value(tokens, TOKENS.COLON), error_if_not_type(c_type(cons_exp), IntegralType)
+    _, _ = error_if_not_value(tokens, TOKENS.COLON), error_if_not_type([c_type(cons_exp)], IntegralType)
     stmnt = statement_func(tokens, symbol_table, statement_func, disallowed_statements)
     return CaseStatement(cons_exp, stmnt, location)
 

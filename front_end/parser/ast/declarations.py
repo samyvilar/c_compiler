@@ -49,6 +49,10 @@ class Declaration(TypedNode):
         return 'Declaration {name} of {c_type}'.format(name=name(self), c_type=c_type(self))
 
 
+class Declarations(list):
+    pass
+
+
 class Definition(Declaration):
     def __init__(self, name, ctype, initialization, location, storage_class):
         self._initialization = initialization
@@ -64,9 +68,8 @@ class Definition(Declaration):
             raise ValueError('{l} Could not coerce types from {from_type} to {to_type}'.format(
                 from_type=c_type(value), to_type=c_type(self)
             ))
-        if isinstance(self.storage_class, (Static, Extern)) \
-           and not isinstance(value, (ConstantExpression, EmptyExpression)):
-            raise ValueError('{l} Static definition may only be initialized with constant expressions'.format(
+        if isinstance(self.storage_class, (Static, Extern)) and not isinstance(value, ConstantExpression):
+            raise ValueError('{l} Static/Extern definition may only be initialized with constant expressions'.format(
                 l=loc(value)
             ))
         self._initialization = value
@@ -83,6 +86,11 @@ class FunctionDefinition(Definition, list):
         _ = error_if_not_type([c_type(c_decl)], FunctionType)
         if not all(isinstance(arg, Declarator) for arg in c_type(c_decl)):
             raise ValueError('{l} Function definition must have concrete declarators.'.format(l=loc(c_type(c_decl))))
+        from front_end.parser.ast.statements import CompoundStatement
+        if not isinstance(body, CompoundStatement):
+            raise ValueError('{l} Function definition must have a compound statement as body got {got}'.format(
+                l=location, got=body
+            ))
         super(FunctionDefinition, self).__init__(name(c_decl), c_type(c_decl), body, location, storage_class)
         list.__init__(self, body)
 

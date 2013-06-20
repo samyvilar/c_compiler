@@ -81,9 +81,6 @@ def function_definition(dec, symbol_table):
     instrs = [statement(stmnt, symbol_table, stack) for stmnt in dec]
     instrs.extend(return_instrs(instrs and loc(instrs[-1]) or loc(dec)))
 
-    for goto_stmnt in symbol_table.goto_stmnts:
-        patch_goto_instrs(goto_stmnt, symbol_table.label_smnts[LabelStatement.get_name(goto_stmnt.label)])
-
     symbol_table[name(dec)].symbol.binaries = instrs
     _ = symbol_table.pop_frame()
 

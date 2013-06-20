@@ -1,6 +1,7 @@
 __author__ = 'samyvilar'
 
 from itertools import izip, chain
+from collections import defaultdict
 from back_end.emitter.types import flatten
 from back_end.emitter.object_file import Symbol
 
@@ -12,7 +13,8 @@ from back_end.virtual_machine.instructions.architecture import ConvertToInteger,
 from back_end.virtual_machine.instructions.architecture import LoadZeroFlag, LoadOverflowFlag, LoadCarryBorrowFlag
 from back_end.virtual_machine.instructions.architecture import Jump, AbsoluteJump, Address
 from back_end.virtual_machine.instructions.architecture import RelativeJump, JumpTrue, JumpFalse, JumpTable
-from back_end.virtual_machine.instructions.architecture import WideInstruction, VariableLengthInstruction
+from back_end.virtual_machine.instructions.architecture import SaveStackPointer, RestoreStackPointer
+from back_end.virtual_machine.instructions.architecture import LoadBaseStackPointer, LoadStackPointer, Load, Set, Swap
 
 
 def pop(cpu, mem):
@@ -143,7 +145,7 @@ def jump_if_false(value, instr, cpu, mem):
 
 
 def jump_table(value, instr, cpu, mem):
-    rel_jump(instr.cases[value], instr, cpu, mem)
+    abs_jump(instr.cases[value].obj.address, instr, cpu, mem)
 
 
 def jump(instr, cpu, mem):
@@ -157,7 +159,7 @@ jump.rules = {
 
 
 def allocate(instr, cpu, mem):
-    cpu.instr_pointer -= operns(instr)[0]
+    cpu.stack_pointer -= operns(instr)[0]
 
 
 def _pass(instr, cpu, mem):
@@ -168,6 +170,41 @@ def _dup(instr, cpu, mem):
     value = pop(cpu, mem)
     push(value, cpu, mem)
     push(value, cpu, mem)
+
+
+def save_stack_pointer(instr, cpu, mem):
+    cpu.stack.append(cpu.stack_pointer)
+
+
+def restore_stack_pointer(instr, cpu, mem):
+    cpu.stack_pointer = cpu.stack.pop()
+
+
+def load_base_pointer(instr, cpu, mem):
+    push(cpu.base_pointer, cpu, mem)
+
+
+def load_stack_pointer(instr, cpu, mem):
+    push(cpu.stack_pointer, cpu, mem)
+
+
+def _load(instr, cpu, mem):
+    addr, quantity = pop(cpu, mem), operns(instr)[0]
+    for addr in xrange(addr, addr + quantity):
+        push(mem[addr], cpu, mem)
+
+
+def _set(instr, cpu, mem):
+    addr, quantity = pop(cpu, mem), operns(instr)[0]
+    for addr, value in enumerate(reversed([pop(cpu, mem) for _ in xrange(quantity)]), addr):
+        push(value, cpu, mem)
+        mem[addr] = value
+
+
+def swap(instr, cpu, mem):
+    value_1, value_2 = pop(cpu, mem), pop(cpu, mem)
+    push(value_1, cpu, mem)
+    push(value_2, cpu, mem)
 
 
 def evaluate(cpu, mem):
@@ -187,6 +224,15 @@ evaluate.rules = {
     LoadZeroFlag: lambda instr, cpu, mem: push(cpu.zero, cpu, mem),
     LoadCarryBorrowFlag: lambda instr, cpu, mem: push(cpu.carry, cpu, mem),
     LoadOverflowFlag: lambda instr, cpu, mem: push(cpu.overflow, cpu, mem),
+
+    SaveStackPointer: save_stack_pointer,
+    RestoreStackPointer: restore_stack_pointer,
+    LoadBaseStackPointer: load_base_pointer,
+    LoadStackPointer: load_stack_pointer,
+
+    Load: _load,
+    Set: _set,
+    Swap: swap,
 }
 evaluate.rules.update({rule: expr for rule in expr.rules})
 evaluate.rules.update({rule: jump for rule in jump.rules})
@@ -222,3 +268,9 @@ def load(instrs, mem, symbol_table):
         instr.operands = operands
 
 
+class CPU(object):
+    def __init__(self):
+        self.stack, self.queue = [], []
+        self.instr_pointer = 0
+        self.zero, self.carry, self.overflow = 0, 0, 0
+        self.stack_pointer, self.base_pointer = -1, -1

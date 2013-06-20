@@ -216,8 +216,8 @@ def patch_comp_left_instrs(instrs, location):
     return instrs
 
 
-def patch_comp_assignment(instrs, set_size):
-    return instrs + [Swap(loc(operator)), Set(loc(operator), set_size)]
+def patch_comp_assignment(instrs, set_size, location):
+    return instrs + [Swap(location), Set(location, set_size)]
 
 
 def comp_integral_assign(expr, symbol_table, stack, expression_func, jump_props):
@@ -229,7 +229,8 @@ def comp_integral_assign(expr, symbol_table, stack, expression_func, jump_props)
     right_instrs = expression_func(right_exp(expr), symbol_table, stack, expression_func, jump_props)
     return patch_comp_assignment(
         comp_integral_assign.rules[oper(expr)](left_instrs, right_instrs, loc(operator), c_type(expr)),
-        size(c_type(expr))
+        size(c_type(expr)),
+        loc(expr),
     )
 comp_integral_assign.rules = {
     TOKENS.SHIFT_LEFT_EQUAL: shift_left,
@@ -242,6 +243,7 @@ comp_integral_assign.rules = {
 
 
 def comp_numeric_assign(expr, symbol_table, stack, expression_func, jump_props):
+    assert isinstance(c_type(left_exp(expr)), NumericType) and isinstance(c_type(right_exp(expr)), NumericType)
     max_type = max(c_type(left_exp(expr)), c_type(right_exp(expr)))  # cast to largest type.
 
     left_instrs = cast(
@@ -265,7 +267,8 @@ def comp_numeric_assign(expr, symbol_table, stack, expression_func, jump_props):
             c_type(expr),
             loc(expr)
         ),
-        size(c_type(expr))
+        size(c_type(expr)),
+        loc(expr),
     )
 comp_numeric_assign.rules = {
     TOKENS.PLUS_EQUAL: add,
@@ -276,9 +279,9 @@ comp_numeric_assign.rules = {
 
 
 def compound_assignment(expr, symbol_table, stack, expression_func, jump_props):
-    return compound_assignment.rules[operator](expr, symbol_table, stack, expression_func, jump_props)
-compound_assignment.rules = {rule for rule in comp_integral_assign.rules}
-compound_assignment.rules.update(rule for rule in comp_numeric_assign.rules)
+    return compound_assignment.rules[oper(expr)](expr, symbol_table, stack, expression_func, jump_props)
+compound_assignment.rules = {rule: comp_integral_assign for rule in comp_integral_assign.rules}
+compound_assignment.rules.update({rule: comp_numeric_assign for rule in comp_numeric_assign.rules})
 
 
 def binary_expression(expr, symbol_table, stack, expression_func, jump_props):

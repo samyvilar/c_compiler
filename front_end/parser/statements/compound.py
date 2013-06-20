@@ -47,13 +47,13 @@ def compound_statement(tokens, symbol_table, statement_func, disallowed_statemen
     statements = []
     while tokens and tokens[0] != TOKENS.RIGHT_BRACE:
         # declarations returns a list of declarations.
-        for stmnt in statement_func(tokens, symbol_table, statement_func, disallowed_statements):
-            if no_effect(stmnt):
-                logger.warning('{l} Statement {t} removed, empty or no effect.'.format(l=loc(stmnt), t=stmnt))
-            elif isinstance(stmnt, disallowed_statements):
-                raise ValueError('{l} Statement {t} is not allowed withing this context'.format(l=loc(stmnt), t=stmnt))
-            else:
-                statements.append(stmnt)
+        stmnt = statement_func(tokens, symbol_table, statement_func, disallowed_statements)
+        if no_effect(stmnt):
+            logger.warning('{l} Statement {t} removed, empty or no effect.'.format(l=loc(stmnt), t=stmnt))
+        elif type(stmnt) in disallowed_statements:
+            raise ValueError('{l} Statement {t} is not allowed withing this context'.format(l=loc(stmnt), t=stmnt))
+        else:
+            statements.append(stmnt)
     _ = error_if_not_value(tokens, TOKENS.RIGHT_BRACE)
     symbol_table.pop_name_space()
 
@@ -84,13 +84,13 @@ def statement(
         return declaration(tokens, symbol_table)
 
     if len(tokens) > 1 and isinstance(tokens[0], IDENTIFIER) and tokens[1] == TOKENS.COLON:
-        return [labeled_statement(tokens, symbol_table, statement_func, disallowed_statements)]
+        return labeled_statement(tokens, symbol_table, statement_func, disallowed_statements)
 
     if tokens and tokens[0] in statement.rules:
-        return [statement.rules[tokens[0]](tokens, symbol_table, statement_func, disallowed_statements)]
+        return statement.rules[tokens[0]](tokens, symbol_table, statement_func, disallowed_statements)
 
     if tokens:
-        return [_expression(tokens, symbol_table)]
+        return _expression(tokens, symbol_table)
 
     raise ValueError('{l} No rule could be found to create statement.'.format(l=loc(tokens)))
 

@@ -52,16 +52,16 @@ class OperatorNode(ExpressionNode):
         return all((super(OperatorNode, self).__eq__(other), oper(self) == oper(other)))
 
 
-class EmptyExpression(Expression, EmptyNode):
+class ConstantExpression(ExpressionNode):
+    pass
+
+
+class EmptyExpression(ConstantExpression, EmptyNode):
     def __init__(self, ctype=CType(LocationNotSet), location=LocationNotSet):
-        super(EmptyExpression, self).__init__(ctype(location), location)
+        super(EmptyExpression, self).__init__(0, ctype(location), location)
 
     def __eq__(self, other):
         return isinstance(other, EmptyExpression)
-
-
-class ConstantExpression(ExpressionNode):
-    pass
 
 
 class TrueExpression(ConstantExpression):
