@@ -66,7 +66,7 @@ class TestGoto(TestStatements):
         super(TestGoto, self).evaluate(source)
         self.assertEqual(self.mem[self.cpu.stack_pointer], 1)
 
-    def test_goto_nested(self):
+    def test_goto_into_nested(self):
         source = """
         {
             goto label;
@@ -83,3 +83,22 @@ class TestGoto(TestStatements):
         """
         super(TestGoto, self).evaluate(source)
         self.assertEqual(self.mem[self.cpu.stack_pointer], 0)
+
+    def test_goto_out_of_nested(self):
+        source = """
+        {
+            int index;
+            {
+                int index1, index0;
+                {
+                    int index3;
+                    goto label;
+                }
+            }
+            int foo;
+            label:
+            foo = 1;
+        }
+        """
+        super(TestGoto, self).evaluate(source)
+        self.assertEqual(self.mem[self.cpu.stack_pointer - 1], 1)

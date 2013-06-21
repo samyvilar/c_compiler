@@ -26,6 +26,7 @@ def pop(cpu, mem):
 def push(value, cpu, mem):
     mem[cpu.stack_pointer] = value
     cpu.stack_pointer -= 1
+    assert cpu.stack_pointer < 0
 
 
 def add(oper1, oper2):
@@ -207,6 +208,14 @@ def swap(instr, cpu, mem):
     push(value_2, cpu, mem)
 
 
+def _push(instr, cpu, mem):
+    push(operns(instr)[0], cpu, mem)
+
+
+def _pop(instr, cpu, mem):
+    return pop(cpu, mem)
+
+
 def evaluate(cpu, mem):
     while True:
         instr = mem[cpu.instr_pointer]
@@ -217,8 +226,8 @@ def evaluate(cpu, mem):
             _pass(instr, cpu, mem)
 evaluate.rules = {
     Pass: _pass,
-    Push: lambda instr, cpu, mem: push(operns(instr)[0], cpu, mem),
-    Pop: lambda instr, cpu, mem: pop(cpu, mem),
+    Push: _push,
+    Pop: _pop,
     Dup: _dup,
     Allocate: allocate,
     LoadZeroFlag: lambda instr, cpu, mem: push(cpu.zero, cpu, mem),

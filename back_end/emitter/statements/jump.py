@@ -81,15 +81,22 @@ def patch_goto_instrs(goto_stmnt, label_stmnt):
                 SaveStackPointer(loc(goto_stmnt)),
             ))
             previous_stack_pointer = stack_pointer
-    elif level < 0:  # Jumping out of a nested compound statement.
-        instrs = [RestoreStackPointer(loc(goto_stmnt)) for _ in xrange(abs(level))]
-        # noinspection PyTypeChecker
-    instrs.append(
-        Allocate(
-            loc(goto_stmnt),
-            Integer(target_state.stack_pointer - source_state.stack_pointer, loc(goto_stmnt))
-        )
-    )
+    else:
+        if level < 0:  # Jumping out of a nested compound statement.
+            instrs.extend(RestoreStackPointer(loc(goto_stmnt)) for _ in xrange(abs(level)))
+            instrs.append(
+                Allocate(
+                    loc(goto_stmnt),
+                    Integer(target_state.stack_pointer - source_state[len(target_state)], loc(goto_stmnt)),
+                )
+            )
+        else:
+            instrs.append(
+                Allocate(
+                    loc(goto_stmnt),
+                    Integer(target_state.stack_pointer - source_state.stack_pointer, loc(goto_stmnt))
+                )
+            )
     return instrs
 
 

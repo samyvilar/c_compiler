@@ -5,13 +5,11 @@ from collections import defaultdict
 from front_end.loader.locations import loc, LocationNotSet
 
 from front_end.parser.ast.declarations import Declaration, Definition, TypeDef, name, initialization, FunctionDefinition
-from front_end.parser.ast.statements import LabelStatement
 from front_end.parser.types import c_type, PointerType, VoidType, FunctionType
 
 
 from back_end.emitter.statements.statement import statement
 from back_end.emitter.statements.jump import return_instrs
-from back_end.emitter.statements.jump import patch_goto_instrs
 from back_end.emitter.object_file import Data, Code
 from back_end.emitter.types import binaries, size
 from back_end.emitter.instructions.stack_state import stack_allocation, Stack
