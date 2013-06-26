@@ -16,7 +16,7 @@ def random_iter(bit_size, count):
 class TestWord(TestCase):
     def setUp(self):
         self.word_type = Word
-        input_mag = (Word.bit_size - 1, 100)
+        input_mag = (Word.bit_size - 1, 10)
         self.values = izip(random_iter(*input_mag), random_iter(*input_mag))
 
     def evaluate(self, oper1, oper2, func):
