@@ -1,9 +1,10 @@
 __author__ = 'samyvilar'
 
+from itertools import izip_longest
 from front_end.loader.locations import loc
 from front_end.tokenizer.tokens import TOKENS, IDENTIFIER
 
-from front_end.parser.types import c_type, FunctionType, PointerType, IntegralType, StructType
+from front_end.parser.types import c_type, FunctionType, PointerType, IntegralType, StructType, safe_type_coercion
 from front_end.parser.ast.expressions import ArraySubscriptingExpression, ArgumentExpressionList, FunctionCallExpression
 from front_end.parser.ast.expressions import ElementSelectionExpression, ElementSelectionThroughPointerExpression
 from front_end.parser.ast.expressions import PostfixIncrementExpression, PostfixDecrementExpression
@@ -33,7 +34,7 @@ def subscript_oper(tokens, symbol_table, primary_exp, expression_func):
 
 # Function call can only be called on an expression that return a pointer to a function type or a function_type.
 def function_call(tokens, symbol_table, primary_exp, expression_func):
-    if not isinstance(c_type(primary_exp), FunctionType) or \
+    if not isinstance(c_type(primary_exp), FunctionType) and \
        not (isinstance(c_type(primary_exp), PointerType) and isinstance(c_type(c_type(primary_exp)), FunctionType)):
         raise ValueError('{l} Expected a FunctionType or Pointer to FunctionType got {got}'.format(
             l=loc(tokens[0]), got=c_type(primary_exp)
@@ -54,10 +55,15 @@ def function_call(tokens, symbol_table, primary_exp, expression_func):
     _ = error_if_not_value(tokens, TOKENS.RIGHT_PARENTHESIS)
 
     # check the arguments.
-    if func_type != FunctionType(ret_type(l), expression_argument_list, l):
-        raise ValueError('{l} Function call, expected {exp} got {got}'.format(
-            expt=func_type, got=expression_argument_list, l=l
-        ))
+    for exp_type, arg in izip_longest(func_type, expression_argument_list):
+        if arg is None:
+            raise ValueError('{l} Function call with not enough arguments specified.'.format(l=l))
+        elif exp_type is None:
+            raise ValueError('{l} Function call with to many arguments specified'.format(l=loc(arg)))
+        if not safe_type_coercion(c_type(arg), c_type(exp_type)):
+            raise ValueError('{l} Function call, could not coerce argument from {f_type} to {t_type}'.format(
+                l=loc(arg), f_type=c_type(arg), t_type=c_type(exp_type),
+            ))
     return FunctionCallExpression(primary_exp, expression_argument_list, ret_type(l), l)
 
 

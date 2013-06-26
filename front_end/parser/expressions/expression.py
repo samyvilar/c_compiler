@@ -104,14 +104,8 @@ unary_expression.rules.update({
     TOKENS.PLUS_PLUS: unary.increment_decrement,
     TOKENS.MINUS_MINUS: unary.increment_decrement,
     TOKENS.SIZEOF: unary.size_of,
-
-    TOKENS.AMPERSAND: unary.unary_operator,
-    TOKENS.STAR: unary.unary_operator,  # *
-    TOKENS.PLUS: unary.unary_operator,  # +
-    TOKENS.MINUS: unary.unary_operator,  # -
-    TOKENS.TILDE: unary.unary_operator,  # ~
-    TOKENS.EXCLAMATION: unary.unary_operator,  # !
 })
+unary_expression.rules.update({rule: unary.unary_operator for rule in unary.unary_operator.rules})
 
 
 @reduce_expression

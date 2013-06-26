@@ -205,7 +205,11 @@ def set_instr(instrs, location, set_size):
 def assign(expr, symbol_table, stack, expression_func, jump_props):
     right_instrs = expression_func(right_exp(expr), symbol_table, stack, expression_func, jump_props)
     left_instrs = expression_func(left_exp(expr), symbol_table, stack, expression_func, jump_props)
-    return set_instr(right_instrs + left_instrs, loc(expr), size(c_type(expr)))
+    return set_instr(
+        cast(right_instrs, c_type(right_exp(expr)), c_type(left_exp(expr)), loc(expr)) + left_instrs,
+        loc(expr),
+        size(c_type(expr))
+    )
 
 
 def patch_comp_left_instrs(instrs, location):

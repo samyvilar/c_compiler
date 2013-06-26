@@ -43,14 +43,14 @@ def _return(tokens, symbol_table, statement_func, disallowed_statements):
         ret_exp = expression(tokens, symbol_table)
 
     stmnt = ReturnStatement(ret_exp, location)
-    symbol_table[name(stmnt)] = stmnt
+    symbol_table[stmnt] = stmnt
     return stmnt
 
 
 def _goto(tokens, symbol_table, statement_func, disallowed_statements):
     location = loc(tokens.pop(0))
     stmnt = GotoStatement(error_if_not_type(tokens, IDENTIFIER), location)
-    symbol_table[name(stmnt)] = stmnt
+    symbol_table[stmnt] = stmnt
     return stmnt
 
 

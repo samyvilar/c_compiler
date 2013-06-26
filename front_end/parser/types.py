@@ -1,5 +1,6 @@
 __author__ = 'samyvilar'
 
+from copy import deepcopy
 from collections import OrderedDict
 from itertools import izip
 
@@ -200,7 +201,7 @@ class PointerType(ChainedType, IntegralType):
 
     @property
     def lvalue(self):
-        return incomplete(self) and not isinstance(c_type(self), ArrayType)
+        return not incomplete(self) and not isinstance(c_type(self), ArrayType)
 
 
 class ArrayType(PointerType):
@@ -255,6 +256,12 @@ class StructType(CType, OrderedDict):
         super(StructType, self).__init__(location)
         OrderedDict.__init__(self, self.members)
 
+    def __call__(self, location):
+        struct = StructType(self._name, self.members, location)
+        struct._incomplete = self._incomplete
+        return struct
+
+    @property
     def incomplete(self):
         return self._incomplete
 
@@ -276,32 +283,25 @@ class StructType(CType, OrderedDict):
             all(member == other_member for member, other_member in izip(self.itervalues(), other.itervalues())),
         ))
 
-    def __contains__(self, item):
-        if incomplete(self):
-            raise TypeError
-        return item in self.members
-
-    def __iter__(self):
-        if incomplete(self):
-            raise TypeError
-        return super(StructType, self).__iter__()
-
     @property
     def lvalue(self):
-        return incomplete(self)
+        return not incomplete(self)
 
 
 # check if one type could be coerce to another.
 def safe_type_coercion(from_type, to_type):
-    if unsigned(from_type) != unsigned(to_type):
-        logger.warning('{l} mixing unsigned and signed values'.format(l=loc(from_type)))
     if isinstance(from_type, NumericType) and isinstance(to_type, NumericType):
+        if unsigned(from_type) != unsigned(to_type):
+            logger.warning('{l} mixing unsigned and signed values'.format(l=loc(from_type)))
         return True
     return from_type == to_type
 
 
-def c_type(obj):
-    return getattr(obj, 'c_type')
+def c_type(obj, *args):
+    if args:
+        return getattr(obj, 'c_type', args[0])
+    else:
+        return getattr(obj, 'c_type')
 
 
 def base_c_type(ctype):

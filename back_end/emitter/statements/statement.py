@@ -45,14 +45,14 @@ def type_def(stmnt, symbol_table, stack, statement_func, jump_props):
 def definition(stmnt, symbol_table, stack, statement_func, jump_props):
     if isinstance(stmnt.storage_class, declarations.Static):  # Static Definition.
         stmnt = global_allocation(stmnt)
-        symbol = stmnt.symbol = Data(  # All non-global definition are Data type (no nested functions.)
+        symbol = stmnt.symbol = Data(  # All non-global definition are Data type (no nested functions).
             declarations.name(stmnt),
             binaries(stmnt),  # Initialized to 0
             size(c_type(stmnt)),
             stmnt.storage_class,
             loc(stmnt),
         )
-    else:  # Definition with either Auto/Register or storage class.
+    else:  # Definition with either Auto/Register/None storage class.
         stmnt = stack_allocation(stack, stmnt)
         # If definition is initialized simply evaluate the expression
         symbol = declarations.initialization(stmnt) and (  # gen instructions if definition is initialized.

@@ -5,7 +5,7 @@ from front_end.loader.locations import loc
 from front_end.parser.ast.expressions import PostfixIncrementExpression, PostfixDecrementExpression, left_exp, right_exp
 from front_end.parser.ast.expressions import FunctionCallExpression, ArraySubscriptingExpression, exp
 from front_end.parser.ast.expressions import ElementSelectionExpression, ElementSelectionThroughPointerExpression
-from front_end.parser.types import c_type, ArrayType
+from front_end.parser.types import c_type, ArrayType, FunctionType, PointerType
 
 from back_end.virtual_machine.instructions.architecture import Push, Allocate, PushFrame, PopFrame, Address, Load, Dup
 from back_end.virtual_machine.instructions.architecture import Integer, Multiply, Add, LoadStackPointer, Enqueue, Dequeue
@@ -51,6 +51,8 @@ def function_call(expr, symbol_table, stack, expression_func, jump_props):
     # Evaluate primary/left_exp which should be a pointer to function/code
     instrs.extend(expression_func(left_exp(expr), symbol_table, stack, expression_func, jump_props))
     assert isinstance(instrs[-1], Load)
+    if isinstance(c_type(left_exp(expr)), FunctionType):  # if function name don't load
+        _ = instrs.pop()
     instrs.extend((AbsoluteJump(loc(expr)), return_instr))
 
     return instrs
@@ -65,8 +67,19 @@ def array_subscript(expr, symbol_table, stack, expression_func, jump_props):
         Multiply(loc(expr)),
         Add(loc(expr)),
     ))
-    if not isinstance(c_type(right_exp(expr)), ArrayType):  # Load if not another ArrayType
+    if not isinstance(c_type(expr), ArrayType):     # Load if not another ArrayType
         instrs.append(Load(loc(expr), size(c_type(right_exp(expr)))))
+    return instrs
+
+
+def element_instrs(struct_obj, member_name, location):
+    instrs = [
+        Push(location, Integer(struct_member_offset(struct_obj, member_name), location)),
+        Add(location),
+    ]
+    # If any members are array types simply load the address of the member.
+    if not isinstance(c_type(struct_obj[member_name]), ArrayType):
+        instrs.append(Load(location, size(c_type(struct_obj[member_name]))))
     return instrs
 
 
@@ -74,25 +87,24 @@ def array_subscript(expr, symbol_table, stack, expression_func, jump_props):
 # and only copy/select the specific value.
 def element_selection(expr, symbol_table, stack, expression_func, jump_props):
     instrs = expression_func(left_exp(expr), symbol_table, stack, expression_func, jump_props)
-    instrs.extend((
-        Allocate(loc(expr), Integer(-1 * size(c_type(left_exp(expr))), loc(expr))),  # dealloc struct
-        LoadStackPointer(loc(expr)),  # Push the current stack pointer.
-        # Push the offset of the member in question.
-        Push(loc(expr), Integer(struct_member_offset(right_exp(expr), c_type(left_exp(expr))), loc(expr))),
-        Add(loc(expr)),  # calculate members address
-        Load(loc(expr), size(c_type(expr))),  # Push the value onto the stack.
-    ))
+    if isinstance(instrs[-1], Load):
+        _ = instrs.pop()
+        instrs.extend(element_instrs(c_type(left_exp(expr)), right_exp(expr), loc(expr)))
+    else:
+        instrs.extend((
+            Allocate(loc(expr), Integer(-1 * size(c_type(left_exp(expr))), loc(expr))),  # dealloc struct
+            LoadStackPointer(loc(expr)),  # Push the current stack pointer.
+            # Push the offset of the member in question.
+            Push(loc(expr), Integer(struct_member_offset(c_type(left_exp(expr)), right_exp(expr)), loc(expr))),
+            Add(loc(expr)),  # calculate members address
+            Load(loc(expr), size(c_type(expr))),  # Push the value onto the stack.
+        ))
     return instrs
 
 
 def element_section_pointer(expr, symbol_table, stack, expression_func, jump_props):
-    instrs = expression_func(expr, symbol_table, stack, expression_func, jump_props)  # Load the value of the pointer
-    instrs.extend((
-        Push(loc(expr), Integer(struct_member_offset(right_exp(expr), c_type(left_exp(expr))), loc(expr))),
-        Add(loc(expr)),
-        Load(loc(expr), size(c_type(expr))),
-    ))
-    return instrs
+    return expression_func(left_exp(expr), symbol_table, stack, expression_func, jump_props) + \
+        element_instrs(c_type(c_type(left_exp(expr))), right_exp(expr), loc(expr))
 
 
 def postfix_expression(expr, symbol_table, stack, expression_func, jump_props):

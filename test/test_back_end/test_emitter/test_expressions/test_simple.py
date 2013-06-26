@@ -11,7 +11,7 @@ import back_end.emitter.expressions.expression as emitter
 from back_end.emitter.cpu import evaluate, load, pop, CPU
 
 
-class TestExpression(TestCase):
+class TestRawExpression(TestCase):
     def evaluate_expr(self, source):
         self.mem, self.cpu = defaultdict(int), CPU()
         load(emitter.expression(parser.expression(Preprocess(Tokenize(source)))), self.mem, {})

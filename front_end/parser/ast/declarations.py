@@ -109,7 +109,7 @@ class TypeDef(Definition, StorageClass):
         return c_type(self)(location)
 
 
-class EmptyDeclaration(EmptyNode, Declaration):
+class EmptyDeclaration(EmptyNode):
     c_type = CType
 
     def __init__(self, location):
@@ -143,7 +143,7 @@ class AbstractDeclarator(TypedNode):
 
 
 def name(obj):
-    return getattr(obj, 'name', '')
+    return getattr(obj, 'name')
 
 
 def initialization(obj):

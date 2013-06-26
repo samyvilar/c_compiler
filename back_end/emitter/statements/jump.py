@@ -61,7 +61,7 @@ def return_statement(stmnt, symbol_table, statement_func, stack, jump_props):
         loc(stmnt),
     ) + [  # Copy return value onto stack
         LoadBaseStackPointer(loc(stmnt)),
-        Push(loc(stmnt), Integer(-1 * size(c_type(stmnt)), loc(stmnt))),
+        Push(loc(stmnt), Integer(1, loc(stmnt))),
         Add(loc(stmnt)),
         Set(loc(stmnt), size(c_type(exp(stmnt)))),  # copy return value to previous Frame.
         Allocate(loc(stmnt), Integer(-1 * size(c_type(stmnt)), loc(stmnt))),  # Set leaves the value on the stack
@@ -75,9 +75,9 @@ def patch_goto_instrs(goto_stmnt, label_stmnt):
     if level > 0:  # Jumping into a nested compound statement.
         previous_stack_pointer = source_state.stack_pointer
         for stack_pointer in target_state[len(source_state):]:
-            assert stack_pointer - previous_stack_pointer >= 0
+            assert stack_pointer - previous_stack_pointer <= 0
             instrs.extend((
-                Allocate(loc(goto_stmnt), Integer(stack_pointer - previous_stack_pointer, loc(goto_stmnt))),
+                Allocate(loc(goto_stmnt), Integer(previous_stack_pointer - stack_pointer, loc(goto_stmnt))),
                 SaveStackPointer(loc(goto_stmnt)),
             ))
             previous_stack_pointer = stack_pointer
@@ -87,14 +87,14 @@ def patch_goto_instrs(goto_stmnt, label_stmnt):
             instrs.append(
                 Allocate(
                     loc(goto_stmnt),
-                    Integer(target_state.stack_pointer - source_state[len(target_state)], loc(goto_stmnt)),
+                    Integer(source_state[len(target_state)] - target_state.stack_pointer, loc(goto_stmnt)),
                 )
             )
         else:
             instrs.append(
                 Allocate(
                     loc(goto_stmnt),
-                    Integer(target_state.stack_pointer - source_state.stack_pointer, loc(goto_stmnt))
+                    Integer(source_state.stack_pointer - target_state.stack_pointer, loc(goto_stmnt))
                 )
             )
     return instrs

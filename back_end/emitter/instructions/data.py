@@ -18,7 +18,7 @@ def bind_instructions(obj, offset):
     def load_address(self, location):
         return [
             LoadBaseStackPointer(location),
-            Push(location, Integer(-1 * self.offset, location)),
+            Push(location, Integer(self.offset, location)),
             Add(location),
         ]
 

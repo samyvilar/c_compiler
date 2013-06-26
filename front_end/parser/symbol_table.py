@@ -28,7 +28,10 @@ class SymbolTable(dict):
             TOKENS.LONG: LongType(LocationNotSet),
             TOKENS.FLOAT: FloatType(LocationNotSet),
             TOKENS.DOUBLE: DoubleType(LocationNotSet),
+
             TOKENS.STRUCT: StructType(None, None, LocationNotSet),
+            TOKENS.SIGNED: IntegerType(LocationNotSet),
+            TOKENS.UNSIGNED: IntegerType(LocationNotSet),
         }]
         self._stmnts = {'return': [], 'goto': [], 'label': {}}
         super(SymbolTable, self).__init__(*args, **kwargs)

@@ -46,6 +46,7 @@ def data_symbol(symbol, bins, symbol_table, func_name='', scope_level=0, scope_d
         bins.append(binaries(symbol))
     elif symbol.storage_class is None:  # Common/Shared
         if name(symbol) in symbol_table:
+            assert not symbol_table[name(symbol)].storage_class
             offset = symbol_table[name(symbol)].offset
             symbol = max((symbol, symbol_table.pop(name(symbol))), key=lambda symbol: symbol.size)
             bins[offset] = [Integer(0, loc(symbol))] * symbol.size

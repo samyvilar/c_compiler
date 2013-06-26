@@ -181,24 +181,21 @@ def parse_sign_token(tokens, _):
     return type_specifier.rules[tokens[0]](loc(token), unsigned=sign)
 
 
-def no_type_specifier(tokens, _):
-    raise ValueError('{l} Expected a type_specifier or type_name got {got}'.format(
-        l=loc(tokens[0]), got=tokens[0]
-    ))
-
-
 def parse_struct_members(tokens, symbol_table):
     location, members = loc(tokens.pop(0)), OrderedDict()
     while tokens and tokens[0] != TOKENS.RIGHT_BRACE:
         type_spec = type_specifier(tokens, symbol_table)
-        decl = declarator(tokens, symbol_table)
+        while tokens and tokens[0] != TOKENS.SEMICOLON:
+            decl = declarator(tokens, symbol_table)
+            set_core_type(decl, type_spec)
+            if name(decl) in members:
+                raise ValueError('{l} Duplicate struct member {name} previous at {at}'.format(
+                    l=loc(decl), name=name(decl), at=loc(members[name(decl)])
+                ))
+            members[name(decl)] = decl
+            if tokens and tokens[0] != TOKENS.SEMICOLON:
+                _ = error_if_not_value(tokens, TOKENS.COMMA)
         _ = error_if_not_value(tokens, TOKENS.SEMICOLON)
-        set_core_type(decl, type_spec)
-        if name(decl) in members:
-            raise ValueError('{l} Duplicate struct member {name} previous at {at}'.format(
-                l=loc(decl), name=name(decl), at=loc(members[name(decl)])
-            ))
-        members[name(decl)] = decl
     _ = error_if_not_value(tokens, TOKENS.RIGHT_BRACE)
     return members
 
@@ -229,6 +226,12 @@ def struct_specifier(tokens, symbol_table):
     ))
 
 
+def no_type_specifier(tokens, _):
+    raise ValueError('{l} Expected a type_specifier or type_name got {got}'.format(
+        l=loc(tokens[0]), got=tokens[0]
+    ))
+
+
 def type_specifier(tokens, symbol_table):
     """
         : 'void'
@@ -238,14 +241,11 @@ def type_specifier(tokens, symbol_table):
         | struct_specifier
         | TYPE_NAME
     """
-    if not tokens:
-        raise ValueError('{l} Expected type_specifier or TYPE_NAME got {got}'.format(
-            l=loc(tokens), got=tokens
-        ))
-    if isinstance(symbol_table.get(tokens[0]), CType):
+    if tokens and tokens[0] in type_specifier.rules:
+        return type_specifier.rules[tokens[0]](tokens, symbol_table)
+    elif tokens and isinstance(symbol_table.get(tokens[0]), CType):
         return symbol_table[tokens[0]](loc(tokens.pop(0)))
-    # noinspection PyUnresolvedReferences
-    return type_specifier.rules[tokens[0]](tokens, symbol_table)
+    raise ValueError('{l} Expected type_specifier or TYPE_NAME got {got}'.format(l=loc(tokens), got=tokens))
 type_specifier.rules = defaultdict(lambda: no_type_specifier)
 type_specifier.rules.update({
     TOKENS.STRUCT: struct_specifier,

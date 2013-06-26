@@ -3,7 +3,8 @@ __author__ = 'samyvilar'
 from itertools import izip, chain
 from collections import defaultdict
 from back_end.emitter.types import flatten
-from back_end.emitter.object_file import Symbol
+from back_end.emitter.object_file import Symbol, Data, Code
+from front_end.parser.symbol_table import SymbolTable
 
 from back_end.virtual_machine.instructions.architecture import Allocate, Push, Pop, Halt, Pass, operns, Instruction, Dup
 from back_end.virtual_machine.instructions.architecture import Add, Subtract, Multiply, Divide, Mod
@@ -15,18 +16,17 @@ from back_end.virtual_machine.instructions.architecture import Jump, AbsoluteJum
 from back_end.virtual_machine.instructions.architecture import RelativeJump, JumpTrue, JumpFalse, JumpTable
 from back_end.virtual_machine.instructions.architecture import SaveStackPointer, RestoreStackPointer
 from back_end.virtual_machine.instructions.architecture import LoadBaseStackPointer, LoadStackPointer, Load, Set, Swap
+from back_end.virtual_machine.instructions.architecture import PushFrame, PopFrame, Enqueue, Dequeue, Integer
 
 
 def pop(cpu, mem):
     cpu.stack_pointer += 1
-    assert cpu.stack_pointer < 0
     return mem[cpu.stack_pointer]
 
 
 def push(value, cpu, mem):
     mem[cpu.stack_pointer] = value
     cpu.stack_pointer -= 1
-    assert cpu.stack_pointer < 0
 
 
 def add(oper1, oper2):
@@ -196,7 +196,7 @@ def _load(instr, cpu, mem):
 
 
 def _set(instr, cpu, mem):
-    addr, quantity = pop(cpu, mem), operns(instr)[0]
+    addr, quantity = _pop(instr, cpu, mem), operns(instr)[0]
     for addr, value in enumerate(reversed([pop(cpu, mem) for _ in xrange(quantity)]), addr):
         push(value, cpu, mem)
         mem[addr] = value
@@ -216,13 +216,32 @@ def _pop(instr, cpu, mem):
     return pop(cpu, mem)
 
 
+def push_frame(instr, cpu, mem):
+    cpu.frames.append((cpu.base_pointer, cpu.stack_pointer))
+    cpu.base_pointer = cpu.stack_pointer
+
+
+def pop_frame(instr, cpu, mem):
+    cpu.base_pointer, cpu.stack_pointer = cpu.frames.pop()
+
+
+def enqueue(instr, cpu, mem):
+    value = _pop(instr, cpu, mem)
+    cpu.queue.append(value)
+    push(value, cpu, mem)
+
+
+def dequeue(instr, cpu, mem):
+    push(cpu.queue.pop(0), cpu, mem)
+
+
 def evaluate(cpu, mem):
     while True:
         instr = mem[cpu.instr_pointer]
         if isinstance(instr, Halt):
             break
         evaluate.rules[type(instr)](instr, cpu, mem)
-        if not isinstance(instr, (Pass, Jump)):
+        if not isinstance(instr, (Pass, Jump)):  # do not update instr pointer, this instrs manipulate it.
             _pass(instr, cpu, mem)
 evaluate.rules = {
     Pass: _pass,
@@ -239,6 +258,12 @@ evaluate.rules = {
     LoadBaseStackPointer: load_base_pointer,
     LoadStackPointer: load_stack_pointer,
 
+    PushFrame: push_frame,
+    PopFrame: pop_frame,
+
+    Enqueue: enqueue,
+    Dequeue: dequeue,
+
     Load: _load,
     Set: _set,
     Swap: swap,
@@ -253,9 +278,9 @@ def address(start, step):
         start += step
 
 
-def load(instrs, mem, symbol_table):
-    address_space = address(0, 1)
-    for addr, instr in izip(address_space, flatten(chain(instrs, (Halt('__EOP__'),)), Instruction)):
+def load(instrs, mem, symbol_table, address_gen=None):
+    address_gen = address_gen or address(0, 1)
+    for addr, instr in izip(address_gen, flatten(chain(instrs, (Halt('__EOP__'),)), Instruction)):
         mem[addr] = instr
         instr.address = addr
 
@@ -266,7 +291,7 @@ def load(instrs, mem, symbol_table):
                 if isinstance(operand.obj, Instruction):
                     addr = operand.obj.address
                 elif isinstance(operand.obj, Symbol):
-                    addr = next(flatten(symbol_table[operand.obj.name].binaries)).address
+                    addr = next(flatten(symbol_table[operand.obj.name].binaries, Instruction)).address
                 else:
                     addr = operand
                 if isinstance(instr, RelativeJump):
@@ -277,9 +302,61 @@ def load(instrs, mem, symbol_table):
         instr.operands = operands
 
 
+def data(symbol, bins, symbol_table):
+    if symbol.binaries:  # definition.
+        symbol_table[symbol.name] = symbol
+        symbol.offset = len(bins)
+        bins.append(symbol.binaries)
+    elif not symbol.storage_class:
+        if symbol.name in symbol_table and symbol.size > symbol_table[symbol.name].size:
+            prev_symbol = symbol_table.pop(symbol.name)
+            assert not prev_symbol.storage_class
+            symbol.binaries = [Integer(0, '') for _ in xrange(symbol.size)]
+            bins[prev_symbol.offset] = symbol.binaries
+            symbol.offset = prev_symbol.offset
+        else:
+            symbol_table[symbol.name] = symbol
+            symbol.offset = len(bins)
+            symbol.binaries = [Integer(0, '') for _ in xrange(symbol.size)]
+            bins.append(symbol.binaries)
+
+
+def code(symbol, bins, symbol_table):
+    if symbol.binaries:  # definition.
+        symbol_table[symbol.name] = symbol
+        symbol.offset = len(bins)
+        bins.append(symbol.binaries)
+        for symbol in flatten(symbol.binaries, Symbol):
+            if type(symbol) in executable.rules:
+                executable.rules[type(symbol)](symbol, bins, symbol_table)
+
+
+def executable(symbols, symbol_table=None):
+    symbol_table = symbol_table or SymbolTable()
+    bins = []
+    for symbol in symbols:
+        executable.rules[type(symbol)](symbol, bins, symbol_table)
+    return bins
+executable.rules = {
+    Data: data,
+    Code: code
+}
+
+
 class CPU(object):
     def __init__(self):
-        self.stack, self.queue = [], []
+        self.frames, self.stack, self.queue = [], [], []
         self.instr_pointer = 0
         self.zero, self.carry, self.overflow = 0, 0, 0
-        self.stack_pointer, self.base_pointer = -1, -1
+        self._stack_pointer, self.base_pointer = -1, -1
+
+    @property
+    def stack_pointer(self):
+        return self._stack_pointer
+
+    @stack_pointer.setter
+    def stack_pointer(self, value):
+        self._stack_pointer = value
+        assert self._stack_pointer < 0
+        assert self.stack_pointer <= self.base_pointer
+

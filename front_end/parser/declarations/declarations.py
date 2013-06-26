@@ -70,7 +70,7 @@ def declarations(tokens, symbol_table):
             logger.warning('{l} Useless storage class {s} for declaration ...'.format(
                 l=loc(base_type)), s=storage_class
             )
-        return declaration
+        return declarations
 
     declarators = init_declarator_list(tokens, symbol_table)
     for dec in declarators:
@@ -91,7 +91,7 @@ def declarations(tokens, symbol_table):
             _ = error_if_not_value(tokens, TOKENS.SEMICOLON)
         return decls
 
-    raise ValueError('{l} Expected "," "=" ";" "{" got {got}'.format(
+    raise ValueError('{l} Expected "," "=" ";" LEFT_BRACE got {got}'.format(
         l=tokens and loc(tokens[0]) or location, got=tokens and tokens[0])
     )
 

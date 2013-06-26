@@ -145,7 +145,7 @@ class ArraySubscriptingExpression(PostfixExpression):
 class ArgumentExpressionList(Node, list):
     def __init__(self, argument_expressions, location):
         super(ArgumentExpressionList, self).__init__(location)
-        list.__init__(argument_expressions or ())
+        list.__init__(self, argument_expressions or ())
 
     def __eq__(self, other):
         return all((len(self) == len(other), all(c_type(s_arg) == c_type(o_arg) for s_arg, o_arg in izip(self, other))))

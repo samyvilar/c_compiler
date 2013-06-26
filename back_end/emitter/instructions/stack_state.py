@@ -25,12 +25,15 @@ class Stack(list):
 
     @stack_pointer.setter
     def stack_pointer(self, value):
-        if value < 0:
+        if value > 0:
             raise ValueError
         self._stack_pointer = value
 
     def allocate(self, allocation_size):
-        self.stack_pointer += allocation_size
+        self.stack_pointer -= allocation_size
+
+    def __nonzero__(self):
+        return 1
 
 
 def stack_allocation(stack, obj):
@@ -39,8 +42,8 @@ def stack_allocation(stack, obj):
     else:
         obj_type = c_type(obj)
 
-    allocation_size, offset = size(obj_type), stack.stack_pointer
-
+    offset = stack.stack_pointer
+    allocation_size = size(obj_type)
     stack.allocate(allocation_size)
 
     return bind_instructions(obj, offset) if isinstance(obj, (Declaration, Declarator)) else obj

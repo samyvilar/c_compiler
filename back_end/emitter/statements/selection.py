@@ -10,7 +10,6 @@ from front_end.parser.ast.statements import IfStatement, SwitchStatement, CaseSt
 
 from back_end.emitter.expressions.expression import expression
 from back_end.virtual_machine.instructions.architecture import Pass, JumpFalse, Address, JumpTable, Instruction
-from back_end.virtual_machine.instructions.architecture import SaveStackPointer, RestoreStackPointer
 
 from back_end.emitter.statements.jump import relative_jump_instrs
 from back_end.emitter.statements.jump import patch_goto_instrs

@@ -104,10 +104,10 @@ binaries.rules.update({rule: const_exp_binaries for rule in const_exp_binaries.r
 
 
 def struct_member_offset(struct_type, member_exp):
-    assert name(member_exp)
+    assert member_exp
     offset = 0
-    for member in struct_type:
-        if name(member_exp) == name(member):
+    for name in struct_type:
+        if member_exp == name:
             return offset
-        offset += size(c_type(member))
+        offset += size(c_type(struct_type[name]))
     raise ValueError
