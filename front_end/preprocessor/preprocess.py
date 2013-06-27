@@ -7,8 +7,9 @@ from front_end.preprocessor.macros import Macros
 
 
 class Preprocess(Tokenize):
-    def __init__(self, tokens, directives=get_directives()):
+    def __init__(self, tokens, directives=None):
         new_tokens, macros = [], Macros()
+        directives = directives or get_directives()
 
         while tokens:
             tokens = directives[tokens[0]](tokens, macros, new_tokens)

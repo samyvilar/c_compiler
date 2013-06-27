@@ -47,12 +47,3 @@ def stack_allocation(stack, obj):
     offset = stack.stack_pointer + 1
 
     return bind_instructions(obj, offset) if isinstance(obj, (Declaration, Declarator)) else obj
-
-
-def stack_de_allocation(stack, obj):
-    if isinstance(obj, CType):
-        obj_type = obj
-    else:
-        obj_type = c_type(obj)
-
-    stack.allocate(-1 * size(obj_type))

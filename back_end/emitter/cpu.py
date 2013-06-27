@@ -62,7 +62,7 @@ def mod(oper1, oper2):
 
 
 def _shift_left(oper1, oper2):
-    return oper1 << (oper2 & 0x111111)
+    return oper1 << (oper2 & 0b111111)
 
 
 def _shift_right(oper1, oper2):

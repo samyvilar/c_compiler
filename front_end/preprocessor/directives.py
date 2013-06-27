@@ -80,16 +80,9 @@ directive.rules = {   # We don't want to create this dictionary every time the f
 
 
 def get_directives():
-    return get_directives.directives
-get_directives.directives = defaultdict(lambda: default)
-get_directives.directives.update({
-    TOKENS.PINCLUDE: directive,
-    TOKENS.PDEFINE: directive,
-    TOKENS.PUNDEF: directive,
-    TOKENS.PIF: directive,
-    TOKENS.PIFDEF: directive,
-    TOKENS.PIFNDEF: directive,
-})
+    directives = defaultdict(lambda: default)
+    directives.update({rule: directive for rule in directive.rules})
+    return directives
 
 
 def default(all_tokens, macros, new_tokens):

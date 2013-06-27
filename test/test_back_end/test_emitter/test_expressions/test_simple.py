@@ -18,7 +18,7 @@ class TestRawExpression(TestCase):
         evaluate(self.cpu, self.mem)
 
     def test_binary_expr(self):
-        source = '((int)(1) + (int)(2)) * (int)(3) - (int)((float)(3.0)) / (int)(1) >> (int)(2)'
+        source = '((int)(1) + (int)(2)) * (int)(3) - (int)((float)(3.0)) / (int)(1) >> (int)(2) * (int)(1) << (int)(2)'
         self.evaluate_expr(source)
         self.assertEqual(pop(self.cpu, self.mem), eval(source))
 
