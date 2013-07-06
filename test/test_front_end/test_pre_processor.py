@@ -1,24 +1,23 @@
 __author__ = 'samyvilar'
 
 from unittest import TestCase
-from front_end.tokenizer.tokenize import Tokenize
-from front_end.preprocessor.preprocess import Preprocess
+from front_end.loader.load import source
+from front_end.tokenizer.tokenize import tokenize
+from front_end.preprocessor.preprocess import preprocess
 
 
 class TestPreProcessor(TestCase):
     def test_pre_processor(self):
-        source = """
+        code = """
+            #define a 1
+            #define b(a) a
 
-#define a 1
-#define b(a) a
-
-#if defined(b) - 1 + defined a
-b(a)
-#else
-1
-#endif
-"""
-
-        tokens = Preprocess(Tokenize(source))
-        self.assertEqual(tokens, ['1'])
+            #if defined(b) - 1 + defined a
+            b(a)
+            #else
+            1
+            #endif
+        """
+        for token in preprocess(tokenize(source(code))):
+            self.assertEqual(token, '1')
 

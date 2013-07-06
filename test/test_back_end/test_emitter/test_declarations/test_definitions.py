@@ -3,30 +3,33 @@ __author__ = 'samyvilar'
 from unittest import TestCase
 from collections import defaultdict
 
-from back_end.emitter.types import flatten
-from front_end.tokenizer.tokenize import Tokenize
-from front_end.preprocessor.preprocess import Preprocess
-from front_end.parser.parse import Parse
+from front_end.loader.load import source
+from front_end.tokenizer.tokenize import tokenize
+from front_end.preprocessor.preprocess import preprocess
+
+from front_end.parser.parse import parse
 from front_end.parser.symbol_table import SymbolTable
 
-from back_end.emitter.emit import Emit
-from back_end.emitter.cpu import evaluate, load, CPU, executable, push, pop, push_frame, pop_frame, Halt, Instruction
+from back_end.emitter.emit import emit
+from back_end.emitter.types import size
+from back_end.emitter.cpu import evaluate, load, CPU, executable, push, pop, push_frame, pop_frame, Halt
+from back_end.emitter.cpu import address
 
 
 class TestDeclarations(TestCase):
-    def evaluate(self, source):
-        self.cpu, self.mem = CPU(), defaultdict(int)
-        symbol_table = SymbolTable()
-
-        bins = executable(Emit(Parse(Preprocess(Tokenize(source)))), symbol_table)
-        load(bins, self.mem, symbol_table)
+    def evaluate(self, code):
+        address_gen, symbol_table, self.cpu, self.mem = address(), SymbolTable(), CPU(), defaultdict(int)
+        load(
+            executable(emit(parse(preprocess(tokenize(source(code))))), symbol_table),
+            self.mem,
+            symbol_table,
+            address_gen
+        )
 
         push(0, self.cpu, self.mem)
         push_frame(None, self.cpu, self.mem)
-        halt_addr = max(self.mem.iterkeys())
-        assert isinstance(self.mem[halt_addr], Halt)
-        push(halt_addr, self.cpu, self.mem)
-        self.cpu.instr_pointer = next(flatten(symbol_table['main'].binaries, Instruction)).address
+        push(next(address_gen) - size(Halt('')), self.cpu, self.mem)
+        self.cpu.instr_pointer = symbol_table['main'].address
         evaluate(self.cpu, self.mem)
         pop_frame(None, self.cpu, self.mem)
         pop(self.cpu, self.mem)

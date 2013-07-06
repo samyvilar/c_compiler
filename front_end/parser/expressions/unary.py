@@ -1,25 +1,25 @@
 __author__ = 'samyvilar'
 
-from front_end.loader.locations import loc
+from sequences import peek, consume
+from front_end.loader.locations import loc, EOFLocation
 from front_end.tokenizer.tokens import TOKENS
 from front_end.parser.types import CType, IntegralType, PointerType, c_type, NumericType, IntegerType
 from front_end.parser.ast.expressions import SizeOfExpression, UnaryExpression, DereferenceExpression
-from front_end.parser.ast.expressions import PrefixIncrementExpression, PrefixDecrementExpression
+from front_end.parser.ast.expressions import PrefixIncrementExpression, PrefixDecrementExpression, AddressOfExpression
 
-from front_end.errors import error_if_not_lvalue, error_if_not_type, error_if_not_value
+from front_end.errors import error_if_not_type, error_if_not_value
 
 
 def no_rule_found(tokens, *_):
+    print list(tokens)
     raise ValueError('{l} Could not find matching rule for {got} for unary_expression'.format(
-        l=loc(tokens[0]), got=tokens[0]))
+        l=loc(peek(tokens, default=EOFLocation)), got=peek(tokens, default='')
+    ))
 
 
 def increment_decrement(tokens, symbol_table, unary_expression):
-    operator, unary_exp = tokens.pop(0), unary_expression(tokens, symbol_table)
-    location = loc(operator)
-    error_if_not_lvalue(unary_exp, operator)
-    _ = error_if_not_type([c_type(unary_exp)], IntegralType)
-    return increment_decrement.rules[operator](unary_exp, c_type(unary_exp)(location), location)
+    operator, unary_exp = consume(tokens), unary_expression(tokens, symbol_table)
+    return increment_decrement.rules[operator](unary_exp, c_type(unary_exp)(loc(operator)), loc(operator))
 increment_decrement.rules = {
     TOKENS.PLUS_PLUS: PrefixIncrementExpression,
     TOKENS.MINUS_MINUS: PrefixDecrementExpression,
@@ -27,14 +27,15 @@ increment_decrement.rules = {
 
 
 def size_of(tokens, symbol_table, unary_expression):
-    location = loc(tokens.pop(0))
+    location = loc(consume(tokens))
 
     left_parenthesis = None
-    if tokens[0] == TOKENS.LEFT_PARENTHESIS:
-        left_parenthesis = tokens.pop(0)
+    if peek(tokens, default='') == TOKENS.LEFT_PARENTHESIS:
+        left_parenthesis = consume(tokens)
 
-    if isinstance(symbol_table.get(tokens[0]), CType):  # Symbol Table should be initialized with default types.
-        ctype = symbol_table[tokens.pop(0)]
+    # Symbol Table should be initialized with default types.
+    if isinstance(symbol_table.get(peek(tokens, default=''), ''), CType):
+        ctype = symbol_table[consume(tokens)]
     else:
         ctype = unary_expression(tokens, symbol_table)
 
@@ -45,10 +46,7 @@ def size_of(tokens, symbol_table, unary_expression):
 
 
 def address_of(cast_exp, operator):
-    error_if_not_lvalue(cast_exp, operator)
-    return UnaryExpression(
-        operator, cast_exp, PointerType(c_type(cast_exp)(loc(operator)), loc(cast_exp)), loc(operator)
-    )
+    return AddressOfExpression(cast_exp, PointerType(c_type(cast_exp)(loc(operator)), loc(cast_exp)), loc(operator))
 
 
 def dereference(cast_exp, operator):
@@ -72,7 +70,7 @@ def tilde_operator(cast_exp, operator):
 
 
 def unary_operator(tokens, symbol_table, cast_expression):
-    operator, cast_exp = tokens.pop(0), cast_expression(tokens, symbol_table)
+    operator, cast_exp = consume(tokens), cast_expression(tokens, symbol_table)
     # noinspection PyUnresolvedReferences
     return unary_operator.rules[operator](cast_exp, operator)
 unary_operator.rules = {

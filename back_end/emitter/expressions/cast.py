@@ -1,22 +1,23 @@
 __author__ = 'samyvilar'
 
 from front_end.loader.locations import loc
+from itertools import chain
 from front_end.parser.types import c_type, base_c_type, NumericType, IntegralType
 from front_end.parser.ast.expressions import exp
 
 from back_end.virtual_machine.instructions.architecture import ConvertToFloat, ConvertToInteger
 
 
-def cast_expression(expr, symbol_table, stack, expression_func, jump_props):
+def cast_expression(expr, symbol_table, expression_func):
     return cast_expression.rules[base_c_type(c_type(exp(expr))), base_c_type(c_type(expr))](
-        expression_func(exp(expr), symbol_table, stack, expression_func, jump_props), loc(expr),
+        expression_func(exp(expr), symbol_table, expression_func), loc(expr)
     )
 cast_expression.rules = {
     # Cast FromType,    ToType
     (IntegralType, IntegralType): lambda binaries, location: binaries,
     (NumericType, NumericType): lambda binaries, location: binaries,
-    (IntegralType, NumericType): lambda binaries, location: binaries + [ConvertToFloat(location)],
-    (NumericType, IntegralType): lambda binaries, location: binaries + [ConvertToInteger(location)],
+    (IntegralType, NumericType): lambda binaries, location: chain(binaries, (ConvertToFloat(location),)),
+    (NumericType, IntegralType): lambda binaries, location: chain(binaries, (ConvertToInteger(location),)),
 }
 
 

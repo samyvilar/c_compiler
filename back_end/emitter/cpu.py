@@ -1,9 +1,7 @@
 __author__ = 'samyvilar'
 
 from itertools import izip, chain
-from collections import defaultdict
-from back_end.emitter.types import flatten
-from back_end.emitter.object_file import Symbol, Data, Code
+from back_end.emitter.object_file import Symbol, Data, Code, String
 from front_end.parser.symbol_table import SymbolTable
 
 from back_end.virtual_machine.instructions.architecture import Allocate, Push, Pop, Halt, Pass, operns, Instruction, Dup
@@ -12,11 +10,11 @@ from back_end.virtual_machine.instructions.architecture import AddFloat, Subtrac
 from back_end.virtual_machine.instructions.architecture import And, Or, Xor, Not, ShiftLeft, ShiftRight
 from back_end.virtual_machine.instructions.architecture import ConvertToInteger, ConvertToFloat
 from back_end.virtual_machine.instructions.architecture import LoadZeroFlag, LoadOverflowFlag, LoadCarryBorrowFlag
-from back_end.virtual_machine.instructions.architecture import Jump, AbsoluteJump, Address
+from back_end.virtual_machine.instructions.architecture import Jump, AbsoluteJump, Address, CompoundSet
 from back_end.virtual_machine.instructions.architecture import RelativeJump, JumpTrue, JumpFalse, JumpTable
 from back_end.virtual_machine.instructions.architecture import SaveStackPointer, RestoreStackPointer
 from back_end.virtual_machine.instructions.architecture import LoadBaseStackPointer, LoadStackPointer, Load, Set, Swap
-from back_end.virtual_machine.instructions.architecture import PushFrame, PopFrame, Enqueue, Dequeue, Integer
+from back_end.virtual_machine.instructions.architecture import PushFrame, PopFrame, Enqueue, Dequeue, Byte
 
 
 def pop(cpu, mem):
@@ -202,6 +200,12 @@ def _set(instr, cpu, mem):
         mem[addr] = value
 
 
+def _compound_set(instr, cpu, mem):
+    for addr, value in enumerate(reversed([pop(cpu, mem) for _ in xrange(operns(instr)[0])]), _pop(instr, cpu, mem)):
+        push(value, cpu, mem)
+        mem[addr] = value
+
+
 def swap(instr, cpu, mem):
     value_1, value_2 = pop(cpu, mem), pop(cpu, mem)
     push(value_1, cpu, mem)
@@ -266,81 +270,94 @@ evaluate.rules = {
 
     Load: _load,
     Set: _set,
+    CompoundSet: _compound_set,
     Swap: swap,
 }
 evaluate.rules.update({rule: expr for rule in expr.rules})
 evaluate.rules.update({rule: jump for rule in jump.rules})
 
 
-def address(start, step):
+def address(start=0, step=1):
     while True:
         yield start
         start += step
 
 
 def load(instrs, mem, symbol_table, address_gen=None):
-    address_gen = address_gen or address(0, 1)
-    for addr, instr in izip(address_gen, flatten(chain(instrs, (Halt('__EOP__'),)), Instruction)):
-        mem[addr] = instr
-        instr.address = addr
+    address_gen = address_gen or address()
+    for addr, elem in izip(address_gen, chain(instrs, (Halt('__EOP__'),))):
+        mem[addr] = elem
+        elem.address = addr
 
-    for current_addr, instr in mem.iteritems():
+    for current_addr, elem in mem.iteritems():
         operands = []
-        for operand in operns(instr):
+        for operand in operns(elem):
             if isinstance(operand, Address):
                 if isinstance(operand.obj, Instruction):
                     addr = operand.obj.address
                 elif isinstance(operand.obj, Symbol):
-                    addr = next(flatten(symbol_table[operand.obj.name].binaries, Instruction)).address
+                    addr = symbol_table[operand.name].address
                 else:
                     addr = operand
-                if isinstance(instr, RelativeJump):
+                if isinstance(elem, RelativeJump):
                     operand = addr - current_addr
                 else:
                     operand = addr
             operands.append(operand)
-        instr.operands = operands
+        elem.operands = operands
 
 
-def data(symbol, bins, symbol_table):
+def data(symbol, symbol_table):
     if symbol.binaries:  # definition.
         symbol_table[symbol.name] = symbol
-        symbol.offset = len(bins)
-        bins.append(symbol.binaries)
     elif not symbol.storage_class:
-        if symbol.name in symbol_table and symbol.size > symbol_table[symbol.name].size:
-            prev_symbol = symbol_table.pop(symbol.name)
-            assert not prev_symbol.storage_class
-            symbol.binaries = [Integer(0, '') for _ in xrange(symbol.size)]
-            bins[prev_symbol.offset] = symbol.binaries
-            symbol.offset = prev_symbol.offset
+        if symbol.name in symbol_table:
+            if symbol.size > symbol_table[symbol.name].size:
+                _ = symbol_table.pop(symbol.name)
+                assert not _.storage_class
+                symbol_table[symbol.name] = symbol
+                symbol.binaries = (Byte(0, '') for _ in xrange(symbol.size))
         else:
             symbol_table[symbol.name] = symbol
-            symbol.offset = len(bins)
-            symbol.binaries = [Integer(0, '') for _ in xrange(symbol.size)]
-            bins.append(symbol.binaries)
+            symbol.binaries = (Byte(0, '') for _ in xrange(symbol.size))
 
 
-def code(symbol, bins, symbol_table):
+def binaries(code, symbol_table):
+    code_segment, data_segment = [], []
+    for elem in code:
+        if isinstance(elem, Instruction):
+            code_segment.append(elem)
+        else:
+            populate_symbol_table.rules[type(elem)](elem, symbol_table)
+            data_segment.append(elem.binaries)
+    return chain(code_segment, chain.from_iterable(data_segment))
+
+
+def code(symbol, symbol_table):
     if symbol.binaries:  # definition.
         symbol_table[symbol.name] = symbol
-        symbol.offset = len(bins)
-        bins.append(symbol.binaries)
-        for symbol in flatten(symbol.binaries, Symbol):
-            if type(symbol) in executable.rules:
-                executable.rules[type(symbol)](symbol, bins, symbol_table)
+        symbol.binaries = binaries(symbol.binaries, symbol_table)
+
+
+def populate_symbol_table(symbols, symbol_table):
+    for symbol in symbols:
+        populate_symbol_table.rules[type(symbol)](symbol, symbol_table)
+populate_symbol_table.rules = {
+    String: data,
+    Data: data,
+    Code: code
+}
 
 
 def executable(symbols, symbol_table=None):
     symbol_table = symbol_table or SymbolTable()
-    bins = []
-    for symbol in symbols:
-        executable.rules[type(symbol)](symbol, bins, symbol_table)
-    return bins
-executable.rules = {
-    Data: data,
-    Code: code
-}
+    populate_symbol_table(symbols, symbol_table)  # no choice but to iterate over all the symbols and populate the
+    for symbol in symbol_table.itervalues():
+        initial_elem = next(symbol.binaries)
+        symbol.address = property(lambda self: initial_elem.address)
+        yield initial_elem
+        for elem in symbol.binaries:
+            yield elem
 
 
 class CPU(object):
@@ -357,6 +374,8 @@ class CPU(object):
     @stack_pointer.setter
     def stack_pointer(self, value):
         self._stack_pointer = value
-        assert self._stack_pointer < 0
-        assert self.stack_pointer <= self.base_pointer
+        if self._stack_pointer > 0:
+            assert False
+        if self.stack_pointer > self.base_pointer:
+            assert False
 

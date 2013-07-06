@@ -6,7 +6,9 @@ from front_end.loader.locations import LocationNotSet
 from front_end.tokenizer.tokens import TOKENS
 
 from front_end.parser.ast.general import Node, EmptyNode
-from front_end.parser.types import CType, IntegerType, c_type
+from front_end.parser.types import CType, IntegerType, IntegralType, c_type, safe_type_coercion
+
+from front_end.errors import error_if_not_addressable, error_if_not_assignable, error_if_not_type
 
 
 class TypedNode(Node):
@@ -85,6 +87,12 @@ class UnaryExpression(OperatorNode):
         super(UnaryExpression, self).__init__(oper, exp, ctype, location)
 
 
+class AddressOfExpression(UnaryExpression):
+    def __init__(self, exp, ctype, location):
+        # error_if_not_addressable(exp)  TODO: implement.
+        super(AddressOfExpression, self).__init__(TOKENS.AMPERSAND, exp, ctype, location)
+
+
 class SizeOfExpression(UnaryExpression):
     def __init__(self, exp, location):
         super(SizeOfExpression, self).__init__(TOKENS.SIZEOF, exp, IntegerType(location), location)
@@ -109,7 +117,13 @@ class BinaryExpression(OperatorNode):
 
 
 class AssignmentExpression(BinaryExpression):
-    pass
+    def __init__(self, left_exp, operator, right_exp, ctype, location):
+        # error_if_not_assignable(left_exp, location) TODO: implement.
+        if not safe_type_coercion(c_type(left_exp), c_type(right_exp)):
+            raise ValueError('{l} Cannot assign incompatible types {to_type} {from_type}'.format(
+                l=location, from_type=c_type(right_exp), to_type=c_type(left_exp),
+            ))
+        super(AssignmentExpression, self).__init__(left_exp, operator, right_exp, ctype, location)
 
 
 class CompoundAssignmentExpression(AssignmentExpression):
@@ -174,12 +188,34 @@ class ElementSelectionThroughPointerExpression(ElementSelection):
         )
 
 
-class IncrementExpression(ExpressionNode):  # Statement/Expression
-    pass
+class IntegralExpression(TypedNode):
+    def __init__(self, ctype, location):
+        error_if_not_type([ctype], IntegralType, location)
+        super(IntegralExpression, self).__init__(ctype, location)
 
 
-class DecrementExpression(ExpressionNode):
-    pass
+class IncrementExpression(CompoundAssignmentExpression, IntegralExpression):  # Statement/Expression
+    def __init__(self, exp, ctype, location):
+        super(IncrementExpression, self).__init__(
+            exp,
+            TOKENS.PLUS_EQUAL,
+            ConstantExpression(1, IntegerType(location), location),
+            ctype,
+            location
+        )
+        ExpressionNode.__init__(self, exp, ctype, location)  # CompoundAssignment uses itself as exp
+
+
+class DecrementExpression(CompoundAssignmentExpression, IntegralExpression):
+    def __init__(self, exp, ctype, location):
+        super(DecrementExpression, self).__init__(
+            exp,
+            TOKENS.MINUS_EQUAL,
+            ConstantExpression(1, IntegerType(location), location),
+            ctype,
+            location
+        )
+        ExpressionNode.__init__(self, exp, ctype, location)
 
 
 class PrefixIncrementExpression(IncrementExpression):
@@ -216,3 +252,7 @@ def right_exp(exp):
 
 def left_exp(exp):
     return getattr(exp, 'left_exp')
+
+
+def assignable(exp):
+    return lvalue()

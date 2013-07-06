@@ -2,7 +2,7 @@ __author__ = 'samyvilar'
 
 from unittest import TestCase
 
-from front_end.loader.load import Load
+from front_end.loader.load import source
 from front_end.loader.locations import loc
 
 
@@ -16,7 +16,7 @@ be a new line \\
 also. ... \\
 empty.
 """
-        new_char_array = Load('__TEST__', test_input)
+        new_char_array = source(test_input, '__TEST__')
         self.assertEqual(''.join(new_char_array),
                          '\nthis is a new lines\nthis is supposed to be a new line also. ... empty.\n')
         locations = \

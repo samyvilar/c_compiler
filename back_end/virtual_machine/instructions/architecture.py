@@ -56,8 +56,11 @@ class Integer(Int, Operand):
     pass
 
 
+Byte = Integer
+
+
 class Address(Int):  # Address is a special operand since it can take other instructions or labels as operands
-    def __new__(cls, obj, location):
+    def __new__(cls, obj=0, location=''):
         if type(obj) in {Integer, Int, int}:  # If basic integer do nothing.
             value = super(Address, cls).__new__(cls, obj, location)
         else:  # otherwise get the id of the object.
@@ -293,6 +296,10 @@ class Set(MoveInstruction):
     pass
 
 
+class CompoundSet(Set):
+    pass
+
+
 # Aux second memory location in order to handle things like exp++, or exp += 1, this behaves much like a queue.
 class Enqueue(MoveInstruction):
     pass
@@ -314,8 +321,9 @@ class Mask(Integer):
     pass
 
 
-class Dup(Instruction):
-    pass
+class Dup(WideInstruction):
+    def __new__(cls, location, number_of_values=1):
+        return super(Dup, cls).__new__(cls, location, Integer(number_of_values, location))
 
 
 class Pass(Instruction):  # Empty instruction similar to NOP
@@ -329,6 +337,7 @@ ids.update({
     Pop: -2,
     Load: 3,
     Set: -4,
+    CompoundSet: -3,
     Enqueue: 5,
     Dequeue: -5,
     Dup: 6,

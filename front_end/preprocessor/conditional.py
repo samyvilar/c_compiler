@@ -1,19 +1,25 @@
 __author__ = 'samyvilar'
 
+from sequences import peek, consume, takewhile
 from front_end.loader.locations import loc
-from front_end.tokenizer.tokenize import Tokenize, line_tokens
+from front_end.tokenizer.parser import get_line
 from front_end.tokenizer.tokens import TOKENS, IDENTIFIER
 from front_end.parser.expressions.expression import constant_expression
-from front_end.tokenizer.tokens import INTEGER
-from front_end.errors import error_if_not_value
+from front_end.tokenizer.tokens import INTEGER, IGNORE
+from front_end.errors import error_if_not_empty, error_if_not_value
+
+
+def exhaust(token_seq):
+    for token in token_seq:
+        if token in {TOKENS.PIF, TOKENS.PIFDEF, TOKENS.PIFNDEF}:
+            exhaust(takewhile(lambda token: token != TOKENS.PENDIF, token_seq))
 
 
 def expand(arguments, macros):
-    args = Tokenize()
-    while arguments:
-        arg = arguments.pop(0)
+    args = []
+    for arg in arguments:
         if isinstance(arg, IDENTIFIER):
-            args.extend(macros.get(arg, INTEGER('0', loc(arg)), arguments))
+            args.extend(macros.get(arg, [INTEGER('0', loc(arg))], arguments))
         else:
             args.append(arg)
     return args
@@ -21,100 +27,66 @@ def expand(arguments, macros):
 
 def evaluate_expression(arguments, macros):
     arguments = expand(arguments, macros)
-    exp = constant_expression(arguments, {})
+    exp = constant_expression(iter(arguments), {})
     return exp.exp
 
 
-def get_body(all_tokens, location):
-    block_level, body, found = 0, Tokenize(), False
-    while all_tokens:
-        if all_tokens[0] in {TOKENS.PELIF, TOKENS.PELSE, TOKENS.PENDIF} and not block_level:
-            found = True
-            break
-        if all_tokens[0] in {TOKENS.PIF, TOKENS.PIFDEF, TOKENS.PIFNDEF}:
-            block_level += 1
-        if all_tokens[0] == TOKENS.PENDIF and block_level:
-            block_level -= 1
-        body.append(all_tokens.pop(0))
-    if not found:
-        raise ValueError('{l}, Could not locate end of body for #if statement'.format(l=location))
-    return body
+def _if_block(token_seq, macros, preprocess):
+    arguments = get_line(token_seq)
+    _ = consume(arguments)
+    if_body = takewhile(lambda token: token not in {TOKENS.PELIF, TOKENS.PELSE, TOKENS.PENDIF}, token_seq)
+
+    if evaluate_expression(arguments, macros):
+        tokens = preprocess(if_body, macros=macros)
+    else:
+        exhaust(if_body)
+        token = peek(token_seq, default='')
+        if token == TOKENS.PENDIF:
+            tokens = [IGNORE(peek(token_seq), loc(token))]
+        elif token == TOKENS.PELIF:
+            tokens = _if_block(token_seq, macros, preprocess)
+        elif token == TOKENS.ELSE:
+            tokens = _else_block(token_seq, macros, preprocess)
+        else:
+            raise ValueError('{l} Expected either #elif, #else or #endif'.format(l=token and loc(token)))
+
+    for t in tokens:
+        yield t
+
+    while peek(token_seq, default='') != TOKENS.PENDIF:
+        token = consume(token_seq)
+        if token == TOKENS.PELIF:
+            exhaust(takewhile(lambda token: token not in {TOKENS.PELIF, TOKENS.PELSE, TOKENS.PENDIF}, token_seq))
+        elif token == TOKENS.PELSE:
+            exhaust(takewhile(lambda token: token not in {TOKENS.PELIF, TOKENS.PELSE, TOKENS.PENDIF}, token_seq))
+            error_if_not_value(token_seq, TOKENS.PENDIF)
+        else:
+            raise ValueError('{l} Expected either #elif, #else, #endif got {got}'.format(l=loc(token), got=token))
+    token = error_if_not_value(token_seq, TOKENS.PENDIF)
+    yield IGNORE(token, loc(token))
 
 
-class IFBlock(object):
-    def __init__(self, all_tokens, macros, new_tokens, line, current_token):
-        self.location = loc(current_token)
-        self.arguments = line
-        self.body, self.blocks = get_body(all_tokens, loc(current_token)), [self]
-
-        while all_tokens[0] == TOKENS.PELIF:
-            self.blocks.append(ELIFBlock(all_tokens))
-
-        if all_tokens[0] == TOKENS.PELSE:
-            self.blocks.append(ElseBlock(all_tokens))
-
-        _ = error_if_not_value(all_tokens, TOKENS.PENDIF)
-
-    @property
-    def arguments(self):
-        return self._arguments
-
-    @arguments.setter
-    def arguments(self, values):
-        if not values:
-            raise ValueError('{l} {block} has no expression.'.format(
-                l=loc(self), block=self.__class__.__name__
-            ))
-        self._arguments = values
-
-    def evaluate(self, macros):
-        for block in self.blocks:
-            if block.is_true(macros):
-                return block.body
-        return Tokenize()
-
-    def is_true(self, macros):
-        return evaluate_expression(self.arguments, macros)
+def _else_block(token_seq, macros, preprocess):
+    line = get_line(token_seq)
+    _ = consume(token_seq)
+    error_if_not_empty(line)
+    else_body = takewhile(lambda token: token != TOKENS.PENDIF, token_seq)
+    return preprocess(else_body, macros=macros)
 
 
-class ELIFBlock(IFBlock):
-    # noinspection PyMissingConstructor
-    def __init__(self, all_tokens):
-        tokens = line_tokens(all_tokens)
-        _, self.arguments = tokens.pop(0), tokens
-        self.body = get_body(all_tokens, loc(_))
+
+def _if_def_block(token_seq, macros, preprocess):
+    pass
 
 
-class ElseBlock(ELIFBlock):
-    def is_true(self, macros):
-        return True
-
-    @property
-    def arguments(self):
-        return []
-
-    @arguments.setter
-    def arguments(self, values):
-        if values:
-            raise ValueError('{l} {block} got arguments {args} but expected None.'.format(
-                l=loc(self), block=self.__class__.__name__, args=values
-            ))
+def if_not_def_block(token_seq, macros, preprocess):
+    pass
 
 
-class IFDefBlock(IFBlock):
-    def is_true(self, macros):
-        return self.arguments and self.arguments[0] in macros
-
-
-class IFNDefBlock(IFDefBlock):
-    def is_true(self, macros):
-        return not super(IFNDefBlock, self).is_true(macros)
-
-
-def if_block(all_tokens, macros, new_tokens, line, current_token):
-    return if_block.rules[current_token](all_tokens, macros, new_tokens, line, current_token)
+def if_block(token_seq, macros, preprocess):
+    return if_block.rules[peek(token_seq)](token_seq, macros, preprocess)
 if_block.rules = {
-    TOKENS.PIF: IFBlock,
-    TOKENS.PIFDEF: IFDefBlock,
-    TOKENS.PIFNDEF: IFNDefBlock,
+    TOKENS.PIF: _if_block,
+    TOKENS.PIFDEF: _if_def_block,
+    TOKENS.PIFNDEF: if_not_def_block,
 }

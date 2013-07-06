@@ -177,3 +177,15 @@ class TestPostFixFunction(TestDeclarations):
         """
         super(TestPostFixFunction, self).evaluate(source)
         self.assertEqual(self.mem[self.cpu.stack_pointer], ord('a'))
+
+    def test_function_pointer(self):
+        source = """
+        int foo(int value){ return value + 1; }
+        int main()
+        {
+            int (*foo_fp)(int) = &foo;
+            return foo_fp(10);
+        }
+        """
+        super(TestPostFixFunction, self).evaluate(source)
+        self.assertEqual(self.mem[self.cpu.stack_pointer], 11)

@@ -2,6 +2,7 @@ __author__ = 'samyvilar'
 
 from collections import defaultdict
 
+from sequences import peek, consume
 from front_end.loader.locations import loc
 from front_end.tokenizer.tokens import TOKENS, IDENTIFIER, CONSTANT, CHAR, INTEGER, FLOAT, STRING
 
@@ -19,34 +20,34 @@ from front_end.parser.declarations.declarators import type_name
 
 from front_end.parser.expressions.reduce import reduce_expression
 
-from front_end.errors import error_if_not_value
+from front_end.errors import error_if_not_value, error_if_empty
 
 
 # Primary expression found at the heart of all expressions.
 def primary_expression(tokens, symbol_table):   #: IDENTIFIER | constant | '(' expression ')'
-    if tokens and isinstance(tokens[0], IDENTIFIER):
-        identifier = tokens.pop(0)
+    if isinstance(peek(tokens, default=''), IDENTIFIER):
+        identifier = consume(tokens)
         return IdentifierExpression(identifier, c_type(symbol_table[identifier]), loc(identifier))
-    if tokens and isinstance(tokens[0], CONSTANT):
+    if isinstance(peek(tokens, default=''), CONSTANT):
         rules = {
             CHAR: lambda token: ConstantExpression(ord(token), CharType(loc(token)), loc(token)),
             STRING: lambda token: ConstantExpression(token, StringType(len(token), loc(token)), loc(token)),
             INTEGER: lambda token: ConstantExpression(int(token), IntegerType(loc(token)), loc(token)),
             FLOAT: lambda token: ConstantExpression(float(token), DoubleType(loc(token)), loc(token)),
         }
-        return rules[type(tokens[0])](tokens.pop(0))
-    if tokens and tokens[0] == TOKENS.LEFT_PARENTHESIS:
-        _ = tokens.pop(0)
+        return rules[type(peek(tokens))](consume(tokens))
+    if peek(tokens, default='') == TOKENS.LEFT_PARENTHESIS:
+        _ = consume(tokens)
         exp = expression(tokens, symbol_table)
         _ = error_if_not_value(tokens, TOKENS.RIGHT_PARENTHESIS)
         return exp
 
     raise ValueError('{l} Could not parse primary_expression, expected IDENTIFIER, CONSTANT, ( got {token}'.format(
-        l=tokens and loc(tokens[0]) or loc(tokens), token=tokens and tokens[0]
+        l=loc(peek(tokens, default='')), token=peek(tokens, default='')
     ))
 
 
-def postfix_expression(tokens, symbol_table):
+def postfix_expression(tokens, symbol_table, primary_exp=None):
     """
     :   primary_expression
         (   '[' expression ']'
@@ -58,11 +59,12 @@ def postfix_expression(tokens, symbol_table):
         |   '--'
         )*
     """
-    primary_exp = primary_expression(tokens, symbol_table)
+    if primary_exp is None:
+        primary_exp = primary_expression(tokens, symbol_table)
 
     # noinspection PyUnresolvedReferences
-    while tokens and tokens[0] in postfix_expression.rules:
-        primary_exp = postfix_expression.rules[tokens[0]](tokens, symbol_table, primary_exp, expression)
+    while peek(tokens, default='') in postfix_expression.rules:
+        primary_exp = postfix_expression.rules[peek(tokens)](tokens, symbol_table, primary_exp, expression)
 
     return primary_exp
 
@@ -85,20 +87,14 @@ def unary_expression(tokens, symbol_table):
         | unary_operator cast_expression
         | 'sizeof' '(' type_name |  unary_expression ')'
     """
-    if not tokens:
-        raise ValueError('{l} Expected postfix_expression, ++, --, unary_operator, sizeof, got {got}'.format(
-            l=loc(tokens), got=tokens
-        ))
+    error_if_empty(tokens)
     # Check if postfix expression is possible.
-    if isinstance(tokens[0], (IDENTIFIER, CONSTANT)) or tokens[0] == TOKENS.LEFT_PARENTHESIS:
+    if isinstance(peek(tokens), (IDENTIFIER, CONSTANT)) or peek(tokens) == TOKENS.LEFT_PARENTHESIS:
         return postfix_expression(tokens, symbol_table)
-    exp_func = unary_expression
-    # noinspection PyUnresolvedReferences
-    if tokens[0] in unary.unary_operator.rules:  # unary_operators are followed by a cast expr
-        exp_func = cast_expression
 
+    exp_func = cast_expression if peek(tokens, default='') in unary.unary_operator.rules else unary_expression
     # noinspection PyUnresolvedReferences
-    return unary_expression.rules[tokens[0]](tokens, symbol_table, exp_func)
+    return unary_expression.rules[peek(tokens)](tokens, symbol_table, exp_func)
 unary_expression.rules = defaultdict(lambda: unary.no_rule_found)
 unary_expression.rules.update({
     TOKENS.PLUS_PLUS: unary.increment_decrement,
@@ -113,13 +109,18 @@ def cast_expression(tokens, symbol_table):
     # : '(' type_name ')' cast_expression | unary_expression
     # There is a slight ambiguity here, both cast_expression and primary expression may begin with '('
     # but only cast expression maybe followed by type_name.
-    if len(tokens) > 1 \
-       and tokens[0] == TOKENS.LEFT_PARENTHESIS \
-       and isinstance(symbol_table.get(tokens[1]), CType):
-        location = loc(tokens.pop(0))
-        obj = type_name(tokens, symbol_table)
+    if peek(tokens, default='') == TOKENS.LEFT_PARENTHESIS:
+        _ = consume(tokens)
+        if isinstance(symbol_table.get(peek(tokens, default=''), ''), CType):
+            obj = type_name(tokens, symbol_table)
+            _ = error_if_not_value(tokens, TOKENS.RIGHT_PARENTHESIS)
+            return CastExpression(cast_expression(tokens, symbol_table), obj, loc(obj))
+        # unary_expression -> postfix_expression -> primary_expression (postfix_expression)*
+        # This is the only way to deal with the ambiguity without modifying the token stream and
+        # creating havoc ....
+        prim_exp = expression(tokens, symbol_table)
         _ = error_if_not_value(tokens, TOKENS.RIGHT_PARENTHESIS)
-        return CastExpression(cast_expression(tokens, symbol_table), obj, location)
+        return postfix_expression(tokens, symbol_table, primary_exp=prim_exp)
     else:
         return unary_expression(tokens, symbol_table)
 

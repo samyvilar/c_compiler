@@ -4,7 +4,7 @@ from front_end.loader.locations import loc
 
 from front_end.parser.types import CType, c_type, safe_type_coercion, FunctionType
 from front_end.parser.ast.general import Node, EmptyNode
-from front_end.parser.ast.expressions import EmptyExpression, ConstantExpression, TypedNode
+from front_end.parser.ast.expressions import ConstantExpression, TypedNode
 
 from front_end.errors import error_if_not_type
 
@@ -33,9 +33,7 @@ class Static(StorageClass):
 class Declaration(TypedNode):
     def __init__(self, name, ctype, location, _storage_class=None):
         self.name = name
-        if isinstance(ctype, FunctionType) and isinstance(_storage_class, Static):
-            raise ValueError()
-        self.storage_class = _storage_class or (Extern(location) if isinstance(ctype, FunctionType) else _storage_class)
+        self.storage_class = _storage_class
         super(Declaration, self).__init__(ctype, location)
 
     def __eq__(self, other):
@@ -47,10 +45,6 @@ class Declaration(TypedNode):
 
     def __repr__(self):
         return 'Declaration {name} of {c_type}'.format(name=name(self), c_type=c_type(self))
-
-
-class Declarations(list):
-    pass
 
 
 class Definition(Declaration):
@@ -81,26 +75,6 @@ class Definition(Declaration):
         return 'Definition of {n} type {ctype}'.format(n=name(self), ctype=c_type(self))
 
 
-class FunctionDefinition(Definition, list):
-    def __init__(self, c_decl, body, location, storage_class):
-        _ = error_if_not_type([c_type(c_decl)], FunctionType)
-        if not all(isinstance(arg, Declarator) for arg in c_type(c_decl)):
-            raise ValueError('{l} Function definition must have concrete declarators.'.format(l=loc(c_type(c_decl))))
-        from front_end.parser.ast.statements import CompoundStatement
-        if not isinstance(body, CompoundStatement):
-            raise ValueError('{l} Function definition must have a compound statement as body got {got}'.format(
-                l=location, got=body
-            ))
-        super(FunctionDefinition, self).__init__(name(c_decl), c_type(c_decl), body, location, storage_class)
-        list.__init__(self, body)
-
-    def check_return_stmnt(self, return_exp):
-        if not safe_type_coercion(c_type(return_exp),  c_type(c_type(self))):
-            raise ValueError('{l} Return expression {ret_type} cannot be coerce to func return type {exp_type}'.format(
-                l=loc(return_exp), ret_type=c_type(return_exp), exp_type=c_type(c_type(self))
-            ))
-
-
 class TypeDef(Definition, StorageClass):
     def __init__(self, name, c_type, location):
         super(TypeDef, self).__init__(name, c_type, None, location, self)
@@ -109,11 +83,11 @@ class TypeDef(Definition, StorageClass):
         return c_type(self)(location)
 
 
-class EmptyDeclaration(EmptyNode):
+class EmptyDeclaration(Declaration, EmptyNode):
     c_type = CType
 
-    def __init__(self, location):
-        super(EmptyDeclaration, self).__init__(location)
+    def __init__(self, location, storage_class):
+        super(EmptyDeclaration, self).__init__('', CType(location), location, storage_class)
 
 
 class Declarator(TypedNode):
@@ -146,5 +120,5 @@ def name(obj):
     return getattr(obj, 'name')
 
 
-def initialization(obj):
-    return getattr(obj, 'initialization', EmptyExpression())
+def initialization(obj, *d):
+    return getattr(obj, 'initialization', d[0]) if d else getattr(obj, 'initialization')

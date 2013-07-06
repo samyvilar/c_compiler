@@ -1,6 +1,9 @@
+from sequences import values
+
 __author__ = 'samyvilar'
 
 import string
+from front_end.loader.locations import LocationNotSet
 from front_end.loader.load import Str
 
 letters = set(string.letters) | {'_'}
@@ -188,5 +191,21 @@ class WHITESPACE(IGNORE):
     pass
 
 
-class PRE_PROCESSING_SYMBOL(TOKEN):
+class COMMENT(IGNORE):
     pass
+
+
+class SINGLE_LINE_COMMENT(COMMENT):
+    pass
+
+
+class MULTI_LINE_COMMENT(COMMENT):
+    pass
+
+
+class PRE_PROCESSING_SYMBOL(TOKEN):
+    # noinspection PyInitNewSignature
+    def __new__(cls, values, location=LocationNotSet):
+        if values not in TOKENS.pre_processing_directives:
+            raise ValueError('{l} Could not locate pre_processing directive {d}'.format(l=locatio, d=values))
+        return super(PRE_PROCESSING_SYMBOL, cls).__new__(cls, values, location)

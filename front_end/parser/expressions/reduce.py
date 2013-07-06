@@ -29,7 +29,7 @@ def binary_exp(expr):
     exp_type = max(c_type(left_exp(expr)), c_type(right_exp(expr)))(loc(expr))
     l_exp, r_exp, location = exp(left_exp(expr)), exp(right_exp(expr)), loc(expr)
 
-    # noinspection PyUnresolvedReferences
+    # noinspection PyUnresolvedReferences  '1 + 2 - 3 * 7 / 4'
     return binary_exp.rules[oper(expr)](
         expr=expr, left_exp=l_exp, right_exp=r_exp, location=location, exp_type=exp_type
     )

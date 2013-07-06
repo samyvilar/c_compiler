@@ -1,73 +1,72 @@
 __author__ = 'samyvilar'
 
-import os
+from sequences import peek, consume
 from collections import defaultdict
+from itertools import chain
 
 from front_end.preprocessor import logger
 from front_end.preprocessor.conditional import if_block
-from front_end.tokenizer.tokenize import Tokenize, line_tokens
-from front_end.tokenizer.tokens import TOKENS, STRING, IDENTIFIER
-from front_end.loader.load import Load
+
+from front_end.loader.load import load
+from front_end.tokenizer.tokenize import tokenize
+from front_end.tokenizer.parser import get_line
+from front_end.tokenizer.tokens import TOKENS, STRING, IDENTIFIER, IGNORE, TOKEN
+
 from front_end.loader.locations import loc
 from front_end.preprocessor.macros import ObjectMacro, FunctionMacro
 
 from front_end.errors import error_if_not_type, error_if_not_value, error_if_not_empty
 
 
-def INCLUDE(all_tokens, macros, _, tokens, token):
-    if isinstance(tokens[0], IDENTIFIER) and tokens[0] in macros:
-        file_path = macros[tokens.pop(0), tokens]
+def INCLUDE(token_seq, macros, preprocess):
+    line = get_line(token_seq)
+    _ = consume(line)
+    token = consume(line)
+    if isinstance(token, STRING):
+        file_path = token
     else:
-        file_path = error_if_not_type(tokens, STRING)
-    error_if_not_empty(tokens)
-
-    if not os.path.isfile(file_path):
-        raise ValueError('{l} Could not include file {f}.'.format(f=file_path, l=loc(token)))
-    new_tokens = Tokenize(Load(file_path))
-    new_tokens.extend(all_tokens)
-    return new_tokens
+        raise ValueError('{l} Expected an IDENTIFIER or STRING for directive {d} got {}'.format(
+            l=loc(token), d=type(token), g=token
+        ))
+    return preprocess(tokenize(load(file_path)), macros=macros)
 
 
-def DEFINE(all_tokens, macros, *args):
-    tokens = args[1]
-    name = error_if_not_type(tokens, IDENTIFIER)
-
-    if tokens \
-        and tokens[0] == TOKENS.LEFT_PARENTHESIS \
-            and loc(name).column_number + 1 == loc(tokens[0]).column_number:
-        _ = tokens.pop(0)  # pop parenthesis.
-        func_macro_arguments = Tokenize()
-        while tokens and tokens[0] != TOKENS.RIGHT_PARENTHESIS:
-            func_macro_arguments.append(error_if_not_type(tokens, IDENTIFIER))
-            _ = tokens and tokens[0] == TOKENS.COMMA and tokens.pop(0)
-        _ = error_if_not_value(tokens, TOKENS.RIGHT_PARENTHESIS)  # pop right parenthesis.
-        macro = FunctionMacro(name, func_macro_arguments, tokens)
+def DEFINE(token_seq, macros, _):
+    line = get_line(token_seq)
+    define_token = consume(line)
+    name = consume(line)
+    value = consume(line, default=TOKEN(''))
+    if value == TOKENS.LEFT_PARENTHESIS and loc(name).column_number + 1 == loc(value).column_number:
+        arguments = []
+        while peek(line, default='') != TOKENS.RIGHT_PARENTHESIS:
+            arguments.append(error_if_not_type(line, IDENTIFIER))
+            _ = peek(token_seq, default='') == TOKENS.COMMA and consume(token_seq)
+        _ = error_if_not_value(line, TOKENS.RIGHT_PARENTHESIS)
+        macro = FunctionMacro(name, arguments, list(line))
     else:
-        macro = ObjectMacro(name, tokens)
+        macro = ObjectMacro(name, list(chain([value], line)))
 
     if name in macros:
-        logger.warning('Redefining macro {name}'.format(name=name), extra={'location': loc(name)})
+        logger.warning('{l} Redefining macro {name}'.format(l=loc(name), name=name))
     macros[name] = macro
-    return all_tokens
+    yield IGNORE(define_token, loc(define_token))
 
 
-def UNDEF(all_tokens, macros, *args):
-    tokens = args[1]
-    macro_name = error_if_not_type(tokens, IDENTIFIER)
-    error_if_not_empty(tokens)
+def UNDEF(token_seq, macros, _):
+    line = get_line(token_seq)
+    undef_token = consume(line)
+    macro_name = error_if_not_type(line, IDENTIFIER)
+    error_if_not_empty(line)
     _ = macros.pop(macro_name, None)
-    return all_tokens
+    yield IGNORE(undef_token)
 
 
-def IF(all_tokens, macros, new_tokens, line, current_token):
-    body = if_block(all_tokens, macros, new_tokens, line, current_token).evaluate(macros)
-    body.extend(all_tokens)
-    return body
+def IF(token_seq, macros, preprocess):
+    return if_block(token_seq, macros, preprocess)
 
 
-def directive(all_tokens, macros, new_tokens):
-    line = line_tokens(all_tokens)
-    return directive.rules[line[0]](all_tokens, macros, new_tokens, line, line.pop(0))
+def directive(token_seq, macros, preprocess):
+    return directive.rules[peek(token_seq)](token_seq, macros, preprocess)
 directive.rules = {   # We don't want to create this dictionary every time the function gets called.
     TOKENS.PINCLUDE: INCLUDE,
     TOKENS.PDEFINE: DEFINE,
@@ -79,16 +78,14 @@ directive.rules = {   # We don't want to create this dictionary every time the f
 }
 
 
+def default(token_seq, macros, _):
+    token = consume(token_seq)
+    if token.startswith('#'):
+        raise ValueError('{l} Preprocessor directive {d} doesnt exist.'.format(l=loc(token), d=token))
+    return macros.get(token, d=token, all_tokens=token_seq)
+
+
 def get_directives():
     directives = defaultdict(lambda: default)
     directives.update({rule: directive for rule in directive.rules})
     return directives
-
-
-def default(all_tokens, macros, new_tokens):
-    if all_tokens[0].startswith('#'):
-        raise ValueError('{l} Preprocessor directive {d} doesnt exist.'.format(
-            l=loc(all_tokens[0]), d=all_tokens[0]
-        ))
-    new_tokens.extend(macros.get(all_tokens[0], (all_tokens.pop(0),), all_tokens))
-    return all_tokens

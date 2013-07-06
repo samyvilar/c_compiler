@@ -4,7 +4,7 @@ from collections import defaultdict, Iterable
 
 from front_end.loader.locations import loc
 
-from front_end.parser.ast.declarations import name, Declaration, Definition, initialization, Extern
+from front_end.parser.ast.declarations import Declaration, Definition, initialization, Extern
 from front_end.parser.ast.expressions import ConstantExpression, exp
 
 from front_end.parser.types import CharType, ShortType, IntegerType, LongType, FloatType, DoubleType
@@ -15,17 +15,6 @@ from back_end.virtual_machine.instructions.architecture import Integer, Double
 
 def error_type(ctype):
     raise ValueError('{l} Trying to get size of incomplete CType'.format(l=loc(ctype)))
-
-
-def flatten(objs, whole_object=None):
-    if whole_object and isinstance(objs, whole_object):
-        yield objs
-    elif isinstance(objs, Iterable):
-        for obj in objs:
-            for o in flatten(obj, whole_object):
-                yield o
-    else:
-        yield objs
 
 
 def struct_size(ctype):
@@ -49,23 +38,23 @@ size.rules.update({                                                     # all no
 
 
 def integral_const(const_exp):
-    return [Integer(getattr(const_exp, 'exp', 0), loc(const_exp))]
+    yield Integer(getattr(const_exp, 'exp', 0), loc(const_exp))
 
 
 def numeric_const(const_exp):
-    return [Double(getattr(const_exp, 'exp', 0.0), loc(const_exp))]
+    yield Double(getattr(const_exp, 'exp', 0.0), loc(const_exp))
 
 
 def array_const(const_exp):
     if isinstance(exp(const_exp), Iterable):
-        return [binaries(value) for value in exp(const_exp)]
-    return [binaries(c_type(const_exp))] * len(c_type(const_exp))
+        return (binaries(value) for value in exp(const_exp))
+    return (binaries(c_type(const_exp)) for _ in xrange(len(c_type(const_exp))))
 
 
 def struct_const(const_exp):
     if isinstance(exp(const_exp), Iterable):
-        return [binaries(value) for value in exp(const_exp)]
-    return [binaries(c_type(member)) for member in c_type(const_exp).itervalues()]
+        return (binaries(value) for value in exp(const_exp))
+    return (binaries(c_type(member)) for member in c_type(const_exp).itervalues())
 
 
 def dec_binaries(declaration):

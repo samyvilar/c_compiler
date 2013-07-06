@@ -2,17 +2,28 @@ __author__ = 'samyvilar'
 
 from collections import defaultdict, Iterable
 
-from front_end import List
+from sequences import peek
 from front_end.loader.locations import loc
+from front_end.tokenizer.tokens import TOKENS
 from front_end.parser.ast.general import Node, EmptyNode
 
-from front_end.parser.ast.declarations import Declaration, Definition, Declarator, name
+from front_end.parser.ast.declarations import Declaration, Definition, Declarator, name, initialization
 
 from front_end.parser.ast.expressions import ConstantExpression, SizeOfExpression, IdentifierExpression, TrueExpression
 from front_end.parser.ast.expressions import EmptyExpression, exp
 from front_end.parser.types import c_type, FunctionType, safe_type_coercion
 
 from front_end.errors import error_if_not_type
+
+
+class FunctionDefinition(Definition):
+    def __init__(self, c_decl, body):
+        _ = error_if_not_type([c_type(c_decl)], FunctionType)
+        if not all(isinstance(arg, Declarator) for arg in c_type(c_decl)):
+            raise ValueError('{l} FunctionDef must have concrete declarators as params'.format(l=loc(c_type(c_decl))))
+        if not isinstance(body, CompoundStatement):
+            raise ValueError('{l} FunctionDef body is not a compound statement, got {g}'.format(l=loc(c_decl), g=body))
+        super(FunctionDefinition, self).__init__(name(c_decl), c_type(c_decl), body, loc(c_decl), c_decl.storage_class)
 
 
 class Statement(Node):
@@ -23,10 +34,13 @@ class EmptyStatement(Statement, EmptyNode):
     pass
 
 
-class CompoundStatement(Statement, List):
+class CompoundStatement(Statement):
     def __init__(self, statements, location):
+        self.statements = statements
         super(CompoundStatement, self).__init__(location)
-        List.__init__(self, statements)
+
+    def __iter__(self):
+        return self.statements
 
 
 class JumpStatement(Statement):
@@ -55,12 +69,17 @@ class ReturnStatement(JumpStatement):
 
 class StatementBody(Statement):
     def __init__(self, statement, location):
-        if isinstance(statement, Declaration):
-            raise ValueError('{l} statement {i} cannot have a declaration/definition as a body'.format(
-                l=loc(statement), i=self
-            ))
-        self.statement = statement
+        self._statement = statement
         super(StatementBody, self).__init__(location)
+
+    @property
+    def statement(self):
+        stmnt = next(self._statement)
+        if isinstance(stmnt, Declaration):
+            raise ValueError('{l} statement {i} cannot have a declaration/definition as a body'.format(
+                l=loc(stmnt), i=self
+            ))
+        return stmnt
 
 
 class ExpressionBody(StatementBody):
@@ -78,7 +97,13 @@ class WhileStatement(IterationStatement):
 
 
 class DoWhileStatement(IterationStatement):
-    pass
+    @property
+    def exp(self):
+        return next(self._exp)
+
+    @exp.setter
+    def exp(self, value):
+        self._exp = value
 
 
 class ForStatement(IterationStatement):
@@ -92,8 +117,7 @@ class SelectionStatement(ExpressionBody):
 
 
 class IfStatement(SelectionStatement):
-    def __init__(self, exp, comp_statement, else_statement, location):
-        self.else_statement = else_statement
+    def __init__(self, exp, comp_statement, location):
         super(IfStatement, self).__init__(exp, comp_statement, location)
 
 
@@ -104,39 +128,29 @@ class ElseStatement(SelectionStatement):
 
 class SwitchStatement(SelectionStatement):
     def __init__(self, exp, comp_statement, location):
+        self.exp = exp
+        super(SwitchStatement, self).__init__(exp, comp_statement, location)
+
+    def __iter__(self):  # TODO: check...
+        compound_stmnt = next(iter(super(SwitchStatement, self)))
         self.cases = {}
-        if not isinstance(comp_statement, CompoundStatement):
-            raise ValueError('{l} switch expected a CompoundStatement as a body got {got}'.format(
-                l=loc(comp_statement), got=comp_statement
-            ))
-        for stmnt in comp_statement:
+        for stmnt in compound_stmnt:
             if not isinstance(stmnt, (Definition, CaseStatement)):
                 raise ValueError('{l} switch stmnt start expects declaration/definition/case/default got {got}'.format(
                     l=loc(stmnt), got=stmnt
                 ))
-            if isinstance(stmnt, CaseStatement):
-                break
-        for stmnt in comp_statement:
-            self._populate_cases(stmnt)
-        super(SwitchStatement, self).__init__(exp, comp_statement, location)
-
-    def _populate_cases(self, p_object):
-        if isinstance(p_object, DefaultStatement):
-            if '__default__' in self.cases:
-                raise ValueError('{l} Duplicate default statement, previous at {at}'.format(
-                    l=loc(p_object), at=loc(self.cases[exp(p_object)])
-                ))
-            self.cases['__default__'] = p_object
-        elif isinstance(p_object, CaseStatement):
-            if exp(exp(p_object)) in self.cases:
-                raise ValueError('{l} Duplicate case statement, previous at {at}'.format(
-                    l=loc(p_object), at=loc(self.cases[exp(p_object)])
-                ))
-            self.cases[exp(exp(p_object))] = p_object
-
-    def append(self, p_object):
-        self._populate_cases(p_object)
-        super(SwitchStatement, self).statement.append(p_object)
+            if isinstance(stmnt, DefaultStatement):
+                if '__default__' in self.cases:
+                    raise ValueError('{l} Duplicate default statement, previous at {at}'.format(
+                        l=loc(stmnt), at=loc(self.cases[exp(stmnt)])
+                    ))
+                self.cases['__default__'] = stmnt
+            elif isinstance(stmnt, CaseStatement):
+                if exp(exp(stmnt)) in self.cases:
+                    raise ValueError('{l} Duplicate case statement, previous at {at}'.format(
+                        l=loc(stmnt), at=loc(self.cases[exp(stmnt)])
+                    ))
+            yield stmnt
 
 
 class LabelStatement(StatementBody):

@@ -26,13 +26,11 @@ class CType(object):
 
     @c_type.setter
     def c_type(self, _c_type):
-        raise TypeError('{l} {c_type} is a concrete type you cannot changed its c_type to {to}'.format(
-            c_type=self, to=_c_type, l=loc(self)
-        ))
+        raise TypeError('{l} {c_type} is not a chained type, chained {to}'.format(c_type=self, to=_c_type, l=loc(self)))
 
     @property
     def unsigned(self):
-        raise TypeError
+        raise TypeError('{l} {ctype} does not support signed/unsigned'.format(l=loc(self), ctype=self))
 
     @property
     def incomplete(self):
@@ -92,10 +90,6 @@ BITWISE_COMPOUND_OPERATION = {
 class NumericType(ConcreteType):
     supported_operations = LOGICAL_OPERATIONS | ARITHMETIC_OPERATIONS
 
-    @property
-    def lvalue(self):
-        return True
-
 
 class IntegralType(NumericType):  # Integral types support all the same as Numeric including bitwise operation.
     supported_operations = NumericType.supported_operations | BITWISE_OPERATIONS
@@ -121,7 +115,7 @@ class IntegralType(NumericType):  # Integral types support all the same as Numer
         return super(IntegralType, self).__lt__(other)
 
     def __call__(self, location):
-        return self.__class__(location, unsigned=self._unsigned)
+        return self.__class__(location, unsigned=unsigned(self))
 
     @property
     def unsigned(self):
@@ -168,9 +162,7 @@ class ChainedType(CType):
     @c_type.setter
     def c_type(self, _c_type):
         if isinstance(self, FunctionType) and isinstance(_c_type, ArrayType):
-            raise ValueError('{l} Functions are not allowed to return {ret_type}'.format(
-                l=loc(_c_type), ret_type=_c_type
-            ))
+            raise ValueError('{l} Functions are not allowed to return {r}'.format(l=loc(_c_type), r=_c_type))
         self.__c_type = _c_type
 
     def __eq__(self, other):
@@ -187,7 +179,7 @@ class PointerType(ChainedType, IntegralType):
     supported_operations = LOGICAL_OPERATIONS | {TOKENS.PLUS,  TOKENS.MINUS}
 
     def __call__(self, location):
-        return PointerType(c_type(self)(location), location)
+        return self.__class__(c_type(self)(location), location)
 
     def __repr__(self):
         return 'Pointer to {to}'.format(to=c_type(self))
@@ -199,10 +191,6 @@ class PointerType(ChainedType, IntegralType):
     def __nonzero__(self):
         return bool(c_type(self))
 
-    @property
-    def lvalue(self):
-        return not incomplete(self) and not isinstance(c_type(self), ArrayType)
-
 
 class ArrayType(PointerType):
     def __init__(self, __c_type, length, location):
@@ -210,17 +198,13 @@ class ArrayType(PointerType):
         super(ArrayType, self).__init__(__c_type, location)
 
     def __call__(self, location):
-        return ArrayType(c_type(self)(location), len(self), location)
+        return self.__class__(c_type(self)(location), len(self), location)
 
     def __len__(self):
         return self.length
 
     def __repr__(self):
         return "Array of {of}".format(of=self.c_type)
-
-    @property
-    def lvalue(self):
-        return False
 
 
 class StringType(ArrayType):
@@ -245,25 +229,37 @@ class FunctionType(ChainedType, list):
             all(c_type(s) == c_type(o) for s, o in izip(self, other))
         ))
 
-    @property
-    def lvalue(self):
-        return False
 
-
-class StructType(CType, OrderedDict):
+class StructType(CType):
     def __init__(self, name, members, location):
-        self._name, self.members, self._incomplete = name or '', members or OrderedDict(), members is None
+        self._name, self._members = name or '', members
         super(StructType, self).__init__(location)
-        OrderedDict.__init__(self, self.members)
 
     def __call__(self, location):
         struct = StructType(self._name, self.members, location)
-        struct._incomplete = self._incomplete
+        struct._incomplete = incomplete(self)
         return struct
+
+    def __contains__(self, item):
+        return item in self.members
+
+    def __iter__(self):
+        return iter(self.members)
+
+    @property
+    def members(self):
+        return self._members
+
+    @members.setter
+    def members(self, _members):
+        if self.members is None:
+            self._members = _members
+        else:
+            raise TypeError('{l} StructType already has members'.format(l=loc(self)))
 
     @property
     def incomplete(self):
-        return self._incomplete
+        return self.members is None
 
     @property
     def name(self):
@@ -279,13 +275,10 @@ class StructType(CType, OrderedDict):
     def __eq__(self, other):
         return all((
             super(StructType, self).__eq__(other),
-            len(self) == len(other),
-            all(member == other_member for member, other_member in izip(self.itervalues(), other.itervalues())),
+            len(self.members) == len(other.members),
+            all(member == other_member for member, other_member in izip(
+                self.members.itervalues(), other.members.itervalues())),
         ))
-
-    @property
-    def lvalue(self):
-        return not incomplete(self)
 
 
 # check if one type could be coerce to another.
@@ -314,7 +307,7 @@ def base_c_type(ctype):
 
 
 def incomplete(obj):
-    return getattr(obj, 'incomplete', True)
+    return getattr(obj, 'incomplete')
 
 
 def unsigned(obj):
@@ -325,15 +318,3 @@ def set_core_type(base_type, fundamental_type):
     while type(c_type(base_type)) is not CType:
         base_type = c_type(base_type)
     base_type.c_type = fundamental_type
-
-
-def max_value(ctype):
-    if isinstance(ctype, IntegralType):
-        return max_value.rules[type(ctype)]
-    raise TypeError
-max_value.rules = {
-    CharType: 2**8,
-    ShortType: 2**16,
-    IntegerType: 2**32,
-    LongType: 2**64,
-}

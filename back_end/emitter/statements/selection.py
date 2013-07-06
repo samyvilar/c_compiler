@@ -3,7 +3,6 @@ __author__ = 'samyvilar'
 from collections import defaultdict
 from copy import deepcopy
 
-from back_end.emitter.types import flatten
 from front_end.loader.locations import loc
 from front_end.parser.ast.expressions import exp
 from front_end.parser.ast.statements import IfStatement, SwitchStatement, CaseStatement, DefaultStatement
@@ -50,7 +49,7 @@ def case_statement(stmnt, symbol_table, stack, statement_func, jump_props):
 
 def switch_statement(stmnt, symbol_table, stack, statement_func, jump_props):
     exp_bins = expression(exp(stmnt), symbol_table, stack)
-    end_switch = Pass(stmnt.statement and loc(stmnt.statement[-1]) or loc(stmnt))
+    end_switch = Pass(loc(stmnt))
     stmnt.stack = deepcopy(stack)
     # if switch inside loop, only update end_instruct, since continue jumps to start of loop break goes to end of switch
     jump_props = (jump_props[0], end_switch, jump_props[2]) if jump_props else (None, end_switch, len(stack))
@@ -59,7 +58,7 @@ def switch_statement(stmnt, symbol_table, stack, statement_func, jump_props):
     body_bins = []
     allocation_table = []
     cases = defaultdict(lambda: Address(end_switch, loc(end_switch)))
-    for instr in flatten(statement_func(stmnt.statement, symbol_table, stack, statement_func, jump_props), Instruction):
+    for instr in statement_func(stmnt.statement, symbol_table, stack, statement_func, jump_props):
         if hasattr(instr, 'case'):
             allocation_table.append(
                 patch_goto_instrs(stmnt, instr.case) + relative_jump_instrs(Address(instr, loc(instr)))

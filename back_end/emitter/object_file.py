@@ -12,6 +12,10 @@ class Data(Symbol):  # Global definition or declaration of a data type.
     pass
 
 
+class String(Data):
+    pass
+
+
 class Code(Symbol):  # Function Code.
     pass
 

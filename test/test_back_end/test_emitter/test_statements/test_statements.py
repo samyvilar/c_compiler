@@ -2,8 +2,9 @@ __author__ = 'samyvilar'
 
 from collections import defaultdict
 from unittest import TestCase
-from front_end.tokenizer.tokenize import Tokenize
-from front_end.preprocessor.preprocess import Preprocess
+from front_end.loader.load import source
+from front_end.tokenizer.tokenize import tokenize
+from front_end.preprocessor.preprocess import preprocess
 
 import front_end.parser.statements.compound as parser
 import back_end.emitter.statements.statement as emitter
@@ -12,9 +13,9 @@ from back_end.emitter.cpu import load, evaluate, CPU
 
 
 class TestStatements(TestCase):
-    def evaluate(self, source):
+    def evaluate(self, code):
         self.cpu, self.mem = CPU(), defaultdict(int)
-        load(emitter.statement(parser.statement(Preprocess(Tokenize(source)))), self.mem, {})
+        load(emitter.statement(next(parser.statement(preprocess(tokenize(source(code)))))), self.mem, {})
         evaluate(self.cpu, self.mem)
 
 

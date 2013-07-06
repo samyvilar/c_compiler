@@ -3,8 +3,9 @@ __author__ = 'samyvilar'
 from collections import defaultdict
 from unittest import TestCase
 
-from front_end.tokenizer.tokenize import Tokenize
-from front_end.preprocessor.preprocess import Preprocess
+from front_end.loader.load import source
+from front_end.tokenizer.tokenize import tokenize
+from front_end.preprocessor.preprocess import preprocess
 
 import front_end.parser.expressions.expression as parser
 import back_end.emitter.expressions.expression as emitter
@@ -12,9 +13,9 @@ from back_end.emitter.cpu import evaluate, load, pop, CPU
 
 
 class TestRawExpression(TestCase):
-    def evaluate_expr(self, source):
+    def evaluate_expr(self, code):
         self.mem, self.cpu = defaultdict(int), CPU()
-        load(emitter.expression(parser.expression(Preprocess(Tokenize(source)))), self.mem, {})
+        load(emitter.expression(parser.expression(preprocess(tokenize(source(code))))), self.mem, {})
         evaluate(self.cpu, self.mem)
 
     def test_binary_expr(self):

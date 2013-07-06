@@ -1,7 +1,5 @@
 __author__ = 'samyvilar'
 
-from front_end.loader import logger
-
 
 class Location(tuple):  # we want locations to be immutable.
     __slots__ = []
@@ -55,6 +53,7 @@ class LocationNOTSET(Location):
 
 
 LocationNotSet = LocationNOTSET()
+EOFLocation = Location('__EOF__', '', '')
 
 
 class Str(str):
@@ -70,17 +69,6 @@ class Str(str):
 
 
 def loc(obj):
+    if isinstance(obj, Location):
+        return obj
     return getattr(obj, 'location', LocationNotSet)
-
-
-def set_locations(file_name, file_source, new_line_char='\n'):
-    chars, line_number, column_number = [], 1, 1
-    for ch in file_source:
-        chars.append(Str(ch, Location(file_name, line_number, column_number)))
-        column_number += 1
-        if ch == new_line_char:
-            line_number += 1
-            column_number = 1
-    _ = chars and logger.debug('Set {c} locations with new_line_char {n}, total lines {t}'.format(
-        c=len(chars), n=repr(new_line_char), t=line_number), extra={'location': file_name})
-    return chars
