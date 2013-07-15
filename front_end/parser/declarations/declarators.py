@@ -9,7 +9,8 @@ from front_end.tokenizer.tokens import TOKENS, IDENTIFIER
 from front_end.parser.ast.expressions import exp
 
 from front_end.parser.types import CType, FunctionType, PointerType, set_core_type, c_type, StructType, ArrayType
-from front_end.parser.types import IntegralType, incomplete
+from front_end.parser.types import VoidType, CharType, ShortType, IntegerType, LongType, FloatType, DoubleType
+from front_end.parser.types import IntegralType
 from front_end.parser.ast.declarations import AbstractDeclarator, Declarator, name
 from front_end.parser.ast.declarations import Auto, Extern, Static, Register
 
@@ -257,6 +258,14 @@ def type_specifier(tokens, symbol_table, *args):
     ))
 type_specifier.rules = defaultdict(lambda: no_type_specifier)
 type_specifier.rules.update({
+    TOKENS.VOID: lambda tokens, symbol_table: VoidType(loc(consume(tokens))),
+    TOKENS.CHAR: lambda tokens, symbol_table: CharType(loc(consume(tokens))),
+    TOKENS.SHORT: lambda tokens, symbol_table: ShortType(loc(consume(tokens))),
+    TOKENS.INT: lambda tokens, symbol_table: IntegerType(loc(consume(tokens))),
+    TOKENS.LONG: lambda tokens, symbol_table: LongType(loc(consume(tokens))),
+    TOKENS.FLOAT: lambda tokens, symbol_table: FloatType(loc(consume(tokens))),
+    TOKENS.DOUBLE: lambda tokens, symbol_table: DoubleType(loc(consume(tokens))),
+
     TOKENS.STRUCT: struct_specifier,
     TOKENS.SIGNED: parse_sign_token,
     TOKENS.UNSIGNED: parse_sign_token,

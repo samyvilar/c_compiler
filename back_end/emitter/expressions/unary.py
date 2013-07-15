@@ -11,7 +11,7 @@ from front_end.parser.ast.expressions import BinaryExpression, DereferenceExpres
 
 from front_end.parser.types import c_type, base_c_type, IntegerType, IntegralType, NumericType
 
-from back_end.emitter.types import size
+from back_end.emitter.c_types import size
 from back_end.virtual_machine.instructions.architecture import Push, Not, Load, Integer, LoadZeroFlag, Double
 from back_end.emitter.expressions.binary import compare_numbers
 

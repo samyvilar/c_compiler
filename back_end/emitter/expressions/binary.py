@@ -15,7 +15,7 @@ from back_end.virtual_machine.instructions.architecture import LoadZeroFlag, Loa
 from back_end.virtual_machine.instructions.architecture import Push, Integer, Dup, Pass, JumpFalse, JumpTrue, Address
 from back_end.virtual_machine.instructions.architecture import CompoundSet
 
-from back_end.emitter.types import size
+from back_end.emitter.c_types import size
 
 
 def add_pointers():  # TODO: implement pointer math.

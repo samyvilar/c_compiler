@@ -205,7 +205,7 @@ def calc_transitions(bit_array):
 
 
 def multiplier(word_1, word_2, twos_complement, zero, one):  # Booths algorithm ...
-    if not all((word_1, word_2)):  # If either is zero just return 0.
+    if not word_1 or not word_2:  # If either is zero just return 0.
         return word_1 and word_2
     factor, multiplicand = min((word_1, word_2), (word_2, word_1), key=lambda pair: calc_transitions(bits(pair[0])))
     negative_multiplicand, result, overflow = twos_complement(multiplicand), zero, empty_bit

@@ -1,11 +1,10 @@
 __author__ = 'samyvilar'
 
-from itertools import imap, izip
-from back_end.emitter.types import flatten
+from itertools import imap
 
 
 def encode(instr, word_type):
-    return imap(word_type, flatten(instr))
+    return imap(word_type, instr)
 
 
 def addresses(initial_address, step_size):

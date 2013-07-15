@@ -2,46 +2,28 @@ __author__ = 'samyvilar'
 
 from logging_config import logging
 
-from front_end.loader.locations import loc, LocationNotSet
-
-from front_end.tokenizer.tokens import TOKENS
-from front_end.parser.types import VoidType, CharType, ShortType, IntegerType, LongType, FloatType, DoubleType, CType
-from front_end.parser.types import StructType
-
-from front_end.parser.ast.declarations import Declaration, Definition
+from front_end.loader.locations import loc
+from front_end.parser.ast.declarations import Declaration
 
 logger = logging.getLogger('parser')
 
 
 class SymbolTable(object):
     def __init__(self):
-        self.stack = [{
-            TOKENS.VOID: VoidType(LocationNotSet),
-            TOKENS.CHAR: CharType(LocationNotSet),
-            TOKENS.SHORT: ShortType(LocationNotSet),
-            TOKENS.INT: IntegerType(LocationNotSet),
-            TOKENS.LONG: LongType(LocationNotSet),
-            TOKENS.FLOAT: FloatType(LocationNotSet),
-            TOKENS.DOUBLE: DoubleType(LocationNotSet),
-
-            TOKENS.STRUCT: StructType(None, None, LocationNotSet),
-            TOKENS.SIGNED: IntegerType(LocationNotSet),
-            TOKENS.UNSIGNED: IntegerType(LocationNotSet),
-        }]
+        self.stack = [{}]
 
     def __setitem__(self, key, value):
-        if key in self and isinstance(self[key], (Definition, CType)):
-            raise ValueError('{l} Symbol {s} already in current scope previous definition at {at}'.format(
-                l=loc(key), s=key, at=loc(self[key])
-            ))
-        elif key in self and isinstance(self[key], Declaration):
-            if self[key] != value:
-                raise ValueError('{l} Duplicate declaration of {v} mismatch, previous at {at}'.format(
-                    l=loc(value), v=value, at=loc(self[key])
+        if key in self:
+            if isinstance(self[key], Declaration):
+                if self[key] != value:
+                    raise ValueError('{l} Duplicate declaration of {v} mismatch, previous at {at}'.format(
+                        l=loc(value), v=value, at=loc(self[key])
+                    ))
+                logger.warning('{l} Redeclaring symbol {v} of same type ...'.format(l=loc(value), v=key))
+            else:
+                raise ValueError('{l} Symbol {s} already in current scope previous definition at {at}'.format(
+                    l=loc(key), s=key, at=loc(self[key])
                 ))
-            logger.warning('{l} Redeclaring symbol {v} of same type ...'.format(l=loc(value), v=key))
-        elif self.__contains__(key, search_all=True) and isinstance(value, Declaration):
-            logger.warning('{l} Symbol {s} shadows at {at}.'.format(l=loc(key), s=key, at=loc(self.__getitem__(key))))
         self.stack[-1][key] = value
 
     def __getitem__(self, item):  # search all frames.
@@ -63,6 +45,12 @@ class SymbolTable(object):
 
     def __nonzero__(self):
         return bool(self.stack)
+
+    def setdefault(self, key, value):
+        _ = self.stack[-1].setdefault(key, value)
+
+    def pop(self, key):
+        return self.stack[-1].pop(key)
 
     def itervalues(self):
         return self.stack[-1].itervalues()

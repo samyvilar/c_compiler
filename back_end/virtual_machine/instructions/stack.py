@@ -1,9 +1,9 @@
 __author__ = 'samyvilar'
 
-from back_end.virtual_machine.instructions.architecture import ids, RestoreStackPointer
+from back_end.virtual_machine.instructions.architecture import ids
 from back_end.virtual_machine.instructions.architecture import Push, Pop, Load, Set, Enqueue, Dequeue, Dup
-from back_end.virtual_machine.instructions.architecture import LoadBaseStackPointer, LoadStackPointer, Allocate, Swap
-from back_end.virtual_machine.instructions.architecture import PushFrame, PopFrame, SaveStackPointer
+from back_end.virtual_machine.instructions.architecture import LoadBaseStackPointer, LoadStackPointer, Allocate
+from back_end.virtual_machine.instructions.architecture import PushFrame, PopFrame
 
 from back_end.virtual_machine.operands import oprn
 
@@ -43,12 +43,6 @@ def _dup(instr, cpu, mem):
     _push(value, cpu, mem)
 
 
-def _swap(instr, cpu, mem):
-    oper2, oper1 = __pop(instr, cpu, mem), __pop(instr, cpu, mem)
-    _push(oper2, cpu, mem)
-    _push(oper1, cpu, mem)
-
-
 def _load_base_stack_pointer(instr, cpu, mem):
     _push(cpu.base_stack_pointer, cpu, mem)
 
@@ -73,14 +67,6 @@ def _pop_frame(instr, cpu, mem):
 
 
 stack_pointers = []
-
-
-def _save_stack_pointer(instr, cpu, mem):
-    stack_pointers.append(cpu.stack_pointer)
-
-
-def _restore_stack_pointer(instr, cpu, mem):
-    cpu.stack_pointer = stack_pointers.pop()
 
 
 def _load(addr, quantity, cpu, mem):
@@ -121,12 +107,8 @@ stack_instrs.rules = {
     ids[LoadStackPointer]: _load_stack_pointer,
     ids[Allocate]: _allocate,
     ids[Dup]: _dup,
-    ids[Swap]: _swap,
 
     ids[PushFrame]: _push_frame,
     ids[PopFrame]: _pop_frame,
-
-    ids[SaveStackPointer]: _save_stack_pointer,
-    ids[RestoreStackPointer]: _restore_stack_pointer,
 }
 stack_instrs.rules.update({rule: move_instrs for rule in move_instrs.rules})

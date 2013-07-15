@@ -7,6 +7,7 @@ from sequences import peek, consume
 from front_end.loader.locations import loc
 from front_end.tokenizer.tokens import TOKENS, IDENTIFIER
 
+from front_end.parser.ast.expressions import exp
 from front_end.parser.ast.statements import LabelStatement, CaseStatement, DefaultStatement
 from front_end.parser.types import IntegralType, c_type
 
@@ -30,14 +31,22 @@ def label(tokens, symbol_table, statement_func):
 
 def case(tokens, symbol_table, statement_func):
     location = loc(loc(consume(tokens)))
-    exp = constant_expression(tokens, symbol_table)
-    _, _ = error_if_not_value(tokens, TOKENS.COLON), error_if_not_type([c_type(exp)], IntegralType)
-    yield CaseStatement(exp, statement_func(tokens, symbol_table, statement_func), location)
+    expr = constant_expression(tokens, symbol_table)
+    _, _ = error_if_not_value(tokens, TOKENS.COLON), error_if_not_type([c_type(expr)], IntegralType)
+    switch = symbol_table['__ SWITCH STATEMENT __']
+    if exp(expr) in switch:
+        raise ValueError('{l} duplicate case statement previous at {p}'.format(l=location), loc(switch[exp(expr)]))
+    switch[exp(expr)] = CaseStatement(expr, statement_func(tokens, symbol_table, statement_func), location)
+    yield switch[exp(expr)]
 
 
 def default(tokens, symbol_table, statement_func):
     location, _ = loc(consume(tokens)), error_if_not_value(tokens, TOKENS.COLON)
-    yield DefaultStatement(statement_func(tokens, symbol_table, statement_func), location)
+    switch = symbol_table['__ SWITCH STATEMENT __']
+    if 'default' in switch:
+        raise ValueError('{l} duplicate default statement previous at {p}'.format(l=location, p=loc(switch['default'])))
+    switch['default'] = DefaultStatement(statement_func(tokens, symbol_table, statement_func), location)
+    yield switch['default']
 
 
 def labeled_statement(tokens, symbol_table, statement):
@@ -50,6 +59,12 @@ def labeled_statement(tokens, symbol_table, statement):
     if isinstance(peek(tokens), IDENTIFIER):
         return label(tokens, symbol_table, statement)
     # noinspection PyUnresolvedReferences
+
+    try:
+        _ = symbol_table['__ SWITCH STATEMENT __']
+    except KeyError as _:
+        raise ValueError('{l} {g} statement outside of switch'.format(l=loc(peek(tokens)), g=peek(tokens)))
+
     return labeled_statement.rules[peek(tokens)](tokens, symbol_table, statement)
 labeled_statement.rules = defaultdict(lambda: no_rule)
 labeled_statement.rules.update({

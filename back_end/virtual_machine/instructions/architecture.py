@@ -235,14 +235,6 @@ class PopFrame(StackInstruction):
     pass
 
 
-class SaveStackPointer(StackInstruction):
-    pass
-
-
-class RestoreStackPointer(StackInstruction):
-    pass
-
-
 class LoadBaseStackPointer(Instruction):
     # Pushes the current address of the base stack pointer, used to reference auto variables.
     pass
@@ -273,10 +265,6 @@ class Push(WideInstruction, Integral):
 
 
 class Allocate(WideInstruction):
-    pass
-
-
-class Swap(Instruction):
     pass
 
 
@@ -344,7 +332,6 @@ ids.update({
     LoadBaseStackPointer: 7,
     LoadStackPointer: 8,
     Allocate: 9,
-    Swap: 10,
 
     Add: 11,
     Subtract: -11,
@@ -371,6 +358,7 @@ ids.update({
     JumpFalse: 21,
     JumpTrue: -21,
     JumpTable: 22,
+    RelativeJump: 33,
 
     ConvertToFloat: 23,
     ConvertToInteger: -23,
@@ -381,9 +369,6 @@ ids.update({
 
     PushFrame: 40,
     PopFrame: -40,
-
-    SaveStackPointer: 45,
-    RestoreStackPointer: -45,
 
     Pass: 50,
 })

@@ -168,7 +168,6 @@ class ChainedType(CType):
     def __eq__(self, other):
         return all((super(ChainedType, self).__eq__(other), c_type(self) == c_type(other)))
 
-
     @property
     def incomplete(self):
         return incomplete(c_type(self))
@@ -216,6 +215,9 @@ class FunctionType(ChainedType, list):
     def __init__(self, ctype, arguments, location):
         super(FunctionType, self).__init__(ctype, location)
         list.__init__(self, arguments or ())
+
+    def __call__(self, location):
+        return self.__class__(c_type(self)(location), list(self), location)
 
     def __repr__(self):
         return 'FunctionType returning {c_type} accepting ({arguments})'.format(

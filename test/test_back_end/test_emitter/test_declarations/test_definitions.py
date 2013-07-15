@@ -11,9 +11,8 @@ from front_end.parser.parse import parse
 from front_end.parser.symbol_table import SymbolTable
 
 from back_end.emitter.emit import emit
-from back_end.emitter.types import size
-from back_end.emitter.cpu import evaluate, load, CPU, executable, push, pop, push_frame, pop_frame, Halt
-from back_end.emitter.cpu import address
+from back_end.linker.link import executable
+from back_end.emitter.cpu import CPU, load, address, evaluate
 
 
 class TestDeclarations(TestCase):
@@ -25,14 +24,7 @@ class TestDeclarations(TestCase):
             symbol_table,
             address_gen
         )
-
-        push(0, self.cpu, self.mem)
-        push_frame(None, self.cpu, self.mem)
-        push(next(address_gen) - size(Halt('')), self.cpu, self.mem)
-        self.cpu.instr_pointer = symbol_table['main'].address
         evaluate(self.cpu, self.mem)
-        pop_frame(None, self.cpu, self.mem)
-        pop(self.cpu, self.mem)
 
 
 class TestDefinitions(TestDeclarations):

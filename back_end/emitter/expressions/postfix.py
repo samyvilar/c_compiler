@@ -9,52 +9,49 @@ from front_end.parser.ast.expressions import ElementSelectionExpression, Element
 from front_end.parser.types import c_type, ArrayType
 
 from back_end.virtual_machine.instructions.architecture import Push, Allocate, PushFrame, PopFrame, Address, Load, Set
-from back_end.virtual_machine.instructions.architecture import Integer, Multiply, Add, LoadStackPointer, Enqueue, Dequeue
-from back_end.virtual_machine.instructions.architecture import CompoundSet, AbsoluteJump, Pass
-from back_end.emitter.types import size, struct_member_offset
+from back_end.virtual_machine.instructions.architecture import Integer, Multiply, Add, LoadStackPointer, Enqueue
+from back_end.virtual_machine.instructions.architecture import AbsoluteJump, LoadBaseStackPointer
+from back_end.emitter.c_types import size, struct_member_offset
 
 
 # A pure implemented of Postfix Expressions are quite hard if not impossible on completely stack based machines, since
 # we can't allocate anything on the stack in the middle of an expression, so the value (memory) will be copied to an
 # aux memory location
-def inc_dec(value, expr, symbol_table, expression_func):
+def inc_dec(expr, symbol_table, expression_func):
     instrs = expression_func(exp(expr), symbol_table, expression_func)
-    value = next(instrs)
+    temp = next(instrs)
     for instr in instrs:
-        yield value
-        value = instr
-    if isinstance(value, Load):
+        yield temp
+        temp = instr
+    if isinstance(temp, Load):
+        yield Enqueue(loc(expr), size(Address()))  # enqueue two copies one for loading and the other for setting.
         yield Enqueue(loc(expr), size(Address()))
-        yield value
+        yield temp
     else:
         raise ValueError('Expected load instr')
-
-    postfix_expression.late_instrs = chain(
-        postfix_expression.late_instrs,
-        (
-            Dequeue(loc(expr), size(c_type(expr))),
-            Load(loc(expr), size(c_type(expr))),
-            Push(loc(expr), Integer(value, loc(expr))),
-            Add(loc(expr)),
-            CompoundSet(loc(expr), size(c_type(expr))),
-            Allocate(loc(expr), Integer(-1 * size(c_type(expr)), loc(expr))),
-        )
-    )
 
 
 def function_call(expr, symbol_table, expression_func):
     return_instr = PopFrame(loc(expr))  # once the function returns remove created frame
     return chain(
         chain(
+            (Allocate(loc(expr), size(c_type(expr))),),
+            expression_func(left_exp(expr), symbol_table, expression_func),  # we must load addr before gen new frame
             (
-                Allocate(loc(expr), size(c_type(expr))),
                 PushFrame(loc(expr)),
                 Push(loc(expr), Address(return_instr, loc(expr))),
             ),
             *(expression_func(arg, symbol_table, expression_func) for arg in right_exp(expr))
         ),
-        expression_func(left_exp(expr), symbol_table, expression_func),
-        (AbsoluteJump(loc(expr)), return_instr),
+        (
+            LoadBaseStackPointer(loc(expr)),
+            Push(loc(expr), size(Address())),
+            Add(loc(expr)),
+            Load(loc(expr), size(Address())),
+            AbsoluteJump(loc(expr)),
+            return_instr,
+            Allocate(loc(expr), -1 * size(Address())),  # de-allocate function address.
+        ),
     )
 
 
@@ -75,8 +72,8 @@ def array_subscript(expr, symbol_table, expression_func):
 def element_instrs(struct_obj, member_name, location):
     yield Push(location, Integer(struct_member_offset(struct_obj, member_name), location))
     yield Add(location)
-    if not isinstance(c_type(struct_obj[member_name]), ArrayType):
-        yield Load(location, size(c_type(struct_obj[member_name])))
+    if not isinstance(c_type(struct_obj.members[member_name]), ArrayType):
+        yield Load(location, size(c_type(struct_obj.members[member_name])))
 
 
 # Element selection is a bit tricky, the whole struct will be loaded onto the stack, we need to deallocate it
@@ -118,11 +115,10 @@ def element_section_pointer(expr, symbol_table, expression_func):
 def postfix_expression(expr, symbol_table, expression_func):
     return postfix_expression.rules[type(expr)](expr, symbol_table, expression_func)
 postfix_expression.rules = {
-    PostfixIncrementExpression: lambda *args: inc_dec(1, *args),
-    PostfixDecrementExpression: lambda *args: inc_dec(-1, *args),
+    PostfixIncrementExpression: inc_dec,
+    PostfixDecrementExpression: inc_dec,
     FunctionCallExpression: function_call,
     ArraySubscriptingExpression: array_subscript,
     ElementSelectionExpression: element_selection,
     ElementSelectionThroughPointerExpression: element_section_pointer
 }
-postfix_expression.late_instrs = []  # Used to inject late instructions after expression is complete.

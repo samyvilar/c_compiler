@@ -1,18 +1,20 @@
 __author__ = 'samyvilar'
 
+from front_end.parser.ast.declarations import Extern
+
 
 class Symbol(object):
     def __init__(self, name, binaries, size, storage_class, location):
-        self.name, self.binaries = name, binaries
-        self.storage_class, self.size = storage_class, size
+        self.binaries, self.storage_class, self.size = binaries, storage_class, size
         self.location = location
+
+        if isinstance(storage_class, Extern) or not storage_class:
+            self.name = name
+        else:
+            self.name = '{f}.{n}'.format(f=location.file_name, s=name)
 
 
 class Data(Symbol):  # Global definition or declaration of a data type.
-    pass
-
-
-class String(Data):
     pass
 
 
@@ -26,4 +28,3 @@ def binaries(symbol):
 
 def size(symbol):
     return getattr(symbol, 'size')
-

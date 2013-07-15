@@ -1,90 +1,89 @@
 __author__ = 'samyvilar'
 
+from itertools import chain
 from collections import defaultdict
 from copy import deepcopy
 
 from front_end.loader.locations import loc
+from front_end.parser.symbol_table import push, pop
 from front_end.parser.ast.expressions import exp
 from front_end.parser.ast.statements import IfStatement, SwitchStatement, CaseStatement, DefaultStatement
 
 from back_end.emitter.expressions.expression import expression
-from back_end.virtual_machine.instructions.architecture import Pass, JumpFalse, Address, JumpTable, Instruction
+from back_end.virtual_machine.instructions.architecture import Pass, JumpFalse, Address, JumpTable, RelativeJump, Push
 
-from back_end.emitter.statements.jump import relative_jump_instrs
-from back_end.emitter.statements.jump import patch_goto_instrs
-
-
-def if_statement(stmnt, symbol_table, stack, statement_func, jump_props):
-    exp_bins = expression(exp(stmnt), symbol_table, stack)
-    body_bins = statement_func(stmnt.statement, symbol_table, stack, statement_func, jump_props)
-    end_of_if_instruction = Pass(loc(stmnt.statement))
-
-    else_body_bins = ()
-    if stmnt.else_statement:
-        else_body_bins = [end_of_if_instruction]
-        else_body_bins.extend(statement_func(
-            stmnt.else_statement.statement, symbol_table, stack, statement_func, jump_props
-        ))
-        location = loc(stmnt.else_statement)
-        else_body_bins.append(Pass(location))
-        body_bins.extend(relative_jump_instrs(Address(else_body_bins[-1], location)))
-    else:
-        body_bins.append(end_of_if_instruction)
-
-    complete_bins = exp_bins
-    complete_bins.append(JumpFalse(loc(exp(stmnt)), Address(end_of_if_instruction, loc(end_of_if_instruction))))
-    complete_bins.extend(body_bins)
-    complete_bins.extend(else_body_bins)
-
-    return complete_bins
+from back_end.emitter.statements.jump import update_stack
 
 
-def case_statement(stmnt, symbol_table, stack, statement_func, jump_props):
-    binaries = [Pass(loc(stmnt))]  # Blank instruction between empty case cascades, in order to avoid recursive calls
+def if_statement(stmnt, symbol_table, stack, statement_func):
+    end_of_if, end_of_else = Pass(loc(stmnt)), Pass(loc(stmnt))
+
+    def else_statement(stmnt, symbol_table, stack, statement_func):
+        for instr in statement_func(stmnt.else_statement.statement, symbol_table, stack, statement_func):
+            yield instr
+
+    return chain(
+        expression(exp(stmnt), symbol_table),
+        (JumpFalse(loc(exp(stmnt)), Address(end_of_if, loc(end_of_if))),),
+        statement_func(stmnt.statement, symbol_table, stack, statement_func),
+        (RelativeJump(loc(stmnt), Address(end_of_else, loc(end_of_else))), end_of_if),
+        else_statement(stmnt, symbol_table, stack, statement_func), (end_of_else,),
+    )
+
+
+def case_statement(stmnt, symbol_table, stack, statement_func):
+    initial_instr = Pass(loc(stmnt))
     stmnt.stack = deepcopy(stack)  # case statements may be placed in nested compound statements.
-    binaries[0].case = stmnt
-    binaries.extend(statement_func(stmnt.statement, symbol_table, stack, statement_func, jump_props))
-    return binaries
+    initial_instr.case = stmnt
+    return chain((initial_instr,), statement_func(stmnt.statement, symbol_table, stack, statement_func))
 
 
-def switch_statement(stmnt, symbol_table, stack, statement_func, jump_props):
-    exp_bins = expression(exp(stmnt), symbol_table, stack)
+def switch_statement(stmnt, symbol_table, stack, statement_func):
     end_switch = Pass(loc(stmnt))
     stmnt.stack = deepcopy(stack)
+
     # if switch inside loop, only update end_instruct, since continue jumps to start of loop break goes to end of switch
-    jump_props = (jump_props[0], end_switch, jump_props[2]) if jump_props else (None, end_switch, len(stack))
+    def body(stmnt, symbol_table, stack, statement_func, end_switch):
+        symbol_table = push(symbol_table)
+        symbol_table['__ break __'] = (end_switch, stack.stack_pointer)
 
-    default = None
-    body_bins = []
-    allocation_table = []
-    cases = defaultdict(lambda: Address(end_switch, loc(end_switch)))
-    for instr in statement_func(stmnt.statement, symbol_table, stack, statement_func, jump_props):
-        if hasattr(instr, 'case'):
-            allocation_table.append(
-                patch_goto_instrs(stmnt, instr.case) + relative_jump_instrs(Address(instr, loc(instr)))
-            )
-            addr = Address(allocation_table[-1][0], loc(instr))
-            if isinstance(instr.case, DefaultStatement):
-                assert default is None
-                cases.default_factory = lambda: addr
-                default = True
-            else:
-                assert isinstance(instr.case, CaseStatement)
-                cases[exp(exp(instr.case))] = addr
-        body_bins.append(instr)
+        jump_table = Pass(loc(stmnt))
+        yield RelativeJump(loc(stmnt), Address(jump_table, loc(stmnt)))
 
-    complete_bins = []
-    complete_bins.extend(exp_bins)
-    complete_bins.append(JumpTable(loc(stmnt), cases))
-    complete_bins.extend(allocation_table)
-    complete_bins.extend(body_bins)
-    complete_bins.append(end_switch)
+        allocation_table = []
+        cases = defaultdict(lambda: Address(end_switch, loc(stmnt)))
+        for instr in statement_func(stmnt.statement, symbol_table, stack, statement_func):
+            if isinstance(getattr(instr, 'case', None), CaseStatement):
+                start = Pass(loc(instr))
+                allocation_table.append(
+                    chain(
+                        (start,),
+                        update_stack(stmnt.stack.stack_pointer, instr.case.stack.stack_pointer, loc(instr)),
+                        (RelativeJump(loc(stmnt), Address(instr, loc(instr))),)
+                    )
+                )
+                addr = Address(start, loc(instr))
+                if isinstance(instr.case, DefaultStatement):
+                    cases.default_factory = lambda: addr
+                else:
+                    cases[exp(exp(instr.case))] = addr
+            yield instr
 
-    return complete_bins
+        yield jump_table
+        yield JumpTable(loc(stmnt), cases)
+        for instr in chain.from_iterable(allocation_table):
+            yield instr
+        _ = pop(symbol_table)
+
+    return chain(
+        expression(exp(stmnt), symbol_table),
+        body(stmnt, symbol_table, stack, statement_func, end_switch),
+        (end_switch,)
+    )
 
 
-def selection_statement(stmnt, symbol_table, stack, statement_func, jump_props):
-    return selection_statement.rules[type(stmnt)](stmnt, symbol_table, stack, statement_func, jump_props)
+def selection_statement(stmnt, symbol_table, stack, statement_func):
+    return selection_statement.rules[type(stmnt)](stmnt, symbol_table, stack, statement_func)
 selection_statement.rules = {
     IfStatement: if_statement,
     SwitchStatement: switch_statement,

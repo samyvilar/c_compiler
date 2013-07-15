@@ -2,7 +2,6 @@ __author__ = 'samyvilar'
 
 
 from collections import defaultdict
-from itertools import izip
 
 from back_end.virtual_machine.instructions.architecture import ids, instr_objs, Pass, Halt
 from back_end.virtual_machine.instructions.architecture import VariableLengthInstruction, WideInstruction, Instruction

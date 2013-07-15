@@ -111,7 +111,11 @@ def cast_expression(tokens, symbol_table):
     # but only cast expression maybe followed by type_name.
     if peek(tokens, default='') == TOKENS.LEFT_PARENTHESIS:
         _ = consume(tokens)
-        if isinstance(symbol_table.get(peek(tokens, default=''), ''), CType):
+        current_token = peek(tokens, default='')
+        if current_token in {
+            TOKENS.VOID, TOKENS.CHAR, TOKENS.SHORT, TOKENS.INT, TOKENS.LONG, TOKENS.FLOAT, TOKENS.DOUBLE,
+            TOKENS.STRUCT, TOKENS.SIGNED, TOKENS.UNSIGNED
+        } or isinstance(symbol_table.get(current_token, ''), CType):
             obj = type_name(tokens, symbol_table)
             _ = error_if_not_value(tokens, TOKENS.RIGHT_PARENTHESIS)
             return CastExpression(cast_expression(tokens, symbol_table), obj, loc(obj))

@@ -6,7 +6,7 @@ from sequences import peek, consume
 from front_end.loader.locations import loc, EOFLocation
 from front_end.tokenizer.tokens import TOKENS
 
-from front_end.parser.ast.statements import IfStatement, ElseStatement, SwitchStatement
+from front_end.parser.ast.statements import IfStatement, ElseStatement, SwitchStatement, EmptyStatement
 from front_end.parser.expressions.expression import expression
 
 from front_end.errors import error_if_not_value
@@ -24,10 +24,23 @@ def _if(tokens, symbol_table, statement):
     exp = expression(tokens, symbol_table)
     _ = error_if_not_value(tokens, TOKENS.RIGHT_PARENTHESIS)
 
-    yield IfStatement(exp, statement(tokens, symbol_table, statement), location)
-    if peek(tokens, default='') == TOKENS.ELSE:
-        location = loc(consume(tokens))
-        yield ElseStatement(statement(tokens, symbol_table, statement), location)
+    def else_statement(tokens, symbol_table, statement):
+        def _empty():
+            yield EmptyStatement('')
+        if peek(tokens, default='') == TOKENS.ELSE:
+            location = loc(consume(tokens))
+            stmnt = statement(tokens, symbol_table, statement)
+        else:
+            location = ''
+            stmnt = _empty()
+        yield ElseStatement(stmnt, location)
+
+    yield IfStatement(
+        exp,
+        statement(tokens, symbol_table, statement),
+        else_statement(tokens, symbol_table, statement),
+        location
+    )
 
 
 def switch(tokens, symbol_table, statement):
@@ -35,7 +48,9 @@ def switch(tokens, symbol_table, statement):
     _ = error_if_not_value(tokens, TOKENS.LEFT_PARENTHESIS)
     exp = expression(tokens, symbol_table)
     _ = error_if_not_value(tokens, TOKENS.RIGHT_PARENTHESIS)
+    symbol_table['__ SWITCH STATEMENT __'] = {}
     yield SwitchStatement(exp, statement(tokens, symbol_table, statement), location)
+    _ = symbol_table.pop('__ SWITCH STATEMENT __')
 
 
 def selection_statement(tokens, symbol_table, statement):

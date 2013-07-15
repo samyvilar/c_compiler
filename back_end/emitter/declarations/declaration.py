@@ -3,44 +3,59 @@ __author__ = 'samyvilar'
 from collections import defaultdict
 from itertools import chain
 
-from sequences import peek, consume
-from front_end.loader.locations import loc, LocationNotSet, EOFLocation
-from front_end.parser.symbol_table import push, pop
+from front_end.loader.locations import loc, LocationNotSet
+from front_end.parser.symbol_table import push, pop, SymbolTable
 
 from front_end.parser.ast.statements import FunctionDefinition
-from front_end.parser.ast.declarations import Declaration, Definition, TypeDef, name, initialization
+from front_end.parser.ast.declarations import Declaration, Definition, name, initialization
 from front_end.parser.types import c_type, PointerType, VoidType, FunctionType
 
 
-from back_end.emitter.statements.statement import statement, type_def
+from back_end.emitter.statements.statement import statement
 from back_end.emitter.statements.jump import return_instrs
 from back_end.emitter.object_file import Data, Code
-from back_end.emitter.types import binaries, size
-from back_end.emitter.instructions.stack_state import stack_allocation, Stack
-from back_end.emitter.instructions.data import global_allocation
+from back_end.emitter.c_types import binaries, size
+from back_end.emitter.stack_state import stack_allocation, Stack
+
+from back_end.virtual_machine.instructions.architecture import Address, Push
+
+from back_end.emitter.c_types import bind_load_address_func
 
 
-def no_rule(declarations, *_):
-    raise ValueError('{l} No rule to emit binaries for {f}'.format(
-        l=loc(peek(declarations, default=EOFLocation)), f=peek(declarations, default='')
-    ))
+def no_rule(dec, *_):
+    raise ValueError('{l} No rule to emit binaries for {f}'.format(l=loc(dec), f=dec))
 
 
 def get_directives():
     rules = defaultdict(lambda: no_rule)
     rules.update({
-        TypeDef: type_def,
-        Declaration: definition,
+        Declaration: declaration,
         Definition: definition,
         FunctionDefinition: function_definition,
     })
     return rules
 
 
+def bind_load_instructions(obj):
+    def load_address(self, location):
+        yield Push(location, Address(self.symbol, location))
+
+    obj.load_address = bind_load_address_func(load_address, obj)
+    return obj
+
+
+def declaration(dec, symbol_table):
+    symbol_table[name(dec)] = bind_load_instructions(dec)
+    symbol_table[name(dec)].symbol = Code(name(dec), (), size(c_type(dec)), dec.storage_class, loc(dec)) \
+        if isinstance(c_type(dec), FunctionType) \
+        else Data(name(dec), (), size(c_type(dec)), dec.storage_class, loc(dec))
+    return symbol_table[name(dec)].symbol
+
+
 def definition(dec, symbol_table):  # Global definition.
-    symbol_type = Code if isinstance(c_type(dec), FunctionType) else Data
-    symbol_table[name(dec)] = global_allocation(dec)
-    symbol_table[name(dec)].symbol = symbol_type(  # Add reference of symbol to definition to keep track of references
+    assert not isinstance(c_type(dec), FunctionType)
+    symbol_table[name(dec)] = bind_load_instructions(dec)
+    symbol_table[name(dec)].symbol = Data(  # Add reference of symbol to definition to keep track of references
         name(dec), binaries(dec), size(c_type(dec)), dec.storage_class, loc(dec),
     )
     return symbol_table[name(dec)].symbol
@@ -61,20 +76,25 @@ def function_definition(dec, symbol_table):
         Caller Pops frame, and uses the set value.
     """
     symbol = Code(name(dec), None, size(c_type(dec)), dec.storage_class, loc(dec))
-    symbol_table[name(dec)] = global_allocation(dec)  # bind load/reference instructions, add to symbol table.
+    symbol_table[name(dec)] = bind_load_instructions(dec)  # bind load/reference instructions, add to symbol table.
     symbol_table[name(dec)].symbol = symbol
 
-    def binaries(comp_stmnt, symbol_table):
+    def binaries(body, symbol_table):
         symbol_table = push(symbol_table)
-
         stack = Stack()  # Each function call has its own Frame which is nothing more than a stack.
+
         _ = stack_allocation(stack, PointerType(VoidType(LocationNotSet), LocationNotSet))  # allocate return address.
         for index, parameter in enumerate(c_type(dec)):
             # monkey patch declarator objects add Load commands according to stack state; add to symbol table.
             symbol_table[name(parameter)] = c_type(dec)[index] = stack_allocation(stack, parameter)
 
         symbol_table['__ CURRENT FUNCTION __'] = dec
-        for instr in chain(statement(comp_stmnt, symbol_table, stack), return_instrs(loc(dec))):
+        symbol_table['__ LABELS __'] = SymbolTable()
+        symbol_table['__ GOTOS __'] = defaultdict(list)
+        for instr in chain(
+                chain.from_iterable(statement(s, symbol_table, stack) for s in chain.from_iterable(body)),
+                return_instrs(loc(dec))
+        ):
             yield instr
         _ = pop(symbol_table)
 

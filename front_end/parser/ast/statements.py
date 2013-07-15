@@ -117,8 +117,13 @@ class SelectionStatement(ExpressionBody):
 
 
 class IfStatement(SelectionStatement):
-    def __init__(self, exp, comp_statement, location):
+    def __init__(self, exp, comp_statement, else_statement, location):
+        self._else_statement = else_statement
         super(IfStatement, self).__init__(exp, comp_statement, location)
+
+    @property
+    def else_statement(self):
+        return next(self._else_statement)
 
 
 class ElseStatement(SelectionStatement):
@@ -131,40 +136,18 @@ class SwitchStatement(SelectionStatement):
         self.exp = exp
         super(SwitchStatement, self).__init__(exp, comp_statement, location)
 
-    def __iter__(self):  # TODO: check...
-        compound_stmnt = next(iter(super(SwitchStatement, self)))
-        self.cases = {}
-        for stmnt in compound_stmnt:
-            if not isinstance(stmnt, (Definition, CaseStatement)):
-                raise ValueError('{l} switch stmnt start expects declaration/definition/case/default got {got}'.format(
-                    l=loc(stmnt), got=stmnt
-                ))
-            if isinstance(stmnt, DefaultStatement):
-                if '__default__' in self.cases:
-                    raise ValueError('{l} Duplicate default statement, previous at {at}'.format(
-                        l=loc(stmnt), at=loc(self.cases[exp(stmnt)])
-                    ))
-                self.cases['__default__'] = stmnt
-            elif isinstance(stmnt, CaseStatement):
-                if exp(exp(stmnt)) in self.cases:
-                    raise ValueError('{l} Duplicate case statement, previous at {at}'.format(
-                        l=loc(stmnt), at=loc(self.cases[exp(stmnt)])
-                    ))
-            yield stmnt
+    @property
+    def statement(self):
+        stmnt = super(SwitchStatement, self).statement
+        if not isinstance(stmnt, CompoundStatement):
+            raise ValueError('{l} switch statement expected compound statement, got {g}'.format(l=loc(stmnt), g=stmnt))
+        return stmnt
 
 
 class LabelStatement(StatementBody):
     def __init__(self, name, statement, location):
-        self._name = name
+        self.name = name
         super(LabelStatement, self).__init__(statement, location)
-
-    @property
-    def name(self):
-        return LabelStatement.get_name(self._name)
-
-    @staticmethod
-    def get_name(value):
-        return value and 'label {n}'.format(n=value)
 
 
 class CaseStatement(SelectionStatement):

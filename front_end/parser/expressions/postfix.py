@@ -73,7 +73,7 @@ def dot_oper(tokens, symbol_table, primary_exp, expression_func):
     if member not in c_type(primary_exp):
         raise ValueError('{l} struct does not contain member {member}'.format(member=member, l=loc(member)))
     return ElementSelectionExpression(
-        primary_exp, member, c_type(c_type(primary_exp)[member])(loc(member)), loc(member)
+        primary_exp, member, c_type(c_type(primary_exp).members[member])(loc(member)), loc(member)
     )
 
 
@@ -86,7 +86,7 @@ def arrow_operator(tokens, symbol_table, primary_exp, expression_func):
             member=member, l=loc(member)
         ))
     return ElementSelectionThroughPointerExpression(
-        primary_exp, member, c_type(c_type(c_type(primary_exp))[member])(loc(member)), loc(member)
+        primary_exp, member, c_type(c_type(c_type(primary_exp)).members[member])(loc(member)), loc(member)
     )
 
 

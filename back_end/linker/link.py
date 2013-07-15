@@ -1,97 +1,69 @@
 __author__ = 'samyvilar'
 
-from front_end.loader.locations import loc
-from front_end.parser.ast.declarations import Extern
+from itertools import chain
 
-from back_end.emitter.object_file import Data, Code, binaries, Symbol
-from back_end.virtual_machine.instructions.architecture import SaveStackPointer, RestoreStackPointer, Instruction
-from back_end.virtual_machine.instructions.architecture import Integer
-from back_end.linker.binary_file import BinaryFile
-from back_end.emitter.types import flatten
+from front_end.parser.symbol_table import SymbolTable
+from back_end.emitter.object_file import Data, Code
+from back_end.emitter.c_types import size
 
-
-class SymbolTable(dict):
-    def __setitem__(self, key, value):
-        if key in self:
-            raise ValueError('{l} Duplicate symbol {symbol}'.format(l=loc(key), symbol=key))
-        super(SymbolTable, self).__setitem__(key, value)
-
-    def __getitem__(self, item):
-        if item not in self:
-            raise ValueError('{l} Could not locate symbol {symbol}'.format(l=loc(item), symbol=item))
-        return super(SymbolTable, self).__getitem__(item)
+from back_end.virtual_machine.instructions.architecture import Push, PushFrame, PopFrame, Halt, Integer, Allocate
+from back_end.virtual_machine.instructions.architecture import RelativeJump, Pass, Address
 
 
-def ident(symbol):
-    return symbol.name
+def binaries(symbol, symbol_table):
+    def set_address(symbol, binaries):
+        initial_instr = next(binaries)
+        yield initial_instr
+        for instr in binaries:
+            yield instr
+        symbol.address = initial_instr.address
+
+    if symbol.binaries:  # definition
+        symbol_table[symbol.name] = symbol
+        symbol.binaries = set_address(symbol, symbol.binaries)
+    else:
+        if isinstance(symbol, Data) and not symbol.storage_class:  # declaration.
+            # C coalesces multiple declarations across multiple files as long as they don't have a storage class
+            if symbol.name in symbol_table:  # only keep largest.
+                if symbol.size > symbol_table[symbol.name].size:
+                    _ = symbol_table.pop(symbol.name)
+                    symbol_table[symbol.name] = symbol
+            else:
+                symbol_table[symbol.name] = symbol
+    return symbol.binaries
 
 
-def name(symbol, func_name='', scope_level=0, scope_depth=0):
-    if isinstance(symbol.storage_class, Extern) or not symbol.storage_class:
-        return ident(symbol)  # we don't mangle extern or shared variables.
-    # Name mangling ...
-    return '{file_name}.{fund_name}.{scope_level}.{scope_depth}.{ident_name}'.format(
-        file_name=loc(symbol).file_name,
-        func_name=func_name,
-        scope_level=scope_level,
-        scope_depth=scope_depth,
-        ident_name=ident(symbol),
+def executable(symbols, symbol_table=None):
+    """
+        push(0, self.cpu, self.mem)  # return address
+        push(0, self.cpu, self.mem)  # main function address
+        push_frame(None, self.cpu, self.mem)  # create new frame
+        halt_address = next(address_gen)
+        self.mem[halt_address] = Halt('__EOP__')
+        push(halt_address, self.cpu, self.mem)
+        self.cpu.instr_pointer = symbol_table['main'].address
+        evaluate(self.cpu, self.mem)
+        pop_frame(None, self.cpu, self.mem)
+        pop(self.cpu, self.mem)  # Pop address
+        pop(self.cpu, self.mem)  # Pop return value.2
+
+    """
+    location = '__SOP__'
+    clean = Pass(location)
+    return chain(
+        (
+            Push(location, Integer(0, location)),  # return value
+            Push(location, Address(0, location)),  # address of main function
+            PushFrame(location),
+            Push(location, Address(clean, location)),  # clean up after main exits
+            RelativeJump(location, Address(Code('main', (), 1, None, location))),  # jump to main
+        ),
+        chain.from_iterable(binaries(symbol, symbol_table or SymbolTable()) for symbol in symbols),
+        (
+            clean,
+            PopFrame(location),
+            Allocate(location, -1 * size(Address())),
+            Allocate(location, -1 * size(Integer(0, location))),
+            Halt(location)
+        ),
     )
-
-
-def data_symbol(symbol, bins, symbol_table, func_name='', scope_level=0, scope_depth=0):
-    if binaries(symbol):
-        symbol_table[name(symbol, func_name, scope_level, scope_depth)] = symbol
-        symbol.offset = len(bins)
-        bins.append(binaries(symbol))
-    elif symbol.storage_class is None:  # Common/Shared
-        if name(symbol) in symbol_table:
-            assert not symbol_table[name(symbol)].storage_class
-            offset = symbol_table[name(symbol)].offset
-            symbol = max((symbol, symbol_table.pop(name(symbol))), key=lambda symbol: symbol.size)
-            bins[offset] = [Integer(0, loc(symbol))] * symbol.size
-        else:
-            offset = len(bins)
-            bins.append([Integer(0, loc(symbol))] * symbol.size)
-        symbol_table[name(symbol)] = symbol
-        symbol.offset = offset
-
-
-def code_symbol(symbol, bins, symbol_table, func_name='', scope_level=0, scope_depth=0):
-    if binaries(symbol):
-        symbol.offset = len(bins)
-        bins.append(())
-        symbol_table[name(symbol)] = symbol
-        func_name = ident(symbol)
-        instrs = []
-        for instr in flatten(binaries(symbol)):
-            if isinstance(instr, SaveStackPointer):
-                scope_level += 1
-                scope_depth += 1
-            if isinstance(instr, RestoreStackPointer):
-                scope_depth -= 1
-            if isinstance(instr, Symbol):
-                code_symbol.rules[type(instr)](
-                    instr, bins, symbol_table, func_name, scope_level, scope_depth
-                )
-            else:  # remove all symbols.
-                instrs.append(instr)
-        bins[symbol.offset] = instrs
-code_symbol.rules = {
-    Data: data_symbol,
-    Code: code_symbol,
-}
-
-
-def executable(object_files, entry_point='main'):
-    bins = []
-    symbol_table = SymbolTable()
-    for obj_file in object_files:
-        for symbol in obj_file:
-            executable.rules[type(symbol)](symbol, bins, symbol_table)
-    return BinaryFile(symbol_table, bins, entry_point)
-executable.rules = {
-    Data: data_symbol,
-    Code: code_symbol,
-}
-

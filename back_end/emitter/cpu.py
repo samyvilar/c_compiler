@@ -1,20 +1,17 @@
 __author__ = 'samyvilar'
 
-from itertools import izip, chain
-from back_end.emitter.object_file import Symbol, Data, Code, String
-from front_end.parser.symbol_table import SymbolTable
+from back_end.emitter.object_file import Symbol
 
-from back_end.virtual_machine.instructions.architecture import Allocate, Push, Pop, Halt, Pass, operns, Instruction, Dup
+from back_end.virtual_machine.instructions.architecture import Instruction, Allocate, Push, Pop, Halt, Pass, operns, Dup
 from back_end.virtual_machine.instructions.architecture import Add, Subtract, Multiply, Divide, Mod
 from back_end.virtual_machine.instructions.architecture import AddFloat, SubtractFloat, MultiplyFloat, DivideFloat
 from back_end.virtual_machine.instructions.architecture import And, Or, Xor, Not, ShiftLeft, ShiftRight
 from back_end.virtual_machine.instructions.architecture import ConvertToInteger, ConvertToFloat
 from back_end.virtual_machine.instructions.architecture import LoadZeroFlag, LoadOverflowFlag, LoadCarryBorrowFlag
-from back_end.virtual_machine.instructions.architecture import Jump, AbsoluteJump, Address, CompoundSet
+from back_end.virtual_machine.instructions.architecture import Jump, AbsoluteJump, CompoundSet
 from back_end.virtual_machine.instructions.architecture import RelativeJump, JumpTrue, JumpFalse, JumpTable
-from back_end.virtual_machine.instructions.architecture import SaveStackPointer, RestoreStackPointer
-from back_end.virtual_machine.instructions.architecture import LoadBaseStackPointer, LoadStackPointer, Load, Set, Swap
-from back_end.virtual_machine.instructions.architecture import PushFrame, PopFrame, Enqueue, Dequeue, Byte
+from back_end.virtual_machine.instructions.architecture import LoadBaseStackPointer, LoadStackPointer, Load, Set
+from back_end.virtual_machine.instructions.architecture import PushFrame, PopFrame, Enqueue, Dequeue, Address, Byte
 
 
 def pop(cpu, mem):
@@ -121,35 +118,43 @@ expr.rules = {rule: bin_arithmetic for rule in bin_arithmetic.rules}
 expr.rules.update({rule: unary_arithmetic for rule in unary_arithmetic.rules})
 
 
-def abs_jump(addr, instr, cpu, mem):
+def _jump(addr, cpu):
     cpu.instr_pointer = addr
 
 
-def rel_jump(addr, instr, cpu, mem):
-    abs_jump(cpu.instr_pointer + addr, instr, cpu, mem)
+def abs_jump(instr, cpu, mem):
+    _jump(pop(cpu, mem), cpu)
 
 
-def jump_if_true(value, instr, cpu, mem):
+def rel_jump(instr, cpu, mem):
+    _jump(cpu.instr_pointer + operns(instr)[0], cpu)
+
+
+def jump_if_true(instr, cpu, mem):
+    value = pop(cpu, mem)
     if value:
-        rel_jump(operns(instr)[0], instr, cpu, mem)
+        _jump(cpu.instr_pointer + operns(instr)[0], cpu)
     else:
         _pass(instr, cpu, mem)
 
 
-def jump_if_false(value, instr, cpu, mem):
+def jump_if_false(instr, cpu, mem):
+    value = pop(cpu, mem)
     if not value:
-        jump_if_true(operns(instr)[0], instr, cpu, mem)
+        _jump(cpu.instr_pointer + operns(instr)[0], cpu)
     else:
         _pass(instr, cpu, mem)
 
 
-def jump_table(value, instr, cpu, mem):
-    abs_jump(instr.cases[value].obj.address, instr, cpu, mem)
+def jump_table(instr, cpu, mem):
+    value = pop(cpu, mem)
+    _jump(instr.cases[value].obj.address, cpu)
 
 
 def jump(instr, cpu, mem):
-    jump.rules[type(instr)](pop(cpu, mem), instr, cpu, mem)
+    jump.rules[type(instr)](instr, cpu, mem)
 jump.rules = {
+    RelativeJump: rel_jump,
     AbsoluteJump: abs_jump,
     JumpTrue: jump_if_true,
     JumpFalse: jump_if_false,
@@ -169,14 +174,6 @@ def _dup(instr, cpu, mem):
     value = pop(cpu, mem)
     push(value, cpu, mem)
     push(value, cpu, mem)
-
-
-def save_stack_pointer(instr, cpu, mem):
-    cpu.stack.append(cpu.stack_pointer)
-
-
-def restore_stack_pointer(instr, cpu, mem):
-    cpu.stack_pointer = cpu.stack.pop()
 
 
 def load_base_pointer(instr, cpu, mem):
@@ -204,12 +201,6 @@ def _compound_set(instr, cpu, mem):
     for addr, value in enumerate(reversed([pop(cpu, mem) for _ in xrange(operns(instr)[0])]), _pop(instr, cpu, mem)):
         push(value, cpu, mem)
         mem[addr] = value
-
-
-def swap(instr, cpu, mem):
-    value_1, value_2 = pop(cpu, mem), pop(cpu, mem)
-    push(value_1, cpu, mem)
-    push(value_2, cpu, mem)
 
 
 def _push(instr, cpu, mem):
@@ -257,8 +248,6 @@ evaluate.rules = {
     LoadCarryBorrowFlag: lambda instr, cpu, mem: push(cpu.carry, cpu, mem),
     LoadOverflowFlag: lambda instr, cpu, mem: push(cpu.overflow, cpu, mem),
 
-    SaveStackPointer: save_stack_pointer,
-    RestoreStackPointer: restore_stack_pointer,
     LoadBaseStackPointer: load_base_pointer,
     LoadStackPointer: load_stack_pointer,
 
@@ -271,93 +260,9 @@ evaluate.rules = {
     Load: _load,
     Set: _set,
     CompoundSet: _compound_set,
-    Swap: swap,
 }
 evaluate.rules.update({rule: expr for rule in expr.rules})
 evaluate.rules.update({rule: jump for rule in jump.rules})
-
-
-def address(start=0, step=1):
-    while True:
-        yield start
-        start += step
-
-
-def load(instrs, mem, symbol_table, address_gen=None):
-    address_gen = address_gen or address()
-    for addr, elem in izip(address_gen, chain(instrs, (Halt('__EOP__'),))):
-        mem[addr] = elem
-        elem.address = addr
-
-    for current_addr, elem in mem.iteritems():
-        operands = []
-        for operand in operns(elem):
-            if isinstance(operand, Address):
-                if isinstance(operand.obj, Instruction):
-                    addr = operand.obj.address
-                elif isinstance(operand.obj, Symbol):
-                    addr = symbol_table[operand.name].address
-                else:
-                    addr = operand
-                if isinstance(elem, RelativeJump):
-                    operand = addr - current_addr
-                else:
-                    operand = addr
-            operands.append(operand)
-        elem.operands = operands
-
-
-def data(symbol, symbol_table):
-    if symbol.binaries:  # definition.
-        symbol_table[symbol.name] = symbol
-    elif not symbol.storage_class:
-        if symbol.name in symbol_table:
-            if symbol.size > symbol_table[symbol.name].size:
-                _ = symbol_table.pop(symbol.name)
-                assert not _.storage_class
-                symbol_table[symbol.name] = symbol
-                symbol.binaries = (Byte(0, '') for _ in xrange(symbol.size))
-        else:
-            symbol_table[symbol.name] = symbol
-            symbol.binaries = (Byte(0, '') for _ in xrange(symbol.size))
-
-
-def binaries(code, symbol_table):
-    code_segment, data_segment = [], []
-    for elem in code:
-        if isinstance(elem, Instruction):
-            code_segment.append(elem)
-        else:
-            populate_symbol_table.rules[type(elem)](elem, symbol_table)
-            data_segment.append(elem.binaries)
-    return chain(code_segment, chain.from_iterable(data_segment))
-
-
-def code(symbol, symbol_table):
-    if symbol.binaries:  # definition.
-        symbol_table[symbol.name] = symbol
-        symbol.binaries = binaries(symbol.binaries, symbol_table)
-
-
-def populate_symbol_table(symbols, symbol_table):
-    for symbol in symbols:
-        populate_symbol_table.rules[type(symbol)](symbol, symbol_table)
-populate_symbol_table.rules = {
-    String: data,
-    Data: data,
-    Code: code
-}
-
-
-def executable(symbols, symbol_table=None):
-    symbol_table = symbol_table or SymbolTable()
-    populate_symbol_table(symbols, symbol_table)  # no choice but to iterate over all the symbols and populate the
-    for symbol in symbol_table.itervalues():
-        initial_elem = next(symbol.binaries)
-        symbol.address = property(lambda self: initial_elem.address)
-        yield initial_elem
-        for elem in symbol.binaries:
-            yield elem
 
 
 class CPU(object):
@@ -379,3 +284,43 @@ class CPU(object):
         if self.stack_pointer > self.base_pointer:
             assert False
 
+
+def address(curr=0, step=1):
+    while True:
+        yield curr
+        curr += step
+
+
+def load(instrs, mem, symbol_table, address_gen=None):
+    address_gen = iter(address_gen or address())
+
+    for instr in instrs:
+        instr.address = next(address_gen)
+        mem[instr.address] = instr
+
+    data = {}  # referenced declarations.
+    for current_addr, elem in mem.iteritems():
+        operands = []
+        for operand in operns(elem):
+            if isinstance(operand, Address):
+                if isinstance(operand.obj, Instruction):
+                    ref_addr = operand.obj.address
+                elif isinstance(operand.obj, Symbol):
+                    symbol = symbol_table[operand.obj.name]
+                    if hasattr(symbol, 'address'):
+                        ref_addr = symbol.address
+                    else:  # it must be a declaration.
+                        binaries = (Byte(0, '') for _ in xrange(symbol.size))
+                        ref_addr = symbol.address = next(address_gen)
+                        data[ref_addr] = next(binaries)
+                        data.update({next(address_gen): b for b in binaries})
+                        symbol.binaries = True
+                else:
+                    ref_addr = operand
+                if isinstance(elem, RelativeJump):
+                    operand = ref_addr - current_addr
+                else:
+                    operand = ref_addr
+            operands.append(operand)
+        elem.operands = operands
+    mem.update(data)
