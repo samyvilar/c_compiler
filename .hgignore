@@ -4,3 +4,4 @@ syntax: glob
 *.p
 *.idea
 .coverage
+a.c

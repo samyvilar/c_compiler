@@ -1,21 +1,58 @@
 The c_compiler is divided into two main parts, the front_end and the back_end.
 
-The front_end is divided into several components organized in a hierarchical manner.
+front_end:
 
-Starting with the lowest:
+    loader: Responsible for all things relating to files, source code as well as locations.
+    entry points:
+        load.load, accepts an object with a read attribute, or string containing the path of a file.
+        load.source, accepts a string interpreted as the content of a file
+            and an optional file_name arg defaults to '__SOURCE__' to be used to create location objects.
+        Both methods return a iterator of characters each containing a location object which can be retrieved by
+        loader.locations.loc(obj), if the object does not have a location a LocationNotSet object is returned,
+        retrieving any value such as file_name, line_number or column_number from this object yields a TypeError
 
-The Loader is in charge of reading the file into memory, merging all the lines that end with a forward slash.
- It returns a Load object which is a wrapper to an array of Char objects each object
- represents a char and has being giving a location object (file, line, column) for debugging purposes.
-   (It checks if its input is a string and/or a file-like object, if string no file exists then its input is the source.)
-   (it creates an array of Chars (Load object))
+    tokenizer: Responsible for all things relating to tokens.
+        tokenize.tokenize, accepts any sequence of characters, returns an iterator of Token objects each with a
+        location object set by the first character, (NOTE: Tokens of Ignore type such as comments/whitespace,
+        will be filtered out)
 
-Tokenizer is in charge of tokenizing an array of characters, it returns a Tokenize object which is a wrapper
-to an array of Tokens, each containing the source token and a location object derived from the first Char either its None
-tokens that are descendants of IGNORE (COMMENTS, WHITESPACE tokens) are ignored.
-  (It can either use a raw char array or a Load object (Char array))
-  (It creates an array of Token Objects (Tokenize object), excluding any of those descending from IGNORE
-  such as Comments or WhiteSpace)
+    preprocessor: Responsible for all things relating to pre-processing.
+        preprocess.preprocess, accepts any sequence of tokens, creating a new sequence of tokens based on pre-processing
+            directives such as '#include', all tokens are fully expanded depending on current definitions,
+            all tokens of IGNORE type again are filtered out.
 
-Preprocessor in charge of modifying the array of tokens accordingly to any directives such as #include, #define, #if
-and so on ... It generates a new sequence of tokens.
+    parser: Responsible for the actual parsing, generating an Abstract Syntax Tree (AST).
+        All nodes have a location object set either by the first token or first node location value.
+        All Expression and Declaration Types have a ctype which can be retrieved by parser.types.c_type, this objects
+            also have a location.
+        All statements with a body (if, for) have a `statement` property which may be a Compound statement.
+
+        Expressions are evaluated completely, everything else is evaluated one at a time.
+        parse.parse, accepts a sequence of tokens, returns a sequence of declarations/definitions.
+        To evaluate a Compound Statement simply iterate over it,
+        Function Definitions body are set as their initialization.
+
+
+
+back_end:
+
+    emitter: Everything relating to generating the actual instructions.
+        emit.emit accepts a sequence declarations/definitions,
+            (containing, name, c_type, initialization, storage_class, properties)
+            returns an iterator of symbol objects some initialized
+            with an iterator instruction objects or values.
+
+    linker: Everything relating to combining multiple symbols defined across multiple files.
+        link.executable, accepts a sequence of symbols returns an iterator of instructions or values,
+        with an initial jump instruction to main and a final instruction Halting the machine.
+
+
+    loader: Everything relating to loading an executable into memory.
+        load.load giving a sequence of instructions/values symbol_table containing all references,
+        and mem (a dict like obj)
+        optional iterable address_gen object,
+        give all values an address and set them in memory.
+
+
+
+

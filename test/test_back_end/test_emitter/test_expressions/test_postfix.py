@@ -189,3 +189,28 @@ class TestPostFixFunction(TestDeclarations):
         """
         super(TestPostFixFunction, self).evaluate(source)
         self.assertEqual(self.mem[self.cpu.stack_pointer], 11)
+
+    def test_malloc_function(self):
+        source = """
+        void *heap_ptr;
+        void *malloc(unsigned long number_of_bytes);
+
+        int main()
+        {
+            int *temp = malloc(sizeof(int));
+            *temp = 10;
+            return *temp;
+        }
+
+        void *malloc(unsigned long number_of_bytes)
+        {
+            if (!heap_ptr)
+                heap_ptr = &heap_ptr;
+
+            void *allocation = heap_ptr;
+            heap_ptr += number_of_bytes;
+
+            return allocation;
+        }
+        """
+        super(TestPostFixFunction, self).evaluate(source)

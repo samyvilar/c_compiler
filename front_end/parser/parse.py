@@ -4,4 +4,4 @@ from front_end.parser.declarations.declarations import translation_unit
 
 
 def parse(tokens=(), symbol_table=None):
-    return translation_unit(tokens, symbol_table)
+    return translation_unit(iter(tokens), symbol_table)

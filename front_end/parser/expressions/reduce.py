@@ -6,7 +6,9 @@ from front_end.loader.locations import loc
 from front_end.parser.types import IntegerType, c_type
 from front_end.tokenizer.tokens import TOKENS
 
-from front_end.parser.ast.expressions import ConstantExpression, UnaryExpression, BinaryExpression
+from front_end.parser.ast.expressions import ConstantExpression, UnaryExpression, BinaryExpression, CastExpression
+from front_end.parser.types import IntegralType, FloatType
+
 from front_end.parser.ast.expressions import left_exp, right_exp, oper, exp
 
 
@@ -109,13 +111,29 @@ binary_exp.rules.update({
 })
 
 
+def cast_exp(expr):
+    if isinstance(exp(expr), ConstantExpression):
+        to_type = c_type(expr)
+        expr = exp(expr)
+        location = loc(expr)
+        if isinstance(to_type, IntegralType):
+            return ConstantExpression(int(exp(expr)), to_type(location), location)
+        elif isinstance(to_type, FloatType):
+            return ConstantExpression(float(exp(expr)), to_type(location), location)
+        else:
+            return expr
+    else:
+        return expr
+
+
 def reduce_to_constant(expr):
     # noinspection PyUnresolvedReferences
     return reduce_to_constant.rules[type(expr)](expr)
 reduce_to_constant.rules = defaultdict(lambda: (lambda expr: expr))
 reduce_to_constant.rules.update({
     UnaryExpression: unary_exp,
-    BinaryExpression: binary_exp
+    BinaryExpression: binary_exp,
+    CastExpression: cast_exp,
 })
 
 

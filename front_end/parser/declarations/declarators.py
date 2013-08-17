@@ -7,10 +7,12 @@ from front_end.loader.locations import loc, EOFLocation
 from front_end.tokenizer.tokens import TOKENS, IDENTIFIER
 
 from front_end.parser.ast.expressions import exp
+from front_end.parser.ast.declarations import TypeDef
 
 from front_end.parser.types import CType, FunctionType, PointerType, set_core_type, c_type, StructType, ArrayType
 from front_end.parser.types import VoidType, CharType, ShortType, IntegerType, LongType, FloatType, DoubleType
-from front_end.parser.types import IntegralType
+from front_end.parser.types import IntegralType, UnionType, VAListType
+
 from front_end.parser.ast.declarations import AbstractDeclarator, Declarator, name
 from front_end.parser.ast.declarations import Auto, Extern, Static, Register
 
@@ -39,8 +41,15 @@ def parse_array_dimensions(tokens, symbol_table):
     return ctype
 
 
-def parameter_declaration(tokens, symbol_table):  # : type_specifier (declarator | abstract_declarator)*
-    base_type = type_specifier(tokens, symbol_table)
+def parameter_declaration(tokens, symbol_table):
+    # : specifier_qualifier_list (declarator | abstract_declarator) or `...`
+    if peek(tokens, default='') == TOKENS.DOT:
+        location = loc(error_if_not_value(tokens, TOKENS.DOT))
+        _ = error_if_not_value(tokens, TOKENS.DOT)
+        _ = error_if_not_value(tokens, TOKENS.DOT)
+        return Declarator(TOKENS.DOT + TOKENS.DOT + TOKENS.DOT, VAListType(location), None, location)
+
+    base_type = specifier_qualifier_list(tokens, symbol_table)
 
     if peek(tokens, default='') in {TOKENS.STAR, TOKENS.LEFT_PARENTHESIS, TOKENS.LEFT_BRACKET} or \
        isinstance(peek(tokens, default=''), IDENTIFIER):
@@ -157,10 +166,12 @@ def abstract_declarator(tokens, symbol_table): # pointer direct_abstract_declara
 def pointer(tokens):  # parse a list of **1** or or more pointers
     location = loc(consume(tokens))
     initial_pointer = pointer_type = PointerType(CType(location), location)
+    initial_pointer.const, initial_pointer.volatile = type_qualifiers(tokens, {}, (False, False))
     while peek(tokens, default='') == TOKENS.STAR:
         location = loc(consume(tokens))
         pointer_type.c_type = PointerType(CType(location), location)
         pointer_type = c_type(pointer_type)
+        pointer_type.const, pointer_type.volatile = type_qualifiers(tokens, {}, (False, False))
     return initial_pointer
 
 
@@ -173,23 +184,23 @@ storage_class_specifier.rules.update({
     TOKENS.STATIC: lambda tokens, symbol_table: Static(loc(consume(tokens))),
     TOKENS.REGISTER: lambda tokens, symbol_table: Register(loc(consume(tokens))),
     TOKENS.AUTO: lambda tokens, symbol_table: Auto(loc(consume(tokens))),
+    TOKENS.TYPEDEF: lambda tokens, symbol_table: TypeDef('', '', loc(consume(tokens)))
 })
 
 
-def parse_sign_token(tokens, _):
+def parse_sign_token(tokens, symbol_table):
     sign = consume(tokens) == TOKENS.UNSIGNED
-    if peek(tokens, default='') not in {TOKENS.CHAR, TOKENS.SHORT, TOKENS.INT, TOKENS.LONG}:
-        raise ValueError('{l} Expected either char, short, int, long, got {g}'.format(
-            l=loc(peek(tokens, default=EOFLocation), g=peek(tokens, default=''))
-        ))
-    token = consume(tokens)
-    return type_specifier.rules[token](loc(token), unsigned=sign)
+    base_type = specifier_qualifier_list(tokens, symbol_table)
+    base_type.unsigned = sign
+    return base_type
 
 
 def parse_struct_members(tokens, symbol_table):
     location, members = loc(consume(tokens)), OrderedDict()
     while peek(tokens, default='') != TOKENS.RIGHT_BRACE:
-        type_spec = type_specifier(tokens, symbol_table)
+
+        type_spec = specifier_qualifier_list(tokens, symbol_table)
+
         while peek(tokens, default='') != TOKENS.SEMICOLON:
             decl = declarator(tokens, symbol_table)
             set_core_type(decl, type_spec)
@@ -205,25 +216,26 @@ def parse_struct_members(tokens, symbol_table):
     return members
 
 
-def struct_specifier(tokens, symbol_table):
+def struct_specifier(tokens, symbol_table, obj_type=StructType):
     """
     : 'struct' IDENTIFIER
-    | 'struct' IDENTIFIER  '{' (type_specifier declarator ';')* '}'
-    | 'struct' '{' (type_specifier declarator ';')* '}'
+    | 'struct' IDENTIFIER  '{' (specifier_qualifier_list  declarator ';')* '}'
+    | 'struct' '{' (specifier_qualifier_list declarator ';')* '}'
     """
     location = loc(consume(tokens))
     if peek(tokens, default='') == TOKENS.LEFT_BRACE:  # anonymous structure.
-        obj = StructType(None, parse_struct_members(tokens, symbol_table), location)
+        obj = obj_type(None, parse_struct_members(tokens, symbol_table), location)
     elif isinstance(peek(tokens, default=''), IDENTIFIER):
-        struct_name = consume(tokens)
+        obj = symbol_table.get(obj_type.get_name(peek(tokens)), obj_type(consume(tokens), None, location))
         # Structs are bit tricky, since any of its members may contain itself as a reference, so we'll add the type to
         # the symbol table before adding the members ...
-        if peek(tokens, default='') == TOKENS.LEFT_BRACE:
-            obj = StructType(struct_name, None, loc(struct_name))
+        # TODO: make structures types immutable, right now they are being shared.
+        terminal = object()
+        if symbol_table.get(obj.name, terminal) is terminal:
             symbol_table[name(obj)] = obj
+        if peek(tokens, default='') == TOKENS.LEFT_BRACE:
             obj.members = parse_struct_members(tokens, symbol_table)
-        else:  # if struct is incomplete search all frames
-            obj = symbol_table[StructType.get_name(struct_name)]
+
         return obj
     else:
         raise ValueError('{l} Expected IDENTIFIER or "{" got {got}'.format(
@@ -232,10 +244,24 @@ def struct_specifier(tokens, symbol_table):
     return obj
 
 
+def union_specifier(tokens, symbol_table):
+    return struct_specifier(tokens, symbol_table, obj_type=UnionType)
+
+
 def no_type_specifier(tokens, _):
     raise ValueError('{l} Expected a type_specifier or type_name got {got}'.format(
         l=loc(peek(tokens, default=EOFLocation)), got=peek(tokens, default='')
     ))
+
+
+def _long(tokens, symbol_table):
+    location = loc(consume(tokens))
+    return LongType(type_specifier(tokens, symbol_table, IntegerType(location)), location)
+
+
+def _short(tokens, symbol_table):
+    location = loc(consume(tokens))
+    return ShortType(type_specifier(tokens, symbol_table, IntegerType(location)), location)
 
 
 def type_specifier(tokens, symbol_table, *args):
@@ -260,20 +286,50 @@ type_specifier.rules = defaultdict(lambda: no_type_specifier)
 type_specifier.rules.update({
     TOKENS.VOID: lambda tokens, symbol_table: VoidType(loc(consume(tokens))),
     TOKENS.CHAR: lambda tokens, symbol_table: CharType(loc(consume(tokens))),
-    TOKENS.SHORT: lambda tokens, symbol_table: ShortType(loc(consume(tokens))),
     TOKENS.INT: lambda tokens, symbol_table: IntegerType(loc(consume(tokens))),
-    TOKENS.LONG: lambda tokens, symbol_table: LongType(loc(consume(tokens))),
     TOKENS.FLOAT: lambda tokens, symbol_table: FloatType(loc(consume(tokens))),
     TOKENS.DOUBLE: lambda tokens, symbol_table: DoubleType(loc(consume(tokens))),
+
+    TOKENS.LONG: _long,
+    TOKENS.SHORT: _short,
 
     TOKENS.STRUCT: struct_specifier,
     TOKENS.SIGNED: parse_sign_token,
     TOKENS.UNSIGNED: parse_sign_token,
+
+    TOKENS.UNION: union_specifier,
 })
 
 
+def type_qualifiers(tokens, _, *args):
+    """
+        : ('const' or volatile or *args)*
+    """
+    volatile, const = None, None
+    if peek(tokens, default='') in {TOKENS.CONST, TOKENS.VOLATILE}:
+        while peek(tokens, default='') in {TOKENS.CONST, TOKENS.VOLATILE}:
+            if peek(tokens) == TOKENS.CONST:
+                const = consume(tokens)
+            if peek(tokens) == TOKENS.VOLATILE:
+                volatile = consume(tokens)
+        return const, volatile
+    elif args:
+        return args[0]
+    else:
+        raise ValueError('{l} Expected const or volatile got {g}'.format(
+            l=loc(peek(tokens, default=EOFLocation)), g=peek(tokens, default='')
+        ))
+
+
+def specifier_qualifier_list(tokens, symbol_table):
+    const, volatile = type_qualifiers(tokens, symbol_table, (False, False))
+    base_type = type_specifier(tokens, symbol_table, IntegerType(loc(peek(tokens, default=EOFLocation))))
+    base_type.const, base_type.volatile = type_qualifiers(tokens, symbol_table, (const, volatile))
+    return base_type
+
+
 def type_name(tokens, symbol_table):  #: type_specifier abstract_declarator?   # returns CType
-    base_type = type_specifier(tokens, symbol_table)
+    base_type = specifier_qualifier_list(tokens, symbol_table)
 
     if peek(tokens, default='') in {TOKENS.LEFT_PARENTHESIS, TOKENS.LEFT_BRACKET, TOKENS.STAR} \
        or isinstance(peek(tokens, default=''), IDENTIFIER):

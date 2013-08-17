@@ -1,6 +1,6 @@
 __author__ = 'samyvilar'
 
-from collections import Iterable
+from itertools import chain
 
 values = {}
 
@@ -30,16 +30,12 @@ def consume(seq, **kwargs):
 
 
 def takewhile(func, value_stream):
-    while peek(value_stream, default=False) and func(peek(value_stream)):
+    terminal = object()
+    while peek(value_stream, default=terminal) is not terminal and func(peek(value_stream)):
         yield consume(value_stream)
 
 
-def flatten(objs, whole_object=None):
-    if whole_object and isinstance(objs, whole_object):
-        yield objs
-    elif isinstance(objs, Iterable):
-        for obj in objs:
-            for o in flatten(obj, whole_object):
-                yield o
-    else:
-        yield objs
+def reverse(values):
+    values = iter(values)
+    for value in chain(reverse(values), (next(values),)):
+        yield value

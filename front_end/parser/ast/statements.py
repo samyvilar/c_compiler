@@ -1,5 +1,5 @@
 __author__ = 'samyvilar'
-
+from types import NoneType
 from collections import defaultdict, Iterable
 
 from sequences import peek
@@ -141,6 +141,29 @@ class SwitchStatement(SelectionStatement):
         stmnt = super(SwitchStatement, self).statement
         if not isinstance(stmnt, CompoundStatement):
             raise ValueError('{l} switch statement expected compound statement, got {g}'.format(l=loc(stmnt), g=stmnt))
+
+        def _iter(comp_statement):
+            def __iter(stmnt):
+                yield stmnt
+            invalid_type = NoneType
+            for gener in comp_statement:
+                for stmnt in gener:
+                    yield __iter(stmnt)
+                    if isinstance(stmnt, CaseStatement):
+                        invalid_type = Declaration
+                        break
+                if not isinstance(invalid_type, NoneType):
+                    break
+
+            for gener in comp_statement:
+                for stmnt in gener:
+                    if isinstance(stmnt, invalid_type):
+                        raise ValueError('{l} Switch may not have declaration(s) after case stmnt.'.format(
+                            l=loc(stmnt)
+                        ))
+                    yield __iter(stmnt)
+
+        stmnt.statements = _iter(stmnt.statements)
         return stmnt
 
 

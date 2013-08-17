@@ -4,13 +4,13 @@ from sequences import peek, consume
 from front_end.loader.locations import loc
 from front_end.tokenizer.tokens import TOKENS
 
-from front_end.parser.types import NumericType, IntegralType, c_type
+from front_end.parser.types import NumericType, IntegralType, c_type, VoidPointer, PointerType, safe_type_coercion
 
 from front_end.parser.ast.expressions import BinaryExpression, AssignmentExpression, CompoundAssignmentExpression, oper
-from front_end.parser.ast.expressions import left_exp, right_exp
+from front_end.parser.ast.expressions import TernaryExpression, left_exp, right_exp
 from front_end.parser.expressions.reduce import reduce_expression
 
-from front_end.errors import error_if_not_type
+from front_end.errors import error_if_not_type, error_if_not_value
 
 
 @reduce_expression
@@ -117,6 +117,31 @@ def logical_or_expression(tokens, symbol_table, cast_expression):
     return exp
 
 
+def conditional_expression(tokens, symbol_table, cast_expression):
+    # logical_or_expression ('?' expression ':' conditional_expression)?
+    exp = logical_or_expression(tokens, symbol_table, cast_expression)
+    if peek(tokens, default='') in conditional_expression.rules:
+        location = loc(error_if_not_value(tokens, TOKENS.QUESTION))
+        _ = error_if_not_type([c_type(exp)], NumericType)
+        if_true_exp = assignment_expression(tokens, symbol_table, cast_expression)
+        _ = error_if_not_value(tokens, TOKENS.COLON)
+        if_false_exp = conditional_expression(tokens, symbol_table, cast_expression)
+
+        ctype_1, ctype_2 = c_type(if_true_exp), c_type(if_false_exp)
+        if safe_type_coercion(ctype_1, ctype_2):
+            ctype = ctype_1(location)
+        elif safe_type_coercion(ctype_2, ctype_1):
+            ctype = ctype_2(location)
+        else:
+            raise ValueError('{l} Could not determine cond-expr return type giving the types {t1} and {t2}'.format(
+                t1=ctype_1, t2=ctype_2
+            ))
+        return TernaryExpression(exp, if_true_exp, if_false_exp, ctype, location)
+    else:
+        return exp
+conditional_expression.rules = {TOKENS.QUESTION}
+
+
 def numeric_type(tokens, symbol_table, l_exp, cast_expression):
     exp = get_binary_expression(tokens, symbol_table, l_exp, assignment_expression, NumericType, cast_expression)
     return CompoundAssignmentExpression(left_exp(exp), oper(exp), right_exp(exp), c_type(exp)(loc(exp)), loc(exp))
@@ -134,8 +159,8 @@ def assign(tokens, symbol_table, l_exp, cast_expression):
 
 
 def assignment_expression(tokens, symbol_table, cast_expression):
-    # : logical_or_expression | logical_or_expression assignment_operator assignment_expression
-    left_value_exp = logical_or_expression(tokens, symbol_table, cast_expression)
+    # : conditional_expression | conditional_expression assignment_operator assignment_expression
+    left_value_exp = conditional_expression(tokens, symbol_table, cast_expression)
     if peek(tokens, default='') in assignment_expression.rules:
         return assignment_expression.rules[peek(tokens)](tokens, symbol_table, left_value_exp, cast_expression)
     return left_value_exp

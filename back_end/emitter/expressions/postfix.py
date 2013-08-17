@@ -1,17 +1,23 @@
 __author__ = 'samyvilar'
 
-from itertools import chain
+from itertools import chain, izip, imap, izip_longest
+from collections import defaultdict
+
 from front_end.loader.locations import loc
+
+from sequences import reverse
 
 from front_end.parser.ast.expressions import PostfixIncrementExpression, PostfixDecrementExpression, left_exp, right_exp
 from front_end.parser.ast.expressions import FunctionCallExpression, ArraySubscriptingExpression, exp
 from front_end.parser.ast.expressions import ElementSelectionExpression, ElementSelectionThroughPointerExpression
-from front_end.parser.types import c_type, ArrayType
+from front_end.parser.types import c_type, ArrayType, FunctionType, PointerType, VoidPointer, StringType, VAListType
 
 from back_end.virtual_machine.instructions.architecture import Push, Allocate, PushFrame, PopFrame, Address, Load, Set
 from back_end.virtual_machine.instructions.architecture import Integer, Multiply, Add, LoadStackPointer, Enqueue
-from back_end.virtual_machine.instructions.architecture import AbsoluteJump, LoadBaseStackPointer
+from back_end.virtual_machine.instructions.architecture import AbsoluteJump, SetBaseStackPointer, LoadBaseStackPointer
 from back_end.emitter.c_types import size, struct_member_offset
+
+from back_end.emitter.expressions.cast import cast
 
 
 # A pure implemented of Postfix Expressions are quite hard if not impossible on completely stack based machines, since
@@ -24,33 +30,59 @@ def inc_dec(expr, symbol_table, expression_func):
         yield temp
         temp = instr
     if isinstance(temp, Load):
-        yield Enqueue(loc(expr), size(Address()))  # enqueue two copies one for loading and the other for setting.
-        yield Enqueue(loc(expr), size(Address()))
+        yield Enqueue(loc(expr), size(VoidPointer))  # enqueue two copies one for loading and the other for setting.
+        yield Enqueue(loc(expr), size(VoidPointer))
         yield temp
     else:
         raise ValueError('Expected load instr')
 
 
+def func_type(expr):
+    if isinstance(c_type(expr), FunctionType):
+        return c_type(expr)
+    elif isinstance(c_type(expr), PointerType) and isinstance(c_type(c_type(expr)), FunctionType):
+        return c_type(c_type(expr))
+    else:
+        raise ValueError('{l} Expected FunctionType or Pointer to FunctionType got {g}'.format(
+            l=loc(expr), g=c_type(expr)
+        ))
+
+
+# Bug when pushing the new frame, the base pointer is reset losing scope to previous values that may be copied
+# over to the next frame!!!!
 def function_call(expr, symbol_table, expression_func):
-    return_instr = PopFrame(loc(expr))  # once the function returns remove created frame
+    l = loc(expr)
+    _pop_frame_instr = PopFrame(loc(expr))  # once the function returns remove created frame
+
+    def _size(ctype):
+        return _size.rules[type(ctype)](ctype)
+    _size.rules = defaultdict(lambda: size)
+    _size.rules.update(
+        {
+            ArrayType: size(VoidPointer),
+            StringType: size(VoidPointer),
+        }
+    )
     return chain(
-        chain(
-            (Allocate(loc(expr), size(c_type(expr))),),
-            expression_func(left_exp(expr), symbol_table, expression_func),  # we must load addr before gen new frame
-            (
-                PushFrame(loc(expr)),
-                Push(loc(expr), Address(return_instr, loc(expr))),
-            ),
-            *(expression_func(arg, symbol_table, expression_func) for arg in right_exp(expr))
-        ),
+        (Allocate(l, size(c_type(expr))), PushFrame(l)),  # Allocate space for return value, save frame.
+        # Push arguments in reverse order (right to left) ...
+        chain.from_iterable(reverse(expression_func(arg, symbol_table, expression_func) for arg in right_exp(expr))),
         (
-            LoadBaseStackPointer(loc(expr)),
-            Push(loc(expr), size(Address())),
-            Add(loc(expr)),
-            Load(loc(expr), size(Address())),
-            AbsoluteJump(loc(expr)),
-            return_instr,
-            Allocate(loc(expr), -1 * size(Address())),  # de-allocate function address.
+            LoadStackPointer(l),  # Pointer to location where to store return values ...
+            Push(l, Address(sum(_size(c_type(e)) for e in right_exp(expr)) + 1, l)),
+            Add(l),
+            Push(l, Address(_pop_frame_instr, l)),  # make callee aware of were to return to.
+            # give callee a new frame to work with ...
+        ),
+        expression_func(left_exp(expr), symbol_table, expression_func),   # load callee address
+        (
+            LoadStackPointer(l),
+            Push(l, Address(size(VoidPointer))),
+            Add(l),
+            SetBaseStackPointer(l),
+
+            AbsoluteJump(l),
+            _pop_frame_instr
         ),
     )
 
@@ -90,7 +122,7 @@ def element_selection(expr, symbol_table, expression_func):
     else:
         yield value
         struct_size = size(c_type(left_exp(expr)))
-        member_size = size(Address) if isinstance(c_type(expr), ArrayType) else size(c_type(expr))
+        member_size = size(VoidPointer) if isinstance(c_type(expr), ArrayType) else size(c_type(expr))
         yield LoadStackPointer(loc(expr))
         yield Push(loc(expr), Integer(struct_size, loc(expr)))
         yield Add(loc(expr))  # calculate starting address of structure

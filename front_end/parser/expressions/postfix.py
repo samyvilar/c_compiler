@@ -6,9 +6,10 @@ from front_end.loader.locations import loc
 from front_end.tokenizer.tokens import TOKENS, IDENTIFIER
 
 from front_end.parser.types import c_type, FunctionType, PointerType, IntegralType, StructType, safe_type_coercion
+from front_end.parser.types import VAListType
 from front_end.parser.ast.expressions import ArraySubscriptingExpression, ArgumentExpressionList, FunctionCallExpression
 from front_end.parser.ast.expressions import ElementSelectionExpression, ElementSelectionThroughPointerExpression
-from front_end.parser.ast.expressions import PostfixIncrementExpression, PostfixDecrementExpression
+from front_end.parser.ast.expressions import PostfixIncrementExpression, PostfixDecrementExpression, CastExpression
 
 from front_end.errors import error_if_not_type, error_if_not_value
 
@@ -33,6 +34,13 @@ def argument_expression_list(tokens, symbol_table, expression_func):
     return expressions
 
 
+def arguments(func_type):
+    for arg in func_type:
+        yield arg
+    while isinstance(c_type(arg), VAListType):
+        yield arg
+
+
 # Function call can only be called on an expression that return a pointer to a function type or a function_type.
 def function_call(tokens, symbol_table, primary_exp, expression_func):
     if not isinstance(c_type(primary_exp), FunctionType) and \
@@ -53,16 +61,24 @@ def function_call(tokens, symbol_table, primary_exp, expression_func):
     expression_argument_list = ArgumentExpressionList((), l)
     if peek(tokens, default='') != TOKENS.RIGHT_PARENTHESIS:
         # check the arguments.
-        for exp_type, arg in izip_longest(func_type, argument_expression_list(tokens, symbol_table, expression_func)):
+        for arg_decl, arg in izip_longest(
+                arguments(func_type), argument_expression_list(tokens, symbol_table, expression_func)
+        ):
+            if isinstance(c_type(arg_decl), VAListType) and arg is None:
+                break
             if arg is None:
                 raise ValueError('{l} Function call with not enough arguments specified.'.format(l=l))
-            elif exp_type is None:
+            elif arg_decl is None:
                 raise ValueError('{l} Function call with to many arguments specified'.format(l=loc(arg)))
-            elif not safe_type_coercion(c_type(arg), c_type(exp_type)):
+            elif not safe_type_coercion(c_type(arg), c_type(arg_decl)):
                 raise ValueError('{l} Function call, could not coerce argument from {f_type} to {t_type}'.format(
-                    l=loc(arg), f_type=c_type(arg), t_type=c_type(exp_type),
+                    l=loc(arg), f_type=c_type(arg), t_type=c_type(arg_decl),
                 ))
-            expression_argument_list.append(arg)
+            expression_argument_list.append(
+                CastExpression(arg, c_type(
+                    arg if isinstance(c_type(arg_decl), VAListType) else arg_decl
+                ), loc(arg))
+            )
     _ = error_if_not_value(tokens, TOKENS.RIGHT_PARENTHESIS)
     return FunctionCallExpression(primary_exp, expression_argument_list, ret_type(l), l)
 

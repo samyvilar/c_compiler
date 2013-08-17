@@ -1,7 +1,7 @@
 __author__ = 'samyvilar'
 
 from collections import defaultdict
-from itertools import izip
+from itertools import izip, chain
 
 
 ids = defaultdict()
@@ -49,7 +49,8 @@ class Halt(Instruction):
 
 
 class Operand(object):
-    pass
+    def __iter__(self):
+        yield self
 
 
 class Integer(Int, Operand):
@@ -211,11 +212,13 @@ class VariableLengthInstruction(WideInstruction):  # Instructions with more than
 
 class JumpTable(RelativeJump, VariableLengthInstruction):
     def __new__(cls, location, cases):
+        default_addr = cases.pop('default')
         value = super(JumpTable, cls).__new__(
             cls,
             location,
-            [Integer(len(cases), location), cases.default_factory()] + cases.items()
+            (Integer(len(cases), location), default_addr) + tuple(chain.from_iterable(cases.iteritems()))
         )
+        cases['default'] = default_addr
         value.cases = cases
         return value
 
@@ -237,6 +240,10 @@ class PopFrame(StackInstruction):
 
 class LoadBaseStackPointer(Instruction):
     # Pushes the current address of the base stack pointer, used to reference auto variables.
+    pass
+
+
+class SetBaseStackPointer(Instruction):
     pass
 
 
@@ -330,6 +337,7 @@ ids.update({
     Dequeue: -5,
     Dup: 6,
     LoadBaseStackPointer: 7,
+    SetBaseStackPointer: -7,
     LoadStackPointer: 8,
     Allocate: 9,
 

@@ -12,18 +12,17 @@ def error_if_empty(value_stream, location=LocationNotSet):
 
 
 def error_if_not_empty(value_stream, location=LocationNotSet):
-    try:
-        value = peek(value_stream)
+    terminal = object()
+    value = peek(value_stream, default=terminal)
+    if value is not terminal:
         raise ValueError('{l} Got {got} but expected nothing'.format(l=location or loc(value), got=value))
-    except StopIteration as _:
-        pass
 
 
 def error_if_not_value(value_stream, value, location=LocationNotSet):
     error_if_empty(value_stream)
     curr = consume(value_stream)
     if curr != value:
-        raise ValueError('{l} Expected {value} but got {got}.'.format(l=location or loc(curr), value=value, got=curr))
+        raise ValueError('{l} Expected {value} but got {got}'.format(l=location or loc(curr), value=value, got=curr))
     return curr
 
 

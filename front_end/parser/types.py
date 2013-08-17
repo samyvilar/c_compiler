@@ -1,12 +1,10 @@
 __author__ = 'samyvilar'
 
-from copy import deepcopy
-from collections import OrderedDict
 from itertools import izip
 
 from logging_config import logging
 
-from front_end.loader.locations import loc
+from front_end.loader.locations import loc, LocationNotSet
 from front_end.tokenizer.tokens import TOKENS
 
 
@@ -98,18 +96,12 @@ class IntegralType(NumericType):  # Integral types support all the same as Numer
         self._unsigned = unsigned
         super(IntegralType, self).__init__(location)
 
-    def check_sign(self, other):
-        if unsigned(self) != unsigned(other):
-            logger.warning('{l} Comparing types with different signs'.format(l=loc(other)))
-
     def __gt__(self, other):
-        self.check_sign(other)
         if self.rank == other.rank and unsigned(self) != unsigned(other):  # same rank but diff sign
             return unsigned(self)
         return super(IntegralType, self).__gt__(other)
 
     def __lt__(self, other):
-        self.check_sign(other)
         if self.rank == other.rank and unsigned(self) != unsigned(other):  # same rank but diff sign
             return not unsigned(self)
         return super(IntegralType, self).__lt__(other)
@@ -121,20 +113,16 @@ class IntegralType(NumericType):  # Integral types support all the same as Numer
     def unsigned(self):
         return self._unsigned
 
+    @unsigned.setter
+    def unsigned(self, value):
+        self._unsigned = value
+
 
 class CharType(IntegralType):
     rank = 1
 
 
-class ShortType(IntegralType):
-    rank = 2
-
-
 class IntegerType(IntegralType):
-    rank = 3
-
-
-class LongType(IntegralType):
     rank = 4
 
 
@@ -147,7 +135,7 @@ class FloatType(NumericType):
 
 
 class DoubleType(FloatType):
-    rank = 6
+    rank = 8
 
 
 class ChainedType(CType):
@@ -166,11 +154,40 @@ class ChainedType(CType):
         self.__c_type = _c_type
 
     def __eq__(self, other):
-        return all((super(ChainedType, self).__eq__(other), c_type(self) == c_type(other)))
+        return super(ChainedType, self).__eq__(other) and c_type(self) == c_type(other)
 
     @property
     def incomplete(self):
         return incomplete(c_type(self))
+
+
+class VAListType(CType):
+    pass
+
+
+class WidthType(ChainedType, IntegralType):
+    incomplete = False
+
+    def __init__(self, ctype, location, unsigned=False):
+        super(WidthType, self).__init__(ctype, location)
+        self.unsigned = unsigned
+
+    def __call__(self, location):
+        return self.__class__(c_type(self)(location), location, unsigned=self.unsigned)
+
+    @property
+    def rank(self):
+        return c_type(self).rank
+
+
+class LongType(WidthType):
+    rank = 4
+    pass
+
+
+class ShortType(WidthType):
+    rank = 2
+    pass
 
 
 class PointerType(ChainedType, IntegralType):
@@ -205,6 +222,10 @@ class ArrayType(PointerType):
     def __repr__(self):
         return "Array of {of}".format(of=self.c_type)
 
+    @property
+    def const(self):
+        return True
+
 
 class StringType(ArrayType):
     def __init__(self, length, location):
@@ -225,11 +246,13 @@ class FunctionType(ChainedType, list):
         )
 
     def __eq__(self, other):
-        return all((
-            super(FunctionType, self).__eq__(other),
-            len(self) == len(other),
-            all(c_type(s) == c_type(o) for s, o in izip(self, other))
-        ))
+        return super(FunctionType, self).__eq__(other) and len(self) == len(other) and all(
+            c_type(s) == c_type(o) for s, o in izip(self, other)
+        )
+
+    @property
+    def const(self):
+        return True
 
 
 class StructType(CType):
@@ -256,7 +279,7 @@ class StructType(CType):
     def members(self, _members):
         if self.members is None:
             self._members = _members
-        else:
+        elif _members != self._members:
             raise TypeError('{l} StructType already has members'.format(l=loc(self)))
 
     @property
@@ -275,19 +298,31 @@ class StructType(CType):
         return 1
 
     def __eq__(self, other):
-        return all((
-            super(StructType, self).__eq__(other),
-            len(self.members) == len(other.members),
+        return self is other or (  # Structs are self referencing each other when nested, TODO: fix this!!!!
+            super(StructType, self).__eq__(other) and
+            len(self.members) == len(other.members) and
             all(member == other_member for member, other_member in izip(
-                self.members.itervalues(), other.members.itervalues())),
-        ))
+                self.members.itervalues(), other.members.itervalues()))
+        )
+
+
+class UnionType(StructType):
+    @property
+    def name(self):
+        return UnionType.get_name(self._name)
+
+    @staticmethod
+    def get_name(value):
+        return (value and 'union ' + value) or value
 
 
 # check if one type could be coerce to another.
 def safe_type_coercion(from_type, to_type):
     if isinstance(from_type, NumericType) and isinstance(to_type, NumericType):
-        if unsigned(from_type) != unsigned(to_type):
-            logger.warning('{l} mixing unsigned and signed values'.format(l=loc(from_type)))
+        # if unsigned(from_type) != unsigned(to_type):
+        #     logger.warning('{l} mixing unsigned and signed values'.format(l=loc(from_type)))
+        return True
+    if isinstance(from_type, VAListType) or isinstance(to_type, VAListType):
         return True
     return from_type == to_type
 
@@ -301,9 +336,7 @@ def c_type(obj, *args):
 
 def base_c_type(ctype):
     assert isinstance(ctype, NumericType)
-    if isinstance(c_type(ctype), PointerType):
-        return PointerType
-    if isinstance(c_type(ctype), IntegralType):
+    if isinstance(ctype, IntegralType):
         return IntegralType
     return NumericType
 
@@ -316,7 +349,18 @@ def unsigned(obj):
     return getattr(obj, 'unsigned')
 
 
+def const(obj):
+    return getattr(obj, 'const', False)
+
+
+def volatile(obj):
+    return getattr(obj, 'volatile', False)
+
+
 def set_core_type(base_type, fundamental_type):
     while type(c_type(base_type)) is not CType:
         base_type = c_type(base_type)
     base_type.c_type = fundamental_type
+
+
+VoidPointer = PointerType(VoidType(LocationNotSet), LocationNotSet)

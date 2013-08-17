@@ -2,11 +2,9 @@ __author__ = 'samyvilar'
 
 from front_end.loader.locations import loc
 
-from front_end.parser.types import CType, c_type, safe_type_coercion, FunctionType
+from front_end.parser.types import CType, c_type, safe_type_coercion
 from front_end.parser.ast.general import Node, EmptyNode
 from front_end.parser.ast.expressions import ConstantExpression, TypedNode
-
-from front_end.errors import error_if_not_type
 
 
 class StorageClass(Node):

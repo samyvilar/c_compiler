@@ -23,6 +23,7 @@ class TestStatements(TestCase):
         symbol_table = SymbolTable()
         symbol_table['__ LABELS __'] = SymbolTable()
         symbol_table['__ GOTOS __'] = defaultdict(list)
+
         load(
             chain(
                 emitter.statement(next(parser.statement(preprocess(tokenize(source(code))))), symbol_table),
@@ -31,6 +32,7 @@ class TestStatements(TestCase):
             self.mem,
             {}
         )
+        self.cpu.instr_pointer = min(self.mem.iterkeys())
         evaluate(self.cpu, self.mem)
 
 

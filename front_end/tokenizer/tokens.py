@@ -1,5 +1,3 @@
-from sequences import values
-
 __author__ = 'samyvilar'
 
 import string
@@ -29,6 +27,8 @@ class WhiteSpace(Symbol):
 
 
 class TOKENS(object):
+    QUESTION = Symbol('?')
+
     EQUAL = Symbol('=')
     PLUS = Symbol('+')
     MINUS = Symbol('-')
@@ -40,6 +40,7 @@ class TOKENS(object):
     SEMICOLON = Symbol(';')
     COLON = Symbol(':')
     DOT = Symbol('.')
+
     EXCLAMATION = Symbol('!')
     LEFT_PARENTHESIS = Symbol('(')
     RIGHT_PARENTHESIS = Symbol(')')
@@ -80,40 +81,45 @@ class TOKENS(object):
     SHIFT_RIGHT_EQUAL = Symbol('>>=')
 
     # IDs of all keywords
-    SIZEOF = KeywordSymbol('sizeof')
+    AUTO = KeywordSymbol('auto')
+
     BREAK = KeywordSymbol('break')
     CASE = KeywordSymbol('case')
     CHAR = KeywordSymbol('char')
+    CONST = KeywordSymbol('const')
     CONTINUE = KeywordSymbol('continue')
     DEFAULT = KeywordSymbol('default')
     DO = KeywordSymbol('do')
     DOUBLE = KeywordSymbol('double')
     ELSE = KeywordSymbol('else')
+    EXTERN = KeywordSymbol('extern')
     FLOAT = KeywordSymbol('float')
     FOR = KeywordSymbol('for')
     GOTO = KeywordSymbol('goto')
     IF = KeywordSymbol('if')
     INT = KeywordSymbol('int')
     LONG = KeywordSymbol('long')
+    REGISTER = KeywordSymbol('register')
     RETURN = KeywordSymbol('return')
     SHORT = KeywordSymbol('short')
     SIGNED = KeywordSymbol('signed')
+    SIZEOF = KeywordSymbol('sizeof')
+    STATIC = KeywordSymbol('static')
     STRUCT = KeywordSymbol('struct')
     SWITCH = KeywordSymbol('switch')
+    TYPEDEF = KeywordSymbol('typedef')
+    UNION = KeywordSymbol('union')
     UNSIGNED = KeywordSymbol('unsigned')
     VOID = KeywordSymbol('void')
+    VOLATILE = KeywordSymbol('volatile')
     WHILE = KeywordSymbol('while')
-    TYPEDEF = KeywordSymbol('typedef')
-    EXTERN = KeywordSymbol('extern')
-    STATIC = KeywordSymbol('static')
-    AUTO = KeywordSymbol('auto')
-    REGISTER = KeywordSymbol('register')
 
     NUMBER_SIGN = Symbol('#')
     PINCLUDE = PreprocessorSymbol('#include')
     PDEFINE = PreprocessorSymbol('#define')
     PUNDEF = PreprocessorSymbol('#undef')
 
+    PP = PreprocessorSymbol('##')
     PIF = PreprocessorSymbol('#if')
     PELIF = PreprocessorSymbol('#elif')
     PELSE = PreprocessorSymbol('#else')
@@ -121,6 +127,8 @@ class TOKENS(object):
     PIFNDEF = PreprocessorSymbol('#ifndef')
     PENDIF = PreprocessorSymbol('#endif')
     DEFINED = PreprocessorSymbol('defined')
+    PWARNING = PreprocessorSymbol('#warning')
+    PERROR = PreprocessorSymbol('#error')
 
     non_keyword_symbols = set()
     keyword_symbols = set()
@@ -148,7 +156,8 @@ TOKENS.pre_processing_directives = {
 
 
 class TOKEN(Str):
-    pass
+    def __repr__(self):
+        return self
 
 
 class CONSTANT(TOKEN):
@@ -156,11 +165,13 @@ class CONSTANT(TOKEN):
 
 
 class STRING(CONSTANT):
-    pass
+    def __repr__(self):
+        return '"' + str.__repr__(self)[1:-1] + '"'
 
 
 class CHAR(CONSTANT):
-    pass
+    def __repr__(self):
+        return "'" + str.__repr__(self)[1:-1] + "'"
 
 
 class INTEGER(CONSTANT):
@@ -207,5 +218,5 @@ class PRE_PROCESSING_SYMBOL(TOKEN):
     # noinspection PyInitNewSignature
     def __new__(cls, values, location=LocationNotSet):
         if values not in TOKENS.pre_processing_directives:
-            raise ValueError('{l} Could not locate pre_processing directive {d}'.format(l=locatio, d=values))
+            raise ValueError('{l} Could not locate pre_processing directive {d}'.format(l=location, d=values))
         return super(PRE_PROCESSING_SYMBOL, cls).__new__(cls, values, location)

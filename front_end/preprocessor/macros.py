@@ -1,9 +1,14 @@
 __author__ = 'samyvilar'
 
-from sequences import peek, consume
+from itertools import izip_longest, chain
+
+from front_end.loader.load import Str
+from sequences import peek, consume, takewhile
 from front_end.errors import error_if_not_value, error_if_not_type
-from front_end.loader.locations import loc
-from front_end.tokenizer.tokens import TOKENS, IDENTIFIER, INTEGER
+from front_end.loader.locations import loc, EOFLocation
+from front_end.tokenizer.tokens import TOKENS, IDENTIFIER, INTEGER, KEYWORD, STRING, IGNORE
+
+from front_end.tokenizer.tokenize import tokenize
 
 
 class ObjectMacro(object):
@@ -14,6 +19,35 @@ class ObjectMacro(object):
         return self._body
 
 
+def argument(
+        token_seq,
+        takewhile=lambda token_seq:
+        peek(token_seq, default=TOKENS.COMMA) not in {TOKENS.COMMA, TOKENS.RIGHT_PARENTHESIS}
+):
+    while takewhile(token_seq):
+        if peek(token_seq, default='') == TOKENS.LEFT_PARENTHESIS:
+            yield consume(token_seq)
+            for t in argument(token_seq,
+                              takewhile=lambda token_seq:
+                              peek(token_seq, default=TOKENS.RIGHT_PARENTHESIS) != TOKENS.RIGHT_PARENTHESIS):
+                yield t
+            yield error_if_not_value(token_seq, TOKENS.RIGHT_PARENTHESIS)
+        else:
+            yield consume(token_seq)
+
+
+def arguments(token_seq):
+    while peek(token_seq, default=TOKENS.RIGHT_PARENTHESIS) != TOKENS.RIGHT_PARENTHESIS:
+        yield argument(token_seq)
+        if peek(token_seq, default='') == TOKENS.COMMA:
+            _ = consume(token_seq)
+        elif peek(token_seq, default='') != TOKENS.RIGHT_PARENTHESIS:
+            raise ValueError('{l} expected either COMMA or RIGHT_PARENTHESIS got {g}'.format(
+                l=loc(peek(token_seq, default=EOFLocation)), g=peek(token_seq, default='')
+            ))
+    _ = error_if_not_value(token_seq, TOKENS.RIGHT_PARENTHESIS)
+
+
 class FunctionMacro(ObjectMacro):
     def __init__(self, name, arguments, body):
         self.arguments = arguments
@@ -21,71 +55,71 @@ class FunctionMacro(ObjectMacro):
 
     def body(self, tokens=()):
         if peek(tokens, default='') != TOKENS.LEFT_PARENTHESIS:
-            return [self.name]
+            return self.name, consume(tokens, default=IGNORE('', EOFLocation))
 
         location = loc(error_if_not_value(tokens, TOKENS.LEFT_PARENTHESIS))
-        args, nested_level = [], 0
-        while peek(tokens, default='') != TOKENS.RIGHT_PARENTHESIS:
-            args.append([])
-            while peek(tokens, default='') not in {TOKENS.COMMA, TOKENS.RIGHT_PARENTHESIS}:
-                if peek(tokens, default='') == TOKENS.LEFT_PARENTHESIS:
-                    while peek(tokens, default='') != TOKENS.RIGHT_PARENTHESIS and not nested_level:
-                        if peek(tokens) == TOKENS.LEFT_PARENTHESIS:
-                            nested_level += 1
-                        if peek(tokens) == TOKENS.RIGHT_PARENTHESIS:
-                            nested_level -= 1
-                        args[-1].append(consume(tokens))
-                    args[-1].append(error_if_not_value(tokens, TOKENS.RIGHT_PARENTHESIS))
-                else:
-                    args[-1].append(consume(tokens))
-            _ = peek(tokens, default='') == TOKENS.COMMA and consume(tokens)
-        _ = error_if_not_value(tokens, TOKENS.RIGHT_PARENTHESIS)
-
-        if len(args) != len(self.arguments):
+        expansion = {arg: tuple(b) for b, arg in izip_longest(arguments(tokens) or (), self.arguments)}
+        if len(expansion) != len(self.arguments):
             raise ValueError('{l} Macro function {f} requires {t} arguments but got {g}.'.format(
-                f=self.name, t=len(self.arguments), g=len(args), l=location
+                f=self.name, t=len(self.arguments), g=len(expansion), l=location
             ))
-
-        expansion, new_tokens = {arg: args[index] for index, arg in enumerate(self.arguments)}, []
-        for token in self._body:
-            new_tokens.extend(expansion.get(token, [token]))
-        return new_tokens
+        return chain.from_iterable(
+            (STRING(' '.join(expansion.get(token[1:], (token,)))),)
+            if token.startswith(TOKENS.NUMBER_SIGN) and token != TOKENS.PP else expansion.get(token, (token,))
+            for token in self._body
+        )
 
 
 class DefinedMacro(FunctionMacro):
     def __init__(self, macros):
         self.macros = macros
-        super(DefinedMacro, self).__init__(TOKENS.DEFINED, ['argument'], [])
+        super(DefinedMacro, self).__init__(TOKENS.DEFINED, ('argument',), ())
 
     def body(self, arguments=()):
         if peek(arguments, default='') == TOKENS.LEFT_PARENTHESIS:
-            _ = error_if_not_value(arguments, TOKENS.LEFT_PARENTHESIS)
-            name = error_if_not_type(arguments, IDENTIFIER)
+            _ = consume(arguments)
+            name = error_if_not_type(arguments, (IDENTIFIER, KEYWORD))
             _ = error_if_not_value(arguments, TOKENS.RIGHT_PARENTHESIS)
-        elif isinstance(peek(arguments, default=''), IDENTIFIER):
-            name = error_if_not_type(arguments, IDENTIFIER)
+        elif isinstance(peek(arguments, default=''), (IDENTIFIER, KEYWORD)):
+            name = consume(arguments)
         else:
             raise ValueError('Expected either LEFT_PARENTHESIS or IDENTIFIER for function macro defined')
-        return [INTEGER('1', loc(name)) if name in self.macros else INTEGER('0', loc(name))]
+        return INTEGER('1', loc(name)) if name in self.macros else INTEGER('0', loc(name)),
+
+
+def expand(token, tokens, macros, expanded_macros=None):
+    _iter = lambda seq: takewhile(lambda _: True, iter(seq))
+    expanded_macros = expanded_macros or {}
+
+    if token in macros and id(token) not in expanded_macros:
+        body = _iter(macros[token].body(tokens))
+        expanded_macros[id(token)] = token
+        return chain.from_iterable(expand(t, chain(body, _iter(tokens)), macros, expanded_macros) for t in body)
+    else:
+        return token,
+
+
+def merge_tokens(token_seq):
+    while peek(token_seq, default=False):
+        prev_token = consume(token_seq)
+        while peek(token_seq, default='') == TOKENS.PP:
+            _ = consume(token_seq)
+            prev_token = next(tokenize((Str(c, loc(_)) for c in prev_token + consume(token_seq, default=IGNORE('')))))
+        yield prev_token
+    else:
+        yield IGNORE('')
 
 
 class Macros(dict):
     def __init__(self):
         super(Macros, self).__init__()
         self[TOKENS.DEFINED] = DefinedMacro(self)
+        self['__x86_64__'] = ObjectMacro('__x86_64__', IGNORE(''))
 
     def get(self, k, d=None, all_tokens=()):
         location = loc(k)
         if k in self:
-            expand_tokens, expanded_tokens, new_tokens = [k], {}, []
-            while expand_tokens:
-                token = expand_tokens.pop(0)
-                if token in self and token not in expanded_tokens:
-                    expand_tokens.extend(self[token].body(all_tokens))
-                else:
-                    new_tokens.append(token)
-                expanded_tokens[token] = token
-            for token in new_tokens:
+            for token in merge_tokens(expand(k, all_tokens, self)):
                 yield token.__class__(token, location)
         elif d is not None:
             yield d

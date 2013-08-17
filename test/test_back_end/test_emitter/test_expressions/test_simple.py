@@ -24,6 +24,7 @@ class TestRawExpression(TestCase):
             self.mem,
             {}
         )
+        self.cpu.instr_pointer = min(self.mem.iterkeys())
         evaluate(self.cpu, self.mem)
 
     def test_binary_expr(self):
@@ -39,11 +40,11 @@ class TestRawExpression(TestCase):
     def test_binary_logical_expr(self):
         py_exp = '(int)(1) > (int)(3) and (int)(1) <= (int)(10) and' + \
                  '(int)(25) != (not (int)(4)) ^ ((int)(5) == (int)(19) + (int)(10) - (not (float)(10.4)))'
-        source = """
+        code = """
             #define or ||
             #define and &&
             #define not !
 
             """ + py_exp
-        self.evaluate_expr(source)
+        self.evaluate_expr(code)
         self.assertEqual(eval(py_exp), pop(self.cpu, self.mem))

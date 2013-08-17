@@ -15,7 +15,7 @@ def _apply(declarations, symbol_table, directives):
         yield directives[type(peek(declarations))](consume(declarations), symbol_table)
 
 
-def emit(declarations, symbol_table=None, directives=get_directives()):
+def emit(declarations=(), symbol_table=None, directives=get_directives()):
     return _apply(
         ifilterfalse(lambda dec: isinstance(dec, (TypeDef, EmptyDeclaration)), declarations),
         symbol_table or SymbolTable(),

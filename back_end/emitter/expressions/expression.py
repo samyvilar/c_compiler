@@ -10,13 +10,14 @@ from front_end.parser.ast.expressions import ConstantExpression, CastExpression,
 from front_end.parser.ast.expressions import BinaryExpression, AssignmentExpression, CompoundAssignmentExpression
 from front_end.parser.ast.expressions import PostfixIncrementExpression, PostfixDecrementExpression
 from front_end.parser.ast.expressions import EmptyExpression, exp
-from front_end.parser.types import c_type, FunctionType, ArrayType
+from front_end.parser.types import c_type, FunctionType, ArrayType, VoidPointer
 
 from back_end.emitter.expressions.cast import cast_expression
 from back_end.emitter.expressions.constant import constant_expression
 from back_end.emitter.expressions.binary import binary_expression
 from back_end.emitter.expressions.unary import unary_expression
 from back_end.emitter.expressions.postfix import postfix_expression
+from back_end.emitter.expressions.ternary import ternary_expression
 
 from back_end.emitter.c_types import size
 
@@ -33,11 +34,11 @@ def identifier_expression(expr, symbol_table, expression_func):
 
 
 def postfix_inc_dec(expr, value):
-    yield Dequeue(loc(expr), size(Address()))
+    yield Dequeue(loc(expr), size(VoidPointer))
     yield Load(loc(expr), size(c_type(expr)))
     yield Push(loc(expr), Integer(value, loc(expr)))
     yield Add(loc(expr))
-    yield Dequeue(loc(expr), size(Address()))
+    yield Dequeue(loc(expr), size(VoidPointer))
     yield Set(loc(expr), size(c_type(expr)))
     yield Allocate(loc(expr), Integer(-1 * size(c_type(expr)), loc(expr)))
 
@@ -72,3 +73,4 @@ expression.rules = {
 }
 expression.rules.update({rule: unary_expression for rule in unary_expression.rules})
 expression.rules.update({rule: postfix_expression for rule in postfix_expression.rules})
+expression.rules.update({rule: ternary_expression for rule in ternary_expression.rules})

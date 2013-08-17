@@ -11,5 +11,5 @@ def tokens(values, directives):
         yield directives[peek(values)](values)
 
 
-def tokenize(values=(), parsing_functions=get_directives()):
-    return ifilterfalse(lambda token: isinstance(token, IGNORE), tokens(values, parsing_functions))
+def tokenize(values=(), parsing_functions=get_directives(), ignore_tokens=IGNORE):
+    return ifilterfalse(lambda token: isinstance(token, ignore_tokens), tokens(iter(values), parsing_functions))

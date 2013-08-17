@@ -2,6 +2,8 @@ __author__ = 'samyvilar'
 
 from itertools import chain
 
+from types import NoneType
+
 from back_end.emitter.stack_state import Stack
 
 from front_end.loader.locations import loc
@@ -45,13 +47,17 @@ def definition(stmnt, symbol_table, stack, *_):
     if isinstance(stmnt.storage_class, declarations.Static):  # Static Definition.
         start_of_data, end_of_data = Pass(loc(stmnt)), Pass(loc(stmnt))
 
-        def load_address(self, location):
-            yield Push(location, Address(self.start_of_data, location))
-            yield Push(location, Integer(1, location))
+        def load_address(self, location, start_of_data=start_of_data):
+            yield Push(location, Address(start_of_data, location))
+            yield Push(location, Integer(size(Pass(location)), location))
             yield Add(location)
 
-        stmnt.load_address = bind_load_address_func(stmnt, load_address)
+        stmnt.load_address = bind_load_address_func(load_address, stmnt)
         symbol_table[declarations.name(stmnt)] = stmnt
+        if not isinstance(declarations.initialization(stmnt), (expressions.ConstantExpression, NoneType)):
+            raise ValueError('{l} Static definitions may only be initialized with a ConstantExpression got {g}'.format(
+                l=loc(stmnt), g=declarations.initialization(stmnt)
+            ))
         instrs = chain((RelativeJump(loc(stmnt), Address(end_of_data, loc(stmnt))),), binaries(stmnt), (end_of_data,))
     else:  # Definition with either Auto/Register/None storage class.
         stmnt = stack_allocation(stack, stmnt)
@@ -66,7 +72,7 @@ def definition(stmnt, symbol_table, stack, *_):
 def compound_statement(stmnt, symbol_table, stack, statement_func):
     stack_pointer = stack.stack_pointer
     symbol_table = push(symbol_table)
-    for instr in chain.from_iterable(statement_func(s, symbol_table, stack) for st in stmnt for s in st):
+    for instr in chain.from_iterable(statement_func(s, symbol_table, stack) for s in chain.from_iterable(stmnt)):
         yield instr
     yield Allocate(loc(stmnt), Integer(stack.stack_pointer - stack_pointer, loc(stmnt)))
     _ = pop(symbol_table)

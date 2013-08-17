@@ -23,6 +23,34 @@ from front_end.parser.expressions.reduce import reduce_expression
 from front_end.errors import error_if_not_value, error_if_empty
 
 
+def string_literal(tokens):
+    token = ''
+    location = loc(peek(tokens))
+    while type(peek(tokens, default=None)) is STRING:
+        token += consume(tokens)
+    token += '\0'
+    return ConstantExpression(
+        (ConstantExpression(ord(c), CharType(location), location) for c in token),
+        StringType(len(token), location),
+        location
+    )
+
+
+def char_literal(tokens):
+    token = consume(tokens)
+    return ConstantExpression(ord(token), CharType(loc(token)), loc(token))
+
+
+def integer_literal(tokens):
+    token = consume(tokens)
+    return ConstantExpression(int(token), IntegerType(loc(token)), loc(token))
+
+
+def float_literal(tokens):
+    token = consume(tokens)
+    return ConstantExpression(float(token), DoubleType(loc(token)), loc(token))
+
+
 # Primary expression found at the heart of all expressions.
 def primary_expression(tokens, symbol_table):   #: IDENTIFIER | constant | '(' expression ')'
     if isinstance(peek(tokens, default=''), IDENTIFIER):
@@ -30,12 +58,12 @@ def primary_expression(tokens, symbol_table):   #: IDENTIFIER | constant | '(' e
         return IdentifierExpression(identifier, c_type(symbol_table[identifier]), loc(identifier))
     if isinstance(peek(tokens, default=''), CONSTANT):
         rules = {
-            CHAR: lambda token: ConstantExpression(ord(token), CharType(loc(token)), loc(token)),
-            STRING: lambda token: ConstantExpression(token, StringType(len(token), loc(token)), loc(token)),
-            INTEGER: lambda token: ConstantExpression(int(token), IntegerType(loc(token)), loc(token)),
-            FLOAT: lambda token: ConstantExpression(float(token), DoubleType(loc(token)), loc(token)),
+            CHAR: char_literal,
+            STRING: string_literal,
+            INTEGER: integer_literal,
+            FLOAT: float_literal,
         }
-        return rules[type(peek(tokens))](consume(tokens))
+        return rules[type(peek(tokens))](tokens)
     if peek(tokens, default='') == TOKENS.LEFT_PARENTHESIS:
         _ = consume(tokens)
         exp = expression(tokens, symbol_table)

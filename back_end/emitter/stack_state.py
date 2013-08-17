@@ -1,23 +1,22 @@
 __author__ = 'samyvilar'
 
+
 from front_end.parser.types import CType, c_type
 
 from front_end.parser.ast.declarations import Declaration, Declarator
 
-from back_end.emitter.types import size
-from back_end.emitter.instructions.data import bind_instructions
+from back_end.emitter.c_types import size
+from back_end.virtual_machine.instructions.architecture import LoadBaseStackPointer, Integer, Add, Push
+
+from back_end.emitter.c_types import bind_load_address_func
 
 
-class Stack(list):
+class Stack(object):
     def __init__(self):
         self._stack_pointer = 0
-        super(Stack, self).__init__()
 
-    def save_stack_pointer(self):
-        self.append(self.stack_pointer)
-
-    def restore_stack_pointer(self):
-        self.stack_pointer = self.pop()
+    def allocate(self, allocation_size):
+        self.stack_pointer -= allocation_size
 
     @property
     def stack_pointer(self):
@@ -29,11 +28,19 @@ class Stack(list):
             raise ValueError
         self._stack_pointer = value
 
-    def allocate(self, allocation_size):
-        self.stack_pointer -= allocation_size
-
     def __nonzero__(self):
         return 1
+
+
+def bind_instructions(obj, offset):
+    def load_address(self, location):
+        yield LoadBaseStackPointer(location)
+        yield Push(location, Integer(self.offset, location))
+        yield Add(location)
+
+    obj.offset = offset
+    obj.load_address = bind_load_address_func(load_address, obj)
+    return obj
 
 
 def stack_allocation(stack, obj):
@@ -42,8 +49,7 @@ def stack_allocation(stack, obj):
     else:
         obj_type = c_type(obj)
 
-    allocation_size = size(obj_type)
-    stack.allocate(allocation_size)
+    stack.allocate(size(obj_type))
     offset = stack.stack_pointer + 1
 
     return bind_instructions(obj, offset) if isinstance(obj, (Declaration, Declarator)) else obj

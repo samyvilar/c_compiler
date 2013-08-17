@@ -1,6 +1,6 @@
 __author__ = 'samyvilar'
 
-from itertools import chain, izip_longest
+from itertools import chain
 
 from front_end.loader.locations import loc
 from front_end.tokenizer.tokens import TOKENS
@@ -9,7 +9,7 @@ from front_end.parser.ast.expressions import SizeOfExpression, UnaryExpression, 
 from front_end.parser.ast.expressions import PrefixIncrementExpression, PrefixDecrementExpression, ConstantExpression
 from front_end.parser.ast.expressions import BinaryExpression, DereferenceExpression, AddressOfExpression
 
-from front_end.parser.types import c_type, base_c_type, IntegerType, IntegralType, NumericType
+from front_end.parser.types import c_type, base_c_type, IntegerType, IntegralType, NumericType, unsigned
 
 from back_end.emitter.c_types import size
 from back_end.virtual_machine.instructions.architecture import Push, Not, Load, Integer, LoadZeroFlag, Double
@@ -22,7 +22,7 @@ def inc_dec(value, expr, symbol_table, expression_func):
         CompoundAssignmentExpression(
             exp(expr),
             TOKENS.PLUS_EQUAL,
-            ConstantExpression(value, IntegerType(loc(expr)), loc(expr)),
+            ConstantExpression(value, IntegerType(loc(expr), unsigned=unsigned(c_type(expr))), loc(expr)),
             c_type(expr)(loc(expr)),
             loc(expr)
         ),

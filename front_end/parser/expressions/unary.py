@@ -9,10 +9,11 @@ from front_end.parser.ast.expressions import PrefixIncrementExpression, PrefixDe
 
 from front_end.errors import error_if_not_type, error_if_not_value
 
+from front_end.parser.declarations.declarators import type_name
+
 
 def no_rule_found(tokens, *_):
-    print list(tokens)
-    raise ValueError('{l} Could not find matching rule for {got} for unary_expression'.format(
+    raise ValueError('{l} Could not find matching rule for unary_expression got {got}'.format(
         l=loc(peek(tokens, default=EOFLocation)), got=peek(tokens, default='')
     ))
 
@@ -33,9 +34,11 @@ def size_of(tokens, symbol_table, unary_expression):
     if peek(tokens, default='') == TOKENS.LEFT_PARENTHESIS:
         left_parenthesis = consume(tokens)
 
-    # Symbol Table should be initialized with default types.
-    if isinstance(symbol_table.get(peek(tokens, default=''), ''), CType):
-        ctype = symbol_table[consume(tokens)]
+    if peek(tokens, default='') in {  # TODO: better organize types.
+            TOKENS.VOID, TOKENS.CHAR, TOKENS.SHORT, TOKENS.INT, TOKENS.LONG, TOKENS.FLOAT, TOKENS.DOUBLE,
+            TOKENS.STRUCT, TOKENS.SIGNED, TOKENS.UNSIGNED
+    } or isinstance(symbol_table.get(peek(tokens, default=''), ''), CType):
+        ctype = type_name(tokens, symbol_table)
     else:
         ctype = unary_expression(tokens, symbol_table)
 

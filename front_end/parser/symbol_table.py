@@ -4,8 +4,13 @@ from logging_config import logging
 
 from front_end.loader.locations import loc
 from front_end.parser.ast.declarations import Declaration
+from front_end.parser.types import c_type
 
 logger = logging.getLogger('parser')
+
+
+def declaration(dec):
+    return Declaration(dec.name, c_type(dec), loc(dec), dec.storage_class)
 
 
 class SymbolTable(object):
@@ -13,17 +18,24 @@ class SymbolTable(object):
         self.stack = [{}]
 
     def __setitem__(self, key, value):
-        if key in self:
-            if isinstance(self[key], Declaration):
-                if self[key] != value:
-                    raise ValueError('{l} Duplicate declaration of {v} mismatch, previous at {at}'.format(
-                        l=loc(value), v=value, at=loc(self[key])
-                    ))
-                logger.warning('{l} Redeclaring symbol {v} of same type ...'.format(l=loc(value), v=key))
+        # C allows multiple declarations, so long as long they are all consistent, with previous declarations
+        # AND a single definition.
+        # possible scenarios
+        # 1) Giving a declaration, check its consistent with previous declaration or definition if any.
+        # 2) Giving a definition, check its consistent with previous declaration and its consistent with previous
+        # declaration if any.
+
+        if isinstance(value, Declaration) and key in self:  # either function definition, definition or declaration.
+            if declaration(self[key]) == declaration(value):  # check for consistency.
+                if type(self[key]) is Declaration:  # if previous is declaration pop it and insert new either def or dec
+                    _ = self.pop(key)
             else:
-                raise ValueError('{l} Symbol {s} already in current scope previous definition at {at}'.format(
-                    l=loc(key), s=key, at=loc(self[key])
-                ))
+                raise ValueError('{l} inconsistent def/dec with previous at {a}'.format(l=loc(value), a=loc(self[key])))
+
+        if key in self:
+            raise ValueError('{l} Duplicate Symbol {s} previous at {at}'.format(
+                l=loc(key), s=key, at=loc(self[key])
+            ))
         self.stack[-1][key] = value
 
     def __getitem__(self, item):  # search all frames.

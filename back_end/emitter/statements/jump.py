@@ -7,7 +7,7 @@ from front_end.parser.ast.expressions import exp
 from front_end.parser.ast.declarations import name
 from front_end.parser.ast.statements import BreakStatement, ContinueStatement, ReturnStatement, GotoStatement
 from front_end.parser.ast.statements import LabelStatement
-from front_end.parser.types import c_type
+from front_end.parser.types import c_type, VoidPointer
 
 from back_end.virtual_machine.instructions.architecture import Push, Address, AbsoluteJump, Pass, RelativeJump
 from back_end.virtual_machine.instructions.architecture import LoadBaseStackPointer, Integer, Set, Load, Add, Allocate
@@ -45,7 +45,9 @@ def continue_statement(stmnt, symbol_table, stack, *_):
 
 def return_instrs(location):
     yield LoadBaseStackPointer(location)
-    yield Load(location, size(Address()))  # Push return Address.
+    yield Push(location, 1)
+    yield Add(location)
+    yield Load(location, size(VoidPointer))  # Push return Address.
     yield AbsoluteJump(location)  # Jump back, caller is responsible for clean up as well as set up.
 
 
@@ -55,8 +57,10 @@ def return_statement(stmnt, symbol_table, *_):
         cast(expression(exp(stmnt), symbol_table), c_type(exp(stmnt)), return_type, loc(stmnt)),
         (  # Copy return value onto stack
             LoadBaseStackPointer(loc(stmnt)),
-            Push(loc(stmnt), Integer(1 + size(Address()), '')),  # skip function address.
+            # move to previous frame, skipping return address ...
+            Push(loc(stmnt), Integer(1 + size(VoidPointer), loc(stmnt))),
             Add(loc(stmnt)),
+            Load(loc(stmnt), size(VoidPointer)),
             Set(loc(stmnt), size(return_type)),  # copy return value to previous Frame.
             Allocate(loc(stmnt), Integer(-1 * size(return_type), loc(stmnt))),  # Set leaves the value on the stack
         ),
@@ -102,7 +106,7 @@ def label_statement(stmnt, symbol_table, stack, statement_func):
         addr.obj = instr
     del gotos[name(stmnt)][:]
 
-    return chain((instr,), statement_func(stmnt.statement, symbol_table, stack, statement_func))
+    return chain((instr,), statement_func(stmnt.statement, symbol_table, stack))
 label_statement.rules = {LabelStatement}
 
 

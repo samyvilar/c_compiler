@@ -5,7 +5,7 @@ from front_end.loader.locations import loc
 from front_end.tokenizer.tokens import TOKENS
 from front_end.parser.ast.expressions import oper, left_exp, right_exp
 
-from front_end.parser.types import IntegralType, NumericType, c_type, base_c_type, unsigned
+from front_end.parser.types import IntegralType, NumericType, c_type, base_c_type, unsigned, VoidPointer
 
 from back_end.emitter.expressions.cast import cast
 from back_end.virtual_machine.instructions.architecture import Add, Subtract, Multiply, Divide, Mod, ShiftLeft
@@ -224,7 +224,6 @@ def set_instr(instrs, location, set_size):
         raise ValueError('Expected a load instruction'.format())
 
 
-
 def assign(expr, symbol_table, expression_func):
     return set_instr(
         chain(
@@ -247,7 +246,7 @@ def patch_comp_left_instrs(instrs, location):
         yield value
         value = instr
     if isinstance(value, Load):
-        yield Dup(location, size(Address()))
+        yield Dup(location, size(VoidPointer))
         yield value
     else:
         raise ValueError('{l} Expected a load instruction got {g}!'.format(l=location, g=value))
@@ -284,9 +283,7 @@ def comp_numeric_assign(expr, symbol_table, expression_func):
     max_type = max(c_type(left_exp(expr)), c_type(right_exp(expr)))  # cast to largest type.
 
     left_instrs = cast(
-        patch_comp_left_instrs(
-            expression_func(left_exp(expr), symbol_table, expression_func),  loc(expr)
-        ),
+        patch_comp_left_instrs(expression_func(left_exp(expr), symbol_table, expression_func),  loc(expr)),
         c_type(left_exp(expr)),
         max_type,
         loc(expr),

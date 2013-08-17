@@ -18,12 +18,15 @@ from back_end.emitter.cpu import CPU, load, address, evaluate
 class TestDeclarations(TestCase):
     def evaluate(self, code):
         address_gen, symbol_table, self.cpu, self.mem = address(), SymbolTable(), CPU(), defaultdict(int)
+
         load(
             executable(emit(parse(preprocess(tokenize(source(code))))), symbol_table),
             self.mem,
             symbol_table,
             address_gen
         )
+
+        self.cpu.instr_pointer = min(self.mem.iterkeys())
         evaluate(self.cpu, self.mem)
 
 

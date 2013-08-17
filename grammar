@@ -1,7 +1,5 @@
 
 This grammar is a sub-set of the standard C grammar,
-specifically it does not have storage_class nor type_qualifiers.
-
 Fundamentally C is made up of three things, Declarations, Statements and Expressions.
 
 /****** DECLARATIONS ***************************************************************************/
@@ -13,10 +11,10 @@ external_declaration
 	| function_definition
 
 declaration
-    : type_specifier init_declarator_list ';'
+    : storage_class specifier_qualifier_list init_declarator_list ';'
 
 function_definition
-    : type_specifier declarator compound_statement
+    : storage_class specifier_qualifier_list declarator compound_statement
 
 type_specifier
 	: 'void'
@@ -24,21 +22,31 @@ type_specifier
 	| 'short'
 	| 'int'
 	| 'long'
+	| 'long' 'long'
 	| 'float'
 	| 'double'
 	| 'signed' 'char'
 	| 'signed' 'short'
 	| 'signed' 'int'
 	| 'signed' 'long'
+	| 'signed' 'long' 'long'
 	| 'unsigned' 'char'
 	| 'unsigned' 'short'
 	| 'unsigned' 'int'
 	| 'unsigned' 'long'
+	| 'unsigned' 'long' 'long'
 	| struct_specifier
+
+type_qualifiers:
+    : 'const'
+    | 'volatile'
+
+specifier_qualifier_list
+    : (type_specifier | type_qualifiers)*
 
 struct_specifier
 	: 'struct' IDENTIFIER
-	| 'struct' IDENTIFIER  '{' (type_specifier declarator ';')* '}'
+	| 'struct' IDENTIFIER  '{' (specifier_qualifier_list declarator ';')* '}'
 
 
 init_declarator_list
@@ -60,6 +68,7 @@ declarator_suffix
     |   '(' ')'
 
 pointer
+    : '*' type_qualifier+ pointer?
 	| '*' pointer
 	| '*'
 
@@ -68,10 +77,10 @@ parameter_type_list
 
 
 parameter_declaration
-	:  type_specifier (declarator | abstract_declarator)*
+	:  specifier_qualifier_list (declarator | abstract_declarator)*
 
 type_name
-	: type_specifier abstract_declarator?
+	: specifier_qualifier_list abstract_declarator?
 
 abstract_declarator
 	: pointer direct_abstract_declarator?
@@ -105,7 +114,7 @@ expression
 
 assignment_expression
 	: unary_expression assignment_operator assignment_expression
-	| logical_or_expression
+	| conditional_expression
 
 assignment_operator
 	: '='
@@ -122,7 +131,10 @@ assignment_operator
 	;
 
 constant_expression
-    : logical_or_expression
+    : conditional_expression
+
+conditional_expression
+    : logical_or_expression ('?' expression ':' conditional_expression)?
 
 logical_or_expression
 	: logical_and_expression ('||' logical_and_expression)*
@@ -243,7 +255,7 @@ WHITESPACE
     :  ' '|'\r'|'\t'|'\n'
 
 COMMENT
-    :   '/*'  '*/'
+    :   '/*' ... '*/'
 
-LINE_COMMENT : '//'
+LINE_COMMENT : '//...'
 /***********************************************************************************************************/

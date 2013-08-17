@@ -38,5 +38,5 @@ class TestExecutable(TestCase):
             mem,
             symbol_table,
         )
-
+        cpu.instr_pointer = min(mem.iterkeys())
         evaluate(cpu, mem)

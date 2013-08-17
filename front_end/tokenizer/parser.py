@@ -10,8 +10,8 @@ from front_end.errors import error_if_not_value
 
 
 def get_line(values):  # get all the tokens on the current line, being that preprocessor work on a line-by-line basis
-    line_number = loc(peek(values)).line_number
-    return takewhile(lambda token: loc(token).line_number == line_number, values)
+    return takewhile(lambda token, line_number=loc(peek(values)).line_number:
+                     loc(token).line_number == line_number, values)
 
 
 def single_line_comment(char_stream, location):
@@ -41,14 +41,16 @@ def comment(char_stream, location):
     elif peek(char_stream, default='') == TOKENS.STAR:
         token = multi_line_comment(char_stream, location)
     else:
-        token = SYMBOL(forward_slash, loc(forward_slash))
+        token = symbol(char_stream, location, values=forward_slash)
     return token
 
 
-def symbol(char_stream, location):
-    values = consume(char_stream)
+def symbol(char_stream, location, values=None):
+    values = values or consume(char_stream)
     while peek(char_stream, default=False) and (values + peek(char_stream) in TOKENS.non_keyword_symbols):
         values += consume(char_stream)
+    if values == TOKENS.DOT and peek(char_stream, default='') in digits:
+        return FLOAT(values + number(char_stream), location)
     return SYMBOL(values, location)
 
 
@@ -57,8 +59,19 @@ def white_space(char_stream, location):
 
 
 def pre_processor(char_stream, location):
-    values = consume(char_stream) + ''.join(takewhile(lambda char: char in letters, char_stream))
-    return PRE_PROCESSING_SYMBOL(values, location)
+    values = consume(char_stream)
+
+    if peek(char_stream, default='') == TOKENS.NUMBER_SIGN:
+        return PRE_PROCESSING_SYMBOL(values + consume(char_stream), loc(values))
+
+    while peek(char_stream, default='') == ' ':
+        _ = consume(char_stream)
+
+    values += ''.join(takewhile(lambda char: char in letters, char_stream))
+    if values in TOKENS.pre_processing_directives:
+        return PRE_PROCESSING_SYMBOL(values, location)
+    else:
+        return IDENTIFIER(values, location)
 
 
 def number(char_stream):
@@ -75,7 +88,7 @@ def number_literal(char_stream, location):
 escape_characters = {
     'n': '\n',
     't': '\t',
-    '0': 0,
+    '0': '\0',
     'f': '\f',
     'r': '\r',
     'b': '\b',
@@ -96,12 +109,12 @@ def string_literal(char_stream, location):
 
 
 def char_literal(char_stream, location):
-    _ = consume(char_stream)
-    char = consume(char_stream)
+    _ = consume(char_stream)  # consume initial single quote
+    char = consume(char_stream)  # consume char
     if char == TOKENS.SINGLE_QUOTE:
         return CHAR('', location)
 
-    if char == '\\':
+    if char == '\\':  # if char is being escaped
         token = CHAR(escape_characters.get(peek(char_stream), consume(char_stream)), location)
     else:
         token = CHAR(char, location)
@@ -118,6 +131,8 @@ def dot(char_stream, location):
     values = consume(char_stream)
     if peek(char_stream, default='') in digits:
         return FLOAT(values + number(char_stream), location)
+    elif peek(char_stream, default='') == TOKENS.DOT:
+        pass
     return SYMBOL(values, location)
 
 
@@ -130,7 +145,6 @@ parse.rules.update({w: white_space for w in whitespace})  # assuming all white s
 parse.rules.update({
     TOKENS.DOUBLE_QUOTE: string_literal,
     TOKENS.SINGLE_QUOTE: char_literal,
-    TOKENS.DOT: dot,
     TOKENS.NUMBER_SIGN: pre_processor,
     TOKENS.FORWARD_SLASH: comment,  # override forward slash to deal with comments // /*
 })  # override symbols ", ', #, .  since they require special rules.
