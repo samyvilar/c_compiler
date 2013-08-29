@@ -1,37 +1,40 @@
 __author__ = 'samyvilar'
 
-from itertools import chain
+from itertools import chain, imap
+from collections import Iterable
 
-values = {}
+__iterators__ = {}
 
-
-def peek(seq, **kwargs):
-    if hasattr(seq, '__getitem__'):
-        return seq[0] if seq else (kwargs['default'] if 'default' in kwargs else seq[0])
-
-    if seq not in values:
-        try:
-            values[seq] = next(seq)
-        except StopIteration as ex:
-            if 'default' in kwargs:
-                return kwargs['default']
-            raise ValueError('Empty Sequence!')
-    return values[seq]
+__required__ = object()
 
 
-def consume(seq, **kwargs):
-    if hasattr(seq, 'pop'):
-        return seq.pop(0) if seq else (kwargs['default'] if 'default' in kwargs else seq.pop(0))
+def peek(seq, default=__required__):
+    if seq in __iterators__:
+        return __iterators__[seq]
+    try:
+        __iterators__[seq] = next(seq)
+        return __iterators__[seq]
+    except StopIteration as ex:
+        if default is __required__:
+            raise ex
+        return default
 
-    if seq not in values:
-        return next(seq, kwargs['default']) if 'default' in kwargs else next(seq)
-    else:
-        return values.pop(seq)
+
+def consume(seq, default=__required__):
+    if seq in __iterators__:
+        return __iterators__.pop(seq)
+
+    try:
+        return next(seq)
+    except StopIteration as ex:
+        if default is __required__:
+            raise ex
+        return default
 
 
 def takewhile(func, value_stream):
-    terminal = object()
-    while peek(value_stream, default=terminal) is not terminal and func(peek(value_stream)):
+    value_stream = iter(value_stream)
+    while func(peek(value_stream)):
         yield consume(value_stream)
 
 
@@ -39,3 +42,11 @@ def reverse(values):
     values = iter(values)
     for value in chain(reverse(values), (next(values),)):
         yield value
+
+
+def flatten(values):
+    if isinstance(values, Iterable):
+        for v in chain.from_iterable(imap(flatten, values)):
+            yield v
+    else:
+        yield values

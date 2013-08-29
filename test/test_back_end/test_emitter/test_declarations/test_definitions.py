@@ -32,7 +32,7 @@ class TestDeclarations(TestCase):
 
 class TestDefinitions(TestDeclarations):
     def test_definition(self):
-        source = """
+        code = """
         int a = 1;
         double b[100];
 
@@ -44,4 +44,32 @@ class TestDefinitions(TestDeclarations):
             return 0;
         }
         """
-        super(TestDefinitions, self).evaluate(source)
+        super(TestDefinitions, self).evaluate(code)
+
+
+class TestInitializer(TestDeclarations):
+    def test_global_constant_initializer(self):
+        code = """
+        struct {int a; char b; int c[10]; struct {int a; double c;} foo[10];}
+            foo = {.a=10, .c[1] = -1, .foo[0 ... 2] = {-1, -1} };
+
+        int main()
+        {
+            return foo.a == 10 && foo.c[1] == -1 && foo.foo[0].a == -1 && foo.foo[1].c == -1 && foo.foo[3].c == 0.0;
+        }
+        """
+        super(TestInitializer, self).evaluate(code)
+        self.assertEqual(1, self.mem[self.cpu.stack_pointer])
+
+    def test_local_initializer(self):
+        code = """
+        int main()
+        {
+            struct {int a; char b; int c[10]; struct {int a; double c;} foo[10];}
+                foo = {.a=10, .c[1] = -1, .foo[0 ... 2] = {-1, -1} };
+
+            return foo.a == 10 && foo.c[1] == -1 && foo.foo[0].a == -1 && foo.foo[1].c == -1 && foo.foo[3].c == 0.0;
+        }
+        """
+        super(TestInitializer, self).evaluate(code)
+        self.assertEqual(1, self.mem[self.cpu.stack_pointer])

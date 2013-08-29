@@ -1,11 +1,12 @@
 __author__ = 'samyvilar'
 
-from itertools import chain
+from itertools import chain, izip, repeat
 from front_end.loader.locations import loc
 from front_end.tokenizer.tokens import TOKENS
 from front_end.parser.ast.expressions import oper, left_exp, right_exp
 
-from front_end.parser.types import IntegralType, NumericType, c_type, base_c_type, unsigned, VoidPointer
+from front_end.parser.types import IntegralType, NumericType, c_type, base_c_type, unsigned, void_pointer_type
+from front_end.parser.types import PointerType
 
 from back_end.emitter.expressions.cast import cast
 from back_end.virtual_machine.instructions.architecture import Add, Subtract, Multiply, Divide, Mod, ShiftLeft
@@ -18,20 +19,12 @@ from back_end.virtual_machine.instructions.architecture import CompoundSet
 from back_end.emitter.c_types import size
 
 
-def add_pointers():  # TODO: implement pointer math.
-    pass
-
-
 def add(l_instrs, r_instrs, location, operand_types):
     return chain(l_instrs, r_instrs, (add.rules[base_c_type(operand_types)](location),))
 add.rules = {
     IntegralType: Add,
     NumericType: AddFloat,
 }
-
-
-def subtract_pointers():
-    pass
 
 
 def subtract(l_instrs, r_instrs, location, operand_types):
@@ -246,7 +239,7 @@ def patch_comp_left_instrs(instrs, location):
         yield value
         value = instr
     if isinstance(value, Load):
-        yield Dup(location, size(VoidPointer))
+        yield Dup(location, size(void_pointer_type))
         yield value
     else:
         raise ValueError('{l} Expected a load instruction got {g}!'.format(l=location, g=value))
@@ -314,13 +307,17 @@ comp_numeric_assign.rules = {
 
 def compound_assignment(expr, symbol_table, expression_func):
     return compound_assignment.rules[oper(expr)](expr, symbol_table, expression_func)
-compound_assignment.rules = {rule: comp_integral_assign for rule in comp_integral_assign.rules}
-compound_assignment.rules.update({rule: comp_numeric_assign for rule in comp_numeric_assign.rules})
+compound_assignment.rules = dict(chain(
+    izip(comp_integral_assign.rules, repeat(comp_integral_assign)),
+    izip(comp_numeric_assign.rules, repeat(comp_numeric_assign)),
+))
 
 
 def binary_expression(expr, symbol_table, expression_func):
     return binary_expression.rules[oper(expr)](expr, symbol_table, expression_func)
 binary_expression.rules = {TOKENS.EQUAL: assign}
-binary_expression.rules.update({operator: bin_expression for operator in bin_expression.rules})
-binary_expression.rules.update({operator: compound_assignment for operator in compound_assignment.rules})
-binary_expression.rules.update({operator: logical_bin_expression for operator in logical_bin_expression.rules})
+binary_expression.rules.update(chain(
+    izip(bin_expression.rules, repeat(bin_expression)),
+    izip(compound_assignment.rules, repeat(compound_assignment)),
+    izip(logical_bin_expression.rules, repeat(logical_bin_expression)),
+))

@@ -9,6 +9,8 @@ from back_end.virtual_machine.instructions.architecture import ConvertToFloat, C
 
 
 def cast_expression(expr, symbol_table, expression_func):
+    if c_type(expr) == c_type(c_type(exp(expr))):
+        return expression_func(exp(expr), symbol_table, expression_func)
     return cast_expression.rules[base_c_type(c_type(exp(expr))), base_c_type(c_type(expr))](
         expression_func(exp(expr), symbol_table, expression_func), loc(expr)
     )

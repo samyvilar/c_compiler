@@ -1,6 +1,6 @@
 __author__ = 'samyvilar'
 
-from itertools import chain, izip, imap, izip_longest
+from itertools import chain
 from collections import defaultdict
 
 from front_end.loader.locations import loc
@@ -10,31 +10,43 @@ from sequences import reverse
 from front_end.parser.ast.expressions import PostfixIncrementExpression, PostfixDecrementExpression, left_exp, right_exp
 from front_end.parser.ast.expressions import FunctionCallExpression, ArraySubscriptingExpression, exp
 from front_end.parser.ast.expressions import ElementSelectionExpression, ElementSelectionThroughPointerExpression
-from front_end.parser.types import c_type, ArrayType, FunctionType, PointerType, VoidPointer, StringType, VAListType
+from front_end.parser.types import c_type, ArrayType, FunctionType, PointerType, void_pointer_type, StringType, VoidType
 
 from back_end.virtual_machine.instructions.architecture import Push, Allocate, PushFrame, PopFrame, Address, Load, Set
-from back_end.virtual_machine.instructions.architecture import Integer, Multiply, Add, LoadStackPointer, Enqueue
-from back_end.virtual_machine.instructions.architecture import AbsoluteJump, SetBaseStackPointer, LoadBaseStackPointer
+from back_end.virtual_machine.instructions.architecture import Integer, Multiply, Add, LoadStackPointer, Dup
+from back_end.virtual_machine.instructions.architecture import AbsoluteJump, SetBaseStackPointer, CompoundSet
 from back_end.emitter.c_types import size, struct_member_offset
 
-from back_end.emitter.expressions.cast import cast
 
-
-# A pure implemented of Postfix Expressions are quite hard if not impossible on completely stack based machines, since
-# we can't allocate anything on the stack in the middle of an expression, so the value (memory) will be copied to an
-# aux memory location
 def inc_dec(expr, symbol_table, expression_func):
     instrs = expression_func(exp(expr), symbol_table, expression_func)
+
     temp = next(instrs)
     for instr in instrs:
         yield temp
         temp = instr
-    if isinstance(temp, Load):
-        yield Enqueue(loc(expr), size(VoidPointer))  # enqueue two copies one for loading and the other for setting.
-        yield Enqueue(loc(expr), size(VoidPointer))
-        yield temp
-    else:
-        raise ValueError('Expected load instr')
+
+    if not isinstance(temp, Load):
+        raise ValueError('{l} Expected load instr got {g}'.format(l=loc(temp), g=temp))
+    # At this point the address is on the stack...
+    assert size(c_type(expr)) <= size(void_pointer_type)
+
+    value = Integer((isinstance(expr, PostfixIncrementExpression) and 1) or -1, loc(expr))
+    if isinstance(c_type(expr), PointerType) and not isinstance(c_type(c_type(expr)), VoidType):
+        value = Integer(value * size(c_type(c_type(expr))), loc(value))
+
+    yield Dup(loc(expr), size(void_pointer_type))  # duplicate address
+    yield Allocate(loc(expr), Integer(-1 * size(void_pointer_type), loc(expr)))  # deallocate duplicate address
+    yield temp  # load value on the stack
+    yield Allocate(  # Re-allocate address and any other excess bytes ...
+        loc(expr), Integer(size(void_pointer_type) + size(void_pointer_type) - size(c_type(expr)), loc(expr))
+    )
+    yield Dup(loc(expr), size(void_pointer_type))  # duplicate address
+    yield temp
+    yield Push(loc(expr), value)  # push 1 or -1
+    yield Add(loc(expr))
+    yield CompoundSet(loc(expr), size(c_type(expr)))
+    yield Allocate(loc(expr), Integer(-1 * size(c_type(expr)), loc(expr)))
 
 
 def func_type(expr):
@@ -58,13 +70,17 @@ def function_call(expr, symbol_table, expression_func):
         return _size.rules[type(ctype)](ctype)
     _size.rules = defaultdict(lambda: size)
     _size.rules.update(
-        {
-            ArrayType: size(VoidPointer),
-            StringType: size(VoidPointer),
+        {   # calling size() on array types will yield their total byte size but they are passed as pointers
+            ArrayType: size(void_pointer_type),
+            StringType: size(void_pointer_type),
         }
     )
     return chain(
-        (Allocate(l, size(c_type(expr))), PushFrame(l)),  # Allocate space for return value, save frame.
+        # Allocate space for return value, save frame.
+        (Allocate(
+            l,
+            (not isinstance(c_type(expr), VoidType) and size(c_type(expr))) or Integer(0, loc(expr))
+        ), PushFrame(l)),
         # Push arguments in reverse order (right to left) ...
         chain.from_iterable(reverse(expression_func(arg, symbol_table, expression_func) for arg in right_exp(expr))),
         (
@@ -72,14 +88,13 @@ def function_call(expr, symbol_table, expression_func):
             Push(l, Address(sum(_size(c_type(e)) for e in right_exp(expr)) + 1, l)),
             Add(l),
             Push(l, Address(_pop_frame_instr, l)),  # make callee aware of were to return to.
-            # give callee a new frame to work with ...
         ),
         expression_func(left_exp(expr), symbol_table, expression_func),   # load callee address
         (
             LoadStackPointer(l),
-            Push(l, Address(size(VoidPointer))),
-            Add(l),
-            SetBaseStackPointer(l),
+            Push(l, Address(size(void_pointer_type))),
+            Add(l),  # Absolute Jump will pop the address from the stack ...
+            SetBaseStackPointer(l),  # give callee a new frame to work with ...
 
             AbsoluteJump(l),
             _pop_frame_instr
@@ -93,7 +108,7 @@ def array_subscript(expr, symbol_table, expression_func):
         expression_func(right_exp(expr), symbol_table, expression_func),
         (
             # Calculate Offset.
-            Push(loc(expr), size(c_type(right_exp(expr)))),
+            Push(loc(expr), size(c_type(expr))),
             Multiply(loc(expr)),
             Add(loc(expr)),
         ),
@@ -122,7 +137,7 @@ def element_selection(expr, symbol_table, expression_func):
     else:
         yield value
         struct_size = size(c_type(left_exp(expr)))
-        member_size = size(VoidPointer) if isinstance(c_type(expr), ArrayType) else size(c_type(expr))
+        member_size = size(void_pointer_type) if isinstance(c_type(expr), ArrayType) else size(c_type(expr))
         yield LoadStackPointer(loc(expr))
         yield Push(loc(expr), Integer(struct_size, loc(expr)))
         yield Add(loc(expr))  # calculate starting address of structure

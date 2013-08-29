@@ -1,8 +1,10 @@
 __author__ = 'samyvilar'
 
+from itertools import chain, izip, repeat
+
 from sequences import peek, consume, takewhile
 
-from front_end.loader.locations import loc
+from front_end.loader.locations import loc, EOFLocation
 from front_end.tokenizer.tokens import TOKENS, SYMBOL, KEYWORD, IDENTIFIER, FLOAT, INTEGER, STRING, CHAR, WHITESPACE
 from front_end.tokenizer.tokens import PRE_PROCESSING_SYMBOL, letters, digits, alpha_numeric, whitespace
 from front_end.tokenizer.tokens import SINGLE_LINE_COMMENT, MULTI_LINE_COMMENT
@@ -10,7 +12,7 @@ from front_end.errors import error_if_not_value
 
 
 def get_line(values):  # get all the tokens on the current line, being that preprocessor work on a line-by-line basis
-    return takewhile(lambda token, line_number=loc(peek(values)).line_number:
+    return takewhile(lambda token, line_number=loc(peek(values, EOFLocation)).line_number:
                      loc(token).line_number == line_number, values)
 
 
@@ -21,7 +23,7 @@ def single_line_comment(char_stream, location):
 def multi_line_comment(char_stream, location):
     values = ''
     seen_star = False
-    while peek(char_stream, default=False):
+    while peek(char_stream, ''):
         values += consume(char_stream)
         if values[-1] == TOKENS.FORWARD_SLASH and seen_star:
             break
@@ -36,21 +38,34 @@ def multi_line_comment(char_stream, location):
 
 def comment(char_stream, location):
     forward_slash = consume(char_stream)
-    if peek(char_stream, default='') == TOKENS.FORWARD_SLASH:
+    if is_adjacent(char_stream, TOKENS.FORWARD_SLASH, loc(forward_slash).column_number + 1):
         token = single_line_comment(char_stream, location)
-    elif peek(char_stream, default='') == TOKENS.STAR:
+    elif is_adjacent(char_stream, TOKENS.STAR, loc(forward_slash).column_number + 1):
         token = multi_line_comment(char_stream, location)
     else:
         token = symbol(char_stream, location, values=forward_slash)
     return token
 
 
+def is_adjacent(stream, value, column_number, terminal=object()):
+    return peek(stream, terminal) == value and column_number == loc(peek(stream, EOFLocation)).column_number
+
+
 def symbol(char_stream, location, values=None):
     values = values or consume(char_stream)
-    while peek(char_stream, default=False) and (values + peek(char_stream) in TOKENS.non_keyword_symbols):
+    while peek(char_stream, '') and (values + peek(char_stream) in TOKENS.non_keyword_symbols):
         values += consume(char_stream)
-    if values == TOKENS.DOT and peek(char_stream, default='') in digits:
-        return FLOAT(values + number(char_stream), location)
+
+    next_char = peek(char_stream, '')
+    if values == TOKENS.DOT:
+        if next_char in digits and is_adjacent(char_stream, next_char, location.column_number + len(values)):
+            return FLOAT(values + number(char_stream), location)
+        if is_adjacent(char_stream, TOKENS.DOT, location.column_number + len(values)):
+            values += consume(char_stream)
+            if is_adjacent(char_stream, TOKENS.DOT, location.column_number + len(values)):
+                values += consume(char_stream)
+                return SYMBOL(values, location)  # TOKENS.ELLIPSIS
+            raise ValueError('{l} Unable to tokenize: `{t}`'.format(l=location, t=TOKENS.DOT + TOKENS.DOT))
     return SYMBOL(values, location)
 
 
@@ -61,17 +76,16 @@ def white_space(char_stream, location):
 def pre_processor(char_stream, location):
     values = consume(char_stream)
 
-    if peek(char_stream, default='') == TOKENS.NUMBER_SIGN:
+    if peek(char_stream, '') == TOKENS.NUMBER_SIGN:
         return PRE_PROCESSING_SYMBOL(values + consume(char_stream), loc(values))
 
-    while peek(char_stream, default='') == ' ':
+    while peek(char_stream, '') == ' ':
         _ = consume(char_stream)
 
     values += ''.join(takewhile(lambda char: char in letters, char_stream))
     if values in TOKENS.pre_processing_directives:
         return PRE_PROCESSING_SYMBOL(values, location)
-    else:
-        return IDENTIFIER(values, location)
+    return IDENTIFIER(values, location)
 
 
 def number(char_stream):
@@ -80,10 +94,9 @@ def number(char_stream):
 
 def number_literal(char_stream, location):
     values = number(char_stream)
-    if peek(char_stream, default='') == TOKENS.DOT:
+    if is_adjacent(char_stream, TOKENS.DOT, location.column_number + len(values)):
         return FLOAT(values + consume(char_stream) + number(char_stream), location)
-    else:
-        return INTEGER(values, location)
+    return INTEGER(values, location)
 
 escape_characters = {
     'n': '\n',
@@ -98,7 +111,7 @@ escape_characters = {
 def string_literal(char_stream, location):
     _ = consume(char_stream)
     values = ''
-    while peek(char_stream, default='') != TOKENS.DOUBLE_QUOTE:
+    while peek(char_stream, '') != TOKENS.DOUBLE_QUOTE:
         if peek(char_stream) == '\\':
             _ = consume(char_stream)
             values += escape_characters.get(peek(char_stream), consume(char_stream))
@@ -127,32 +140,23 @@ def keyword_or_identifier(char_stream, location):
     return KEYWORD(values, location) if values in TOKENS.keyword_symbols else IDENTIFIER(values, location)
 
 
-def dot(char_stream, location):
-    values = consume(char_stream)
-    if peek(char_stream, default='') in digits:
-        return FLOAT(values + number(char_stream), location)
-    elif peek(char_stream, default='') == TOKENS.DOT:
-        pass
-    return SYMBOL(values, location)
-
-
 def parse(char_stream):
     return parse.rules[peek(char_stream)](char_stream, loc(peek(char_stream)))
-parse.rules = {n: number_literal for n in digits}  # rules declared outside so dictionary is only built once.
-parse.rules.update({c: keyword_or_identifier for c in letters})
-parse.rules.update({s[0]: symbol for s in TOKENS.non_keyword_symbols})
-parse.rules.update({w: white_space for w in whitespace})  # assuming all white space are of length 1.
-parse.rules.update({
-    TOKENS.DOUBLE_QUOTE: string_literal,
-    TOKENS.SINGLE_QUOTE: char_literal,
-    TOKENS.NUMBER_SIGN: pre_processor,
-    TOKENS.FORWARD_SLASH: comment,  # override forward slash to deal with comments // /*
-})  # override symbols ", ', #, .  since they require special rules.
+parse.rules = dict(chain(
+    izip(digits, repeat(number_literal)),
+    izip(letters, repeat(keyword_or_identifier)),
+    izip((s[0] for s in TOKENS.non_keyword_symbols), repeat(symbol)),
+    izip(whitespace, repeat(white_space)),
+    (    # override symbols " ' # .  since they require special rules.
+        (TOKENS.DOUBLE_QUOTE, string_literal),
+        (TOKENS.SINGLE_QUOTE, char_literal),
+        (TOKENS.NUMBER_SIGN, pre_processor),
+
+        (TOKENS.FORWARD_SLASH, comment),  # override forward slash to deal with comments // /*
+    )
+))
 
 
 def get_directives():
     return get_directives.rules
-get_directives.rules = {
-    ch: parse
-    for ch in digits | letters | whitespace | {s[0] for s in TOKENS.non_keyword_symbols} | {TOKENS.NUMBER_SIGN}
-}
+get_directives.rules = dict(izip(parse.rules, repeat(parse)))

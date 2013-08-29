@@ -1,6 +1,6 @@
 __author__ = 'samyvilar'
 
-from test.test_back_end.test_emitter.test_statements.test_statements import TestStatements
+from test.test_back_end.test_emitter.test_statements.test_compound import TestStatements
 
 
 class TestJump(TestStatements):

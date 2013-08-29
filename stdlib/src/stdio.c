@@ -18,33 +18,29 @@ extern int __seek__(int, int, int);
 #define set_file_state(file, state) (file_state(file) = state)
 
 #define file_buffer(file) (file->buffer)
-#define current_buffer_ptr(file) (file->current)
-#define increment_buffer_ptr(file) (file->current++)
-#define reset_buffer_ptr(file) (current_buffer_ptr(file) = file_buffer(file))
-#define is_file_buffer_full(file) ((current_buffer_ptr(file) - file_buffer(file)) == FILE_BUFFER_SIZE)
+#define file_buffer_index(file) (file->buffer_index)
+#define set_file_buffer_index(file, value) (file_buffer_index(file) = value)
+#define is_file_buffer_full(file) (file_buffer_index(file) == FILE_BUFFER_SIZE)
+
+#define current_char(file) (file_buffer(file)[file_buffer_index(file)])
+#define consume_char(file) (file_buffer(file)[(file_buffer_index(file))++])
+#define set_char(file, ch) (file_buffer(file)[(file_buffer_index(file))++] = ch)
 
 
 #define FILE_READY_FOR_READING 1
 #define FILE_READY_FOR_WRITING 2
 
-#define EOF -1
-
 
 FILE *fopen(const char *file_path, const char *mode)
 {
     int file_id = __open__(file_path, mode);
-
     if (file_id < 0)
         return NULL;
 
     FILE *file = malloc(sizeof(FILE));
     set_file_number(file, file_id);
-    reset_buffer_ptr(file);
-
-    if (*mode == 'a' || *mode == 'w')
-        set_file_state(file, FILE_READY_FOR_WRITING);
-    else
-        set_file_state(file, FILE_READY_FOR_READING);
+    set_file_buffer_index(file, 0);
+    set_file_state(file, ((*mode == 'a' || *mode == 'w') ? FILE_READY_FOR_WRITING : FILE_READY_FOR_READING));
 
     return file;
 }
@@ -56,9 +52,8 @@ size_t fread(void *dest, size_t size_of_element, size_t number_of_elements, FILE
 size_t fwrite(const void *src, size_t size, size_t count, FILE *file)
 {
     size_t total = size * count;
-    --src;
     while (total--)
-        if (fputc(*(char *)(++src), file) == EOF)
+        if (fputc(*(char *)(src++), file) == EOF)
             return ((size * count) - (total + 1)) / count;
     return count;
 }
@@ -69,7 +64,7 @@ int	fclose(FILE *file)
     if (fflush(file) || __close__(file_number(file)))
         return EOF;
 
-    set_file_number(file, -1);
+    set_file_number(file, EOF);
     free(file);
 
     return 0;
@@ -77,18 +72,16 @@ int	fclose(FILE *file)
 
 int fgetc(FILE *file)
 {
-    if (is_file_buffer_full(file))
-    {
-        fread(file_buffer(file), 1, FILE_BUFFER_SIZE, file);
-        reset_buffer_ptr(file);
-    }
-
-    char temp = *current_buffer_ptr(file);
-    if (temp == EOF)
+    if (file_state(file) != FILE_READY_FOR_READING)
         return EOF;
 
-    increment_buffer_ptr(file);
-    return temp;
+    if (is_file_buffer_full(file))
+    {
+        fread(file_buffer(file), sizeof(char), FILE_BUFFER_SIZE, file);
+        set_file_buffer_index(file, 0);
+    }
+
+    return (current_char(file) == EOF) ? EOF : consume_char(file);
 }
 
 
@@ -102,22 +95,22 @@ int	fputs(const char *src, FILE *file)
 
 int fputc(int ch, FILE *file)
 {
-    if (is_file_buffer_full(file))
-        if (fflush(file))
-            return EOF;
+    if (is_file_buffer_full(file) && fflush(file))
+        return EOF;
 
-    *current_buffer_ptr(file) = (unsigned char)ch;
-    increment_buffer_ptr(file);
-
+    set_char(file, ch);
     return ch;
 }
 
 int	fflush(FILE *file)
 {
-    if (__write__(file_number(file), file_buffer(file), current_buffer_ptr(file) - file_buffer(file)))
+    if (file_state(file) != FILE_READY_FOR_WRITING || __write__(
+            file_number(file), file_buffer(file), file_buffer_index(file)
+        )
+    )
         return EOF;
 
-    reset_buffer_ptr(file);
+    set_file_buffer_index(file, 0);
     return 0;
 }
 
@@ -138,15 +131,15 @@ char *number_to_string(long long value, int base, char *dest)
         return NULL;
 
     char *destination = dest;
-    int negative = (value < 0 && base == 10);
-    if (negative)
+    if (value < 0 && base == 10)
         *destination++ = '-';
+    char *temp = destination;
 
     if (value < 0)
         value *= -1;
 
     #define digit_ch(__numb__) ((__numb__) + (((__numb__) < 10) ? '0' : 'a'))
-    while (value > base)
+    while (value >= base)
     {
         *destination++ = digit_ch(value % base);
         value /= base;
@@ -154,8 +147,6 @@ char *number_to_string(long long value, int base, char *dest)
     *destination++ = digit_ch(value);
     #undef digit_ch
     *destination-- = '\0';
-
-    char *temp = dest + (negative ? 1 : 0);
 
     char ch; // swap values ...
     while (destination > temp)
@@ -172,7 +163,7 @@ char *float_to_string(double value, char *dest)
 {
     dest = number_to_string((long long)value, 10, dest);
     size_t index = 0;
-    while (dest[index]) index++;
+    while (dest[index]) ++index;
     dest[index++] = '.';
 
     // TODO: find a better method for locating fraction, this isn't accurate
@@ -190,14 +181,15 @@ char *float_to_string(double value, char *dest)
     return dest;
 }
 
+static FILE stdout = {1, FILE_READY_FOR_WRITING};
+
 int printf(const char *format, ...)
 {
-    FILE *stdout = fopen(1, "a");
-
     va_list args;
     va_start(args, format);
 
     char temp[128];
+    char *str;
     int base = 10;
     unsigned long long total = 0;
 
@@ -208,47 +200,46 @@ int printf(const char *format, ...)
             ++format;
             if (!*format)
                 return -1;
+
             switch (*format)
             {
                 case '%':
-                    fputc(*format, stdout);
+                    fputc(*format, &stdout);
                     ++total;
                     break ;
 
                 case 'c':
-                    fputc(va_arg(args, char), stdout);
+                    fputc(va_arg(args, char), &stdout);
                     ++total;
                     break ;
 
                 case 's':
-                    total += fputs(va_arg(args, char *), stdout);
+                    total += fputs(va_arg(args, char *), &stdout);
                     break ;
 
+                case 'X':
+                case 'x':
                 case 'p':
                 case 'l':
-                case 'x':
-                case 'X':
                 case 'o':
                 case 'u':
                 case 'i':
                 case 'd':
-                    {
-                        if (*format == 'p' || *format == 'x' || *format == 'X')
-                            base = 16;
-                        else if (*format == 'o')
-                            base = 8;
-                        else
-                            base = 10;
-                        char *str = number_to_string(va_arg(args, void *), base, temp);
-                        if (*format == 'X')
-                            upper(str, str);
-                        total += fputs(str, stdout);
-                        break ;
-                    }
+                    if (*format == 'p' || *format == 'x' || *format == 'X')
+                        base = 16;
+                    else if (*format == 'o')
+                        base = 8;
+                    else
+                        base = 10;
+                    str = number_to_string(va_arg(args, void *), base, temp);
+                    if (*format == 'X')
+                        upper(str, str);
+                    total += fputs(str, &stdout);
+                    break ;
 
                 case 'F':
                 case 'f':
-                    total += fputs(float_to_string(va_arg(args, double), temp), stdout);
+                    total += fputs(float_to_string(va_arg(args, double), temp), &stdout);
                     break ;
 
                 default: // error
@@ -258,13 +249,12 @@ int printf(const char *format, ...)
         }
         else
         {
-            fputc(*format, stdout);
+            fputc(*format, &stdout);
             ++total;
         }
         ++format;
     }
 
-    fflush(stdout);
-    fclose(stdout);
+    fflush(&stdout);
     return total;
 }

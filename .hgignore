@@ -5,3 +5,4 @@ syntax: glob
 *.idea
 .coverage
 a.c
+a.out

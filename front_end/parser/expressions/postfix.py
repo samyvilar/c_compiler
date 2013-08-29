@@ -2,7 +2,7 @@ __author__ = 'samyvilar'
 
 from itertools import izip_longest
 from sequences import peek, consume
-from front_end.loader.locations import loc
+from front_end.loader.locations import loc, EOFLocation
 from front_end.tokenizer.tokens import TOKENS, IDENTIFIER
 
 from front_end.parser.types import c_type, FunctionType, PointerType, IntegralType, StructType, safe_type_coercion
@@ -10,28 +10,28 @@ from front_end.parser.types import VAListType
 from front_end.parser.ast.expressions import ArraySubscriptingExpression, ArgumentExpressionList, FunctionCallExpression
 from front_end.parser.ast.expressions import ElementSelectionExpression, ElementSelectionThroughPointerExpression
 from front_end.parser.ast.expressions import PostfixIncrementExpression, PostfixDecrementExpression, CastExpression
+from front_end.parser.ast.expressions import CommaExpression, exp
 
 from front_end.errors import error_if_not_type, error_if_not_value
 
 
 # Subscript operator can only be called on an expression that returns a pointer type.
 def subscript_oper(tokens, symbol_table, primary_exp, expression_func):
-    location, _ = loc(consume(tokens)), error_if_not_type([c_type(primary_exp)], PointerType)
+    location, _ = loc(consume(tokens)), error_if_not_type(c_type(primary_exp), PointerType)
     exp = expression_func(tokens, symbol_table)
     # array subscripts must be of Integral Type.
-    _, _ = error_if_not_value(tokens, TOKENS.RIGHT_BRACKET), error_if_not_type([c_type(exp)], IntegralType)
+    _, _ = error_if_not_value(tokens, TOKENS.RIGHT_BRACKET), error_if_not_type(c_type(exp), IntegralType)
     return ArraySubscriptingExpression(primary_exp, exp, c_type(c_type(primary_exp))(location), location)
 
 
 # list of 1 or more expressions to be used as arguments to a function call.
-def argument_expression_list(tokens, symbol_table, expression_func):
-    # : expression (',' expression)*
+def argument_expression_list(tokens, symbol_table, expression_func):  # : assignment_expression
     initial_argument = expression_func(tokens, symbol_table)
-    expressions = ArgumentExpressionList([initial_argument], loc(initial_argument))
-    while peek(tokens, default='') == TOKENS.COMMA:
-        _ = consume(tokens)
-        expressions.append(expression_func(tokens, symbol_table))
-    return expressions
+    if isinstance(initial_argument, CommaExpression):
+        for e in exp(initial_argument):
+            yield e
+    else:
+        yield initial_argument
 
 
 def arguments(func_type):
@@ -59,7 +59,7 @@ def function_call(tokens, symbol_table, primary_exp, expression_func):
 
     # get expression arguments.
     expression_argument_list = ArgumentExpressionList((), l)
-    if peek(tokens, default='') != TOKENS.RIGHT_PARENTHESIS:
+    if peek(tokens, '') != TOKENS.RIGHT_PARENTHESIS:
         # check the arguments.
         for arg_decl, arg in izip_longest(
                 arguments(func_type), argument_expression_list(tokens, symbol_table, expression_func)
@@ -75,17 +75,15 @@ def function_call(tokens, symbol_table, primary_exp, expression_func):
                     l=loc(arg), f_type=c_type(arg), t_type=c_type(arg_decl),
                 ))
             expression_argument_list.append(
-                CastExpression(arg, c_type(
-                    arg if isinstance(c_type(arg_decl), VAListType) else arg_decl
-                ), loc(arg))
+                CastExpression(arg, c_type(arg if isinstance(c_type(arg_decl), VAListType) else arg_decl), loc(arg))
             )
     _ = error_if_not_value(tokens, TOKENS.RIGHT_PARENTHESIS)
     return FunctionCallExpression(primary_exp, expression_argument_list, ret_type(l), l)
 
 
 def dot_oper(tokens, symbol_table, primary_exp, expression_func):
-    location, _ = loc(consume(tokens)), error_if_not_type([c_type(primary_exp)], StructType)
-    member = error_if_not_type(tokens, IDENTIFIER)
+    location, _ = loc(consume(tokens)), error_if_not_type(c_type(primary_exp), StructType)
+    member = error_if_not_type(consume(tokens, EOFLocation), IDENTIFIER)
     if member not in c_type(primary_exp):
         raise ValueError('{l} struct does not contain member {member}'.format(member=member, l=loc(member)))
     return ElementSelectionExpression(
@@ -94,8 +92,10 @@ def dot_oper(tokens, symbol_table, primary_exp, expression_func):
 
 
 def arrow_operator(tokens, symbol_table, primary_exp, expression_func):
-    location, _ = loc(consume(tokens)), error_if_not_type([c_type(primary_exp)], PointerType)
-    _, member = error_if_not_type([c_type(c_type(primary_exp))], StructType), error_if_not_type(tokens, IDENTIFIER)
+    location, _ = loc(consume(tokens)), error_if_not_type(c_type(primary_exp), PointerType)
+    _, member = error_if_not_type(c_type(c_type(primary_exp)), StructType), error_if_not_type(
+        consume(tokens, EOFLocation), IDENTIFIER
+    )
 
     if member not in c_type(c_type(primary_exp)):
         raise ValueError('{l} pointer to struct which does not contain member {member}'.format(

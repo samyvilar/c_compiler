@@ -7,6 +7,7 @@ from front_end.parser.types import IntegerType, c_type
 from front_end.tokenizer.tokens import TOKENS
 
 from front_end.parser.ast.expressions import ConstantExpression, UnaryExpression, BinaryExpression, CastExpression
+from front_end.parser.ast.expressions import EmptyExpression
 from front_end.parser.types import IntegralType, FloatType
 
 from front_end.parser.ast.expressions import left_exp, right_exp, oper, exp
@@ -116,6 +117,8 @@ def cast_exp(expr):
         to_type = c_type(expr)
         expr = exp(expr)
         location = loc(expr)
+        if isinstance(expr, EmptyExpression):
+            return EmptyExpression(to_type, loc(expr))
         if isinstance(to_type, IntegralType):
             return ConstantExpression(int(exp(expr)), to_type(location), location)
         elif isinstance(to_type, FloatType):

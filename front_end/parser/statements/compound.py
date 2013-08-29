@@ -1,12 +1,12 @@
 __author__ = 'samyvilar'
 
 from collections import defaultdict
-from itertools import chain
+from itertools import chain, izip, repeat
 
 from sequences import peek, consume
 from logging_config import logging
 
-from front_end.loader.locations import loc
+from front_end.loader.locations import loc, EOFLocation
 from front_end.tokenizer.tokens import TOKENS, IDENTIFIER
 from front_end.parser.symbol_table import SymbolTable, push, pop
 
@@ -27,7 +27,7 @@ logger = logging.getLogger('parser')
 
 def no_rule(tokens, *_):
     raise ValueError('{l} Could not locate a rule for statement starting with {t}.'.format(
-        l=loc(peek(tokens, default='')) or '__EOF__', t=peek(tokens, default='')
+        l=loc(peek(tokens, EOFLocation)), t=peek(tokens, '')
     ))
 
 
@@ -42,10 +42,9 @@ def _expression(expr):
 def compound_statement(tokens, symbol_table, statement_func):  #: '{' statement*  '}'
     _ = error_if_not_value(tokens, TOKENS.LEFT_BRACE)
     symbol_table = push(symbol_table)
-    while peek(tokens, default='') != TOKENS.RIGHT_BRACE:
+    while peek(tokens) != TOKENS.RIGHT_BRACE:
         yield statement_func(tokens, symbol_table, statement_func)
-    _ = error_if_not_value(tokens, TOKENS.RIGHT_BRACE)
-    _ = pop(symbol_table)
+    _, _ = error_if_not_value(tokens, TOKENS.RIGHT_BRACE), pop(symbol_table)
 
 
 def label_stmnt(label_name, stmnt):
@@ -74,9 +73,9 @@ def statement(tokens, symbol_table=None, statement_func=None):
     if is_declaration(tokens, symbol_table):
         return declaration(tokens, symbol_table)
 
-    if isinstance(peek(tokens, default=''), IDENTIFIER):
+    if isinstance(peek(tokens, ''), IDENTIFIER):
         label_name = consume(tokens)
-        if peek(tokens, default='') == TOKENS.COLON:
+        if peek(tokens, '') == TOKENS.COLON:
             _ = consume(tokens)
             return label_stmnt(label_name, statement_func(tokens, symbol_table, statement_func))
         # it must be an expression, TODO: figure out a way without using dangerous chain!
@@ -85,23 +84,25 @@ def statement(tokens, symbol_table=None, statement_func=None):
         _ = error_if_not_value(tokens, TOKENS.SEMICOLON)
         return _expression(expr)
 
-    if peek(tokens, default='') in statement.rules:
+    if peek(tokens, '') in statement.rules:
         return statement.rules[peek(tokens)](tokens, symbol_table, statement_func)
 
-    if peek(tokens, default=False):
+    if peek(tokens, ''):
         expr = expression(tokens, symbol_table)
         _ = error_if_not_value(tokens, TOKENS.SEMICOLON)
         return _expression(expr)
 
     raise ValueError('{l} No rule could be found to create statement, got {got}'.format(
-        l=loc(peek(tokens, default='')) or '__EOF__', got=peek(tokens, default='')
+        l=loc(peek(tokens, EOFLocation)), got=peek(tokens, '')
     ))
 statement.rules = defaultdict(lambda: no_rule)
-statement.rules.update({
-    TOKENS.LEFT_BRACE: _comp_stmnt,
-    TOKENS.SEMICOLON: _empty_statement,
-})
-statement.rules.update({rule: labeled_statement for rule in labeled_statement.rules})
-statement.rules.update({rule: selection_statement for rule in selection_statement.rules})
-statement.rules.update({rule: iteration_statement for rule in iteration_statement.rules})
-statement.rules.update({rule: jump_statement for rule in jump_statement.rules})
+statement.rules.update(chain(
+    izip(labeled_statement.rules, repeat(labeled_statement)),
+    izip(selection_statement.rules, repeat(selection_statement)),
+    izip(iteration_statement.rules, repeat(iteration_statement)),
+    izip(jump_statement.rules, repeat(jump_statement)),
+    (
+        (TOKENS.LEFT_BRACE, _comp_stmnt),
+        (TOKENS.SEMICOLON, _empty_statement),
+    )
+))

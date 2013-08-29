@@ -40,6 +40,7 @@ class TOKENS(object):
     SEMICOLON = Symbol(';')
     COLON = Symbol(':')
     DOT = Symbol('.')
+    ELLIPSIS = Symbol('...')
 
     EXCLAMATION = Symbol('!')
     LEFT_PARENTHESIS = Symbol('(')

@@ -22,14 +22,14 @@ class ObjectMacro(object):
 def argument(
         token_seq,
         takewhile=lambda token_seq:
-        peek(token_seq, default=TOKENS.COMMA) not in {TOKENS.COMMA, TOKENS.RIGHT_PARENTHESIS}
+        peek(token_seq, TOKENS.COMMA) not in {TOKENS.COMMA, TOKENS.RIGHT_PARENTHESIS}
 ):
     while takewhile(token_seq):
-        if peek(token_seq, default='') == TOKENS.LEFT_PARENTHESIS:
+        if peek(token_seq, '') == TOKENS.LEFT_PARENTHESIS:
             yield consume(token_seq)
             for t in argument(token_seq,
                               takewhile=lambda token_seq:
-                              peek(token_seq, default=TOKENS.RIGHT_PARENTHESIS) != TOKENS.RIGHT_PARENTHESIS):
+                              peek(token_seq, TOKENS.RIGHT_PARENTHESIS) != TOKENS.RIGHT_PARENTHESIS):
                 yield t
             yield error_if_not_value(token_seq, TOKENS.RIGHT_PARENTHESIS)
         else:
@@ -37,13 +37,13 @@ def argument(
 
 
 def arguments(token_seq):
-    while peek(token_seq, default=TOKENS.RIGHT_PARENTHESIS) != TOKENS.RIGHT_PARENTHESIS:
+    while peek(token_seq, TOKENS.RIGHT_PARENTHESIS) != TOKENS.RIGHT_PARENTHESIS:
         yield argument(token_seq)
-        if peek(token_seq, default='') == TOKENS.COMMA:
+        if peek(token_seq, '') == TOKENS.COMMA:
             _ = consume(token_seq)
-        elif peek(token_seq, default='') != TOKENS.RIGHT_PARENTHESIS:
+        elif peek(token_seq, '') != TOKENS.RIGHT_PARENTHESIS:
             raise ValueError('{l} expected either COMMA or RIGHT_PARENTHESIS got {g}'.format(
-                l=loc(peek(token_seq, default=EOFLocation)), g=peek(token_seq, default='')
+                l=loc(peek(token_seq, EOFLocation)), g=peek(token_seq, '')
             ))
     _ = error_if_not_value(token_seq, TOKENS.RIGHT_PARENTHESIS)
 
@@ -54,7 +54,7 @@ class FunctionMacro(ObjectMacro):
         super(FunctionMacro, self).__init__(name, body)
 
     def body(self, tokens=()):
-        if peek(tokens, default='') != TOKENS.LEFT_PARENTHESIS:
+        if peek(tokens, '') != TOKENS.LEFT_PARENTHESIS:
             return self.name, consume(tokens, default=IGNORE('', EOFLocation))
 
         location = loc(error_if_not_value(tokens, TOKENS.LEFT_PARENTHESIS))
@@ -76,11 +76,11 @@ class DefinedMacro(FunctionMacro):
         super(DefinedMacro, self).__init__(TOKENS.DEFINED, ('argument',), ())
 
     def body(self, arguments=()):
-        if peek(arguments, default='') == TOKENS.LEFT_PARENTHESIS:
+        if peek(arguments, '') == TOKENS.LEFT_PARENTHESIS:
             _ = consume(arguments)
-            name = error_if_not_type(arguments, (IDENTIFIER, KEYWORD))
+            name = error_if_not_type(consume(arguments, EOFLocation), (IDENTIFIER, KEYWORD))
             _ = error_if_not_value(arguments, TOKENS.RIGHT_PARENTHESIS)
-        elif isinstance(peek(arguments, default=''), (IDENTIFIER, KEYWORD)):
+        elif isinstance(peek(arguments, ''), (IDENTIFIER, KEYWORD)):
             name = consume(arguments)
         else:
             raise ValueError('Expected either LEFT_PARENTHESIS or IDENTIFIER for function macro defined')
@@ -100,11 +100,12 @@ def expand(token, tokens, macros, expanded_macros=None):
 
 
 def merge_tokens(token_seq):
-    while peek(token_seq, default=False):
+    terminal = object()
+    while peek(token_seq, terminal) is not terminal:
         prev_token = consume(token_seq)
-        while peek(token_seq, default='') == TOKENS.PP:
+        while peek(token_seq, '') == TOKENS.PP:
             _ = consume(token_seq)
-            prev_token = next(tokenize((Str(c, loc(_)) for c in prev_token + consume(token_seq, default=IGNORE('')))))
+            prev_token = next(tokenize((Str(c, loc(_)) for c in prev_token + consume(token_seq, IGNORE('')))))
         yield prev_token
     else:
         yield IGNORE('')
@@ -114,7 +115,6 @@ class Macros(dict):
     def __init__(self):
         super(Macros, self).__init__()
         self[TOKENS.DEFINED] = DefinedMacro(self)
-        self['__x86_64__'] = ObjectMacro('__x86_64__', IGNORE(''))
 
     def get(self, k, d=None, all_tokens=()):
         location = loc(k)

@@ -1,6 +1,7 @@
 __author__ = 'samyvilar'
 
-from itertools import izip
+from itertools import izip, imap
+from collections import Iterable
 
 from logging_config import logging
 
@@ -15,7 +16,7 @@ class CType(object):
     rank = 0
     supported_operations = set()
 
-    def __init__(self, location):
+    def __init__(self, location=LocationNotSet):
         self.location = location
 
     @property
@@ -72,27 +73,34 @@ LOGICAL_OPERATIONS = {
     TOKENS.EXCLAMATION,
     TOKENS.GREATER_THAN, TOKENS.LESS_THAN,
     TOKENS.EQUAL_EQUAL, TOKENS.NOT_EQUAL, TOKENS.GREATER_THAN_OR_EQUAL, TOKENS.LESS_THAN_OR_EQUAL,
+    TOKENS.LOGICAL_AND, TOKENS.LOGICAL_OR
 }
 
 ARITHMETIC_OPERATIONS = {TOKENS.PLUS, TOKENS.MINUS, TOKENS.STAR, TOKENS.FORWARD_SLASH}
 COMPOUND_ARITHMETIC_OPERATIONS = {TOKENS.PLUS_EQUAL, TOKENS.MINUS_EQUAL, TOKENS.STAR_EQUAL, TOKENS.FORWARD_SLASH}
 BITWISE_OPERATIONS = {
-    TOKENS.TILDE,
-    TOKENS.AMPERSAND, TOKENS.BAR, TOKENS.CARET, TOKENS.PERCENTAGE, TOKENS.SHIFT_LEFT, TOKENS.SHIFT_RIGHT,
+    TOKENS.TILDE, TOKENS.AMPERSAND, TOKENS.BAR, TOKENS.CARET, TOKENS.PERCENTAGE, TOKENS.SHIFT_LEFT, TOKENS.SHIFT_RIGHT,
 }
-BITWISE_COMPOUND_OPERATION = {
+COMPOUND_BITWISE_OPERATIONS = {
     TOKENS.AMPERSAND_EQUAL, TOKENS.BAR_EQUAL, TOKENS.CARET_EQUAL, TOKENS.SHIFT_LEFT_EQUAL, TOKENS.SHIFT_RIGHT_EQUAL,
 }
 
+COMPOUND_OPERATIONS = {TOKENS.EQUAL} | COMPOUND_ARITHMETIC_OPERATIONS | COMPOUND_BITWISE_OPERATIONS
+
+FUNCTION_CALL_OPERATOR = TOKENS.LEFT_PARENTHESIS + TOKENS.RIGHT_PARENTHESIS
+SUBSCRIPT_OPERATOR = TOKENS.LEFT_BRACKET + TOKENS.RIGHT_BRACKET
+MEMBER_ACCESS_OPERATOR = TOKENS.DOT
+MEMBER_ACCESS_THROUGH_POINTER = TOKENS.ARROW
+
 
 class NumericType(ConcreteType):
-    supported_operations = LOGICAL_OPERATIONS | ARITHMETIC_OPERATIONS
+    supported_operations = LOGICAL_OPERATIONS | ARITHMETIC_OPERATIONS | COMPOUND_OPERATIONS  # TODO check for lvalue
 
 
 class IntegralType(NumericType):  # Integral types support all the same as Numeric including bitwise operation.
     supported_operations = NumericType.supported_operations | BITWISE_OPERATIONS
 
-    def __init__(self, location, unsigned=False):
+    def __init__(self, location=LocationNotSet, unsigned=False):
         self._unsigned = unsigned
         super(IntegralType, self).__init__(location)
 
@@ -139,7 +147,7 @@ class DoubleType(FloatType):
 
 
 class ChainedType(CType):
-    def __init__(self, ctype, location):
+    def __init__(self, ctype, location=LocationNotSet):
         self.__c_type = ctype
         super(ChainedType, self).__init__(location)
 
@@ -168,7 +176,8 @@ class VAListType(CType):
 class WidthType(ChainedType, IntegralType):
     incomplete = False
 
-    def __init__(self, ctype, location, unsigned=False):
+    def __init__(self, ctype=None, location=LocationNotSet, unsigned=False):
+        ctype = ctype or IntegerType(location, unsigned=unsigned)
         super(WidthType, self).__init__(ctype, location)
         self.unsigned = unsigned
 
@@ -192,7 +201,7 @@ class ShortType(WidthType):
 
 class PointerType(ChainedType, IntegralType):
     rank = 4
-    supported_operations = LOGICAL_OPERATIONS | {TOKENS.PLUS,  TOKENS.MINUS}
+    supported_operations = LOGICAL_OPERATIONS | {TOKENS.PLUS,  TOKENS.MINUS, SUBSCRIPT_OPERATOR}
 
     def __call__(self, location):
         return self.__class__(c_type(self)(location), location)
@@ -209,7 +218,7 @@ class PointerType(ChainedType, IntegralType):
 
 
 class ArrayType(PointerType):
-    def __init__(self, __c_type, length, location):
+    def __init__(self, __c_type, length, location=LocationNotSet):
         self.length = length
         super(ArrayType, self).__init__(__c_type, location)
 
@@ -228,12 +237,14 @@ class ArrayType(PointerType):
 
 
 class StringType(ArrayType):
-    def __init__(self, length, location):
+    def __init__(self, length, location=LocationNotSet):
         super(StringType, self).__init__(CharType(location), length, location)
 
 
 class FunctionType(ChainedType, list):
-    def __init__(self, ctype, arguments, location):
+    supported_operations = {FUNCTION_CALL_OPERATOR}
+
+    def __init__(self, ctype, arguments, location=LocationNotSet):
         super(FunctionType, self).__init__(ctype, location)
         list.__init__(self, arguments or ())
 
@@ -256,8 +267,14 @@ class FunctionType(ChainedType, list):
 
 
 class StructType(CType):
-    def __init__(self, name, members, location):
+    supported_operations = {MEMBER_ACCESS_OPERATOR, TOKENS.EQUAL}
+
+    def __init__(self, name, members, location=LocationNotSet):
         self._name, self._members = name or '', members
+        if isinstance(members, Iterable):
+            self._offsets = dict(imap(reversed, enumerate(members)))
+        else:
+            self._offsets = None
         super(StructType, self).__init__(location)
 
     def __call__(self, location):
@@ -271,6 +288,9 @@ class StructType(CType):
     def __iter__(self):
         return iter(self.members)
 
+    def offset(self, member_name):
+        return self._offsets[member_name]
+
     @property
     def members(self):
         return self._members
@@ -279,6 +299,7 @@ class StructType(CType):
     def members(self, _members):
         if self.members is None:
             self._members = _members
+            self._offsets = dict(imap(reversed, enumerate(_members)))
         elif _members != self._members:
             raise TypeError('{l} StructType already has members'.format(l=loc(self)))
 
@@ -363,4 +384,18 @@ def set_core_type(base_type, fundamental_type):
     base_type.c_type = fundamental_type
 
 
-VoidPointer = PointerType(VoidType(LocationNotSet), LocationNotSet)
+def supported_operators(ctype):
+    return ctype.supported_operations
+
+unsigned_char_type = CharType(unsigned=True)
+char_type = CharType()
+unsigned_short = ShortType(unsigned=True)
+short_type = ShortType()
+integer_type = IntegerType()
+unsigned_integer_type = IntegerType(unsigned=True)
+unsigned_long_type = LongType(unsigned=True)
+long_type = LongType()
+float_type = FloatType()
+double_type = DoubleType()
+
+void_pointer_type = PointerType(VoidType(LocationNotSet), LocationNotSet)

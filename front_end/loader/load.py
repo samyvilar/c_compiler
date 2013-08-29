@@ -28,9 +28,9 @@ def load(file_like, search_paths=(getcwd(),)):
 
     def merge_lines(lines, line, file_name, line_number=1, column_number=1):
         line = enumerate(line, column_number)
-        while peek(line, default=False):
+        while peek(line, ''):
             column_number, char = consume(line)
-            if char == '\\' and linesep.startswith(peek(line, default=(0, linesep[0]))[1]):
+            if char == '\\' and linesep.startswith(peek(line, (0, linesep[0]))[1]):
                 chars = ''.join(consume(line, default=(0, c))[1] for c in linesep)
                 if chars == linesep:
                     for char in merge_lines(lines, consume(lines, default=(0, ''))[1], file_name,

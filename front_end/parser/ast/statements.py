@@ -1,24 +1,23 @@
 __author__ = 'samyvilar'
-from types import NoneType
-from collections import defaultdict, Iterable
 
-from sequences import peek
+from types import NoneType
+from collections import defaultdict
+
 from front_end.loader.locations import loc
-from front_end.tokenizer.tokens import TOKENS
 from front_end.parser.ast.general import Node, EmptyNode
 
-from front_end.parser.ast.declarations import Declaration, Definition, Declarator, name, initialization
+from front_end.parser.ast.declarations import Declaration, Definition, Declarator, name
 
 from front_end.parser.ast.expressions import ConstantExpression, SizeOfExpression, IdentifierExpression, TrueExpression
-from front_end.parser.ast.expressions import EmptyExpression, exp
-from front_end.parser.types import c_type, FunctionType, safe_type_coercion
+from front_end.parser.ast.expressions import EmptyExpression
+from front_end.parser.types import c_type, FunctionType
 
 from front_end.errors import error_if_not_type
 
 
 class FunctionDefinition(Definition):
     def __init__(self, c_decl, body):
-        _ = error_if_not_type([c_type(c_decl)], FunctionType)
+        _ = error_if_not_type(c_type(c_decl), FunctionType)
         if not all(isinstance(arg, Declarator) for arg in c_type(c_decl)):
             raise ValueError('{l} FunctionDef must have concrete declarators as params'.format(l=loc(c_type(c_decl))))
         if not isinstance(body, CompoundStatement):

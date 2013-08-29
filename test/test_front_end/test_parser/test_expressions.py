@@ -6,6 +6,8 @@ from front_end.tokenizer.tokenize import tokenize
 from front_end.preprocessor.preprocess import preprocess
 from front_end.parser.expressions.expression import expression
 
+from front_end.parser.ast.expressions import CompoundLiteral, exp
+
 
 class TestExpressions(TestCase):
     def test_binary_expressions(self):
@@ -25,3 +27,9 @@ class TestExpressions(TestCase):
                 'Raw exp {exp}, expected {e}, got {g}'.format(exp=raw_exp, e=expected_result, g=actual_result.exp)
             )
 
+
+class TestCompoundLiteral(TestCase):
+    def test_compound_literal(self):
+        code = "(struct {int a; char b[10]; struct {double b;} foo;}){.a = 1, .b = {1}, .foo.b = 1.3};"
+        expr = expression(preprocess(tokenize(source(code))))
+        self.assertIsInstance(expr, CompoundLiteral)

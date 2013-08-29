@@ -14,7 +14,7 @@ from front_end.parser.declarations.declarators import type_name
 
 def no_rule_found(tokens, *_):
     raise ValueError('{l} Could not find matching rule for unary_expression got {got}'.format(
-        l=loc(peek(tokens, default=EOFLocation)), got=peek(tokens, default='')
+        l=loc(peek(tokens, EOFLocation)), got=peek(tokens, '')
     ))
 
 
@@ -31,13 +31,13 @@ def size_of(tokens, symbol_table, unary_expression):
     location = loc(consume(tokens))
 
     left_parenthesis = None
-    if peek(tokens, default='') == TOKENS.LEFT_PARENTHESIS:
+    if peek(tokens, '') == TOKENS.LEFT_PARENTHESIS:
         left_parenthesis = consume(tokens)
 
-    if peek(tokens, default='') in {  # TODO: better organize types.
+    if peek(tokens, '') in {  # TODO: better organize types.
             TOKENS.VOID, TOKENS.CHAR, TOKENS.SHORT, TOKENS.INT, TOKENS.LONG, TOKENS.FLOAT, TOKENS.DOUBLE,
             TOKENS.STRUCT, TOKENS.SIGNED, TOKENS.UNSIGNED
-    } or isinstance(symbol_table.get(peek(tokens, default=''), ''), CType):
+    } or isinstance(symbol_table.get(peek(tokens, ''), ''), CType):
         ctype = type_name(tokens, symbol_table)
     else:
         ctype = unary_expression(tokens, symbol_table)
@@ -53,27 +53,28 @@ def address_of(cast_exp, operator):
 
 
 def dereference(cast_exp, operator):
-    _ = error_if_not_type([c_type(cast_exp)], PointerType)
+    _ = error_if_not_type(c_type(cast_exp), PointerType)
     return DereferenceExpression(cast_exp, c_type(c_type(cast_exp))(loc(operator)), loc(operator))
 
 
 def numeric_operator(cast_exp, operator):
-    _ = error_if_not_type([c_type(cast_exp)], NumericType)
+    _ = error_if_not_type(c_type(cast_exp), NumericType)
     return UnaryExpression(operator, cast_exp, c_type(cast_exp)(loc(operator)), loc(operator))
 
 
 def excl_operator(cast_exp, operator):
-    _ = error_if_not_type([c_type(cast_exp)], NumericType)
+    _ = error_if_not_type(c_type(cast_exp), NumericType)
     return UnaryExpression(operator, cast_exp, IntegerType(loc(operator)), loc(operator))
 
 
 def tilde_operator(cast_exp, operator):
-    _ = error_if_not_type([c_type(cast_exp)], IntegralType)
+    _ = error_if_not_type(c_type(cast_exp), IntegralType)
     return UnaryExpression(operator, cast_exp, c_type(cast_exp)(loc(operator)), loc(operator))
 
 
 def unary_operator(tokens, symbol_table, cast_expression):
-    operator, cast_exp = consume(tokens), cast_expression(tokens, symbol_table)
+    operator = consume(tokens)
+    cast_exp = cast_expression(tokens, symbol_table)
     # noinspection PyUnresolvedReferences
     return unary_operator.rules[operator](cast_exp, operator)
 unary_operator.rules = {

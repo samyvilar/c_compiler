@@ -14,7 +14,7 @@ from front_end.errors import error_if_not_value
 
 def no_rule(tokens, *_):
     raise ValueError('{l} selection_statement expected either "if" or "switch: got {got}'.format(
-        l=loc(peek(tokens, default=EOFLocation)), got=peek(tokens, default=''),
+        l=loc(peek(tokens, EOFLocation)), got=peek(tokens, ''),
     ))
 
 
@@ -27,7 +27,7 @@ def _if(tokens, symbol_table, statement):
     def else_statement(tokens, symbol_table, statement):
         def _empty():
             yield EmptyStatement('')
-        if peek(tokens, default='') == TOKENS.ELSE:
+        if peek(tokens, '') == TOKENS.ELSE:
             location = loc(consume(tokens))
             stmnt = statement(tokens, symbol_table, statement)
         else:
@@ -58,9 +58,9 @@ def selection_statement(tokens, symbol_table, statement):
         : 'if' '(' expression ')' statement ('else' statement)?
         | 'switch' '(' expression ')' statement
     """
-    return selection_statement.rules[peek(tokens, default='')](tokens, symbol_table, statement)
+    return selection_statement.rules[peek(tokens, '')](tokens, symbol_table, statement)
 selection_statement.rules = defaultdict(lambda: no_rule)
 selection_statement.rules.update({
-    TOKENS.IF:_if,
-    TOKENS.SWITCH:switch,
+    TOKENS.IF: _if,
+    TOKENS.SWITCH: switch,
 })

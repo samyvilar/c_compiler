@@ -1,21 +1,17 @@
 __author__ = 'samyvilar'
 
-from collections import defaultdict, Iterable
-from itertools import chain
+from collections import Iterable
+from itertools import chain, izip, imap, repeat
 
 from front_end.loader.locations import loc
 
 from front_end.parser.ast.declarations import Declaration, Definition, initialization
-from front_end.parser.ast.expressions import ConstantExpression, exp, CastExpression
+from front_end.parser.ast.expressions import ConstantExpression, exp, CastExpression, CompoundLiteral, EmptyExpression
 
 from front_end.parser.types import CharType, ShortType, IntegerType, LongType, FloatType, DoubleType
-from front_end.parser.types import StructType, PointerType, ArrayType, c_type, StringType, CType, VAListType
+from front_end.parser.types import StructType, PointerType, ArrayType, c_type, StringType, VAListType
 
-from back_end.virtual_machine.instructions.architecture import Integer, Double
-
-
-def error_type(ctype):
-    raise ValueError('{l} Trying to get size of incomplete CType'.format(l=loc(ctype)))
+from back_end.virtual_machine.instructions.architecture import Integer, Double, Pass
 
 
 def struct_size(ctype):
@@ -26,17 +22,39 @@ def array_size(ctype):
     return size(c_type(ctype)) * len(ctype)
 
 
+def numeric_type(ctype):
+    return numeric_type.rules[type(ctype)]
+numeric_type.rules = {  # Virtual Machine is word based, all non-composite types are 1 word, 64 bits.
+    CharType: 1,
+    ShortType: 1,
+    IntegerType: 1,
+    LongType: 1,
+    PointerType: 1,
+    FloatType: 1,
+    DoubleType: 1,
+}
+
+
+def machine_types(_type):
+    return machine_types.rules[type(_type)]
+machine_types.rules = {
+    Integer: numeric_type.rules[IntegerType],
+    Pass: 1
+}
+
+
 def size(ctype):
     return size.rules[type(ctype)](ctype)
-size.rules = defaultdict(lambda: lambda ctype: Integer(1, loc(ctype)))  # Virtual Machine is word based
-size.rules.update({                                                     # all non-composite types are 1 word, 64 bits.
-    type: error_type,
-    CType: error_type,
+size.rules = {                                                     # all non-composite types are 1 word, 64 bits.
     StructType: struct_size,
     ArrayType: array_size,
     StringType: array_size,
     VAListType: lambda _: Integer(0, loc(_))
-})
+}
+size.rules.update(chain(
+    izip(numeric_type.rules, repeat(numeric_type)),
+    izip(machine_types.rules, repeat(machine_types)),
+))
 
 
 def integral_const(const_exp):
@@ -57,11 +75,13 @@ def array_const(const_exp):
 
 def struct_const(const_exp):
     if isinstance(exp(const_exp), Iterable):
-        return (binaries(value) for value in exp(const_exp))
-    return (binaries(c_type(member)) for member in c_type(const_exp).itervalues())
+        bins = (binaries(value) for value in exp(const_exp))
+    else:
+        bins = (binaries(c_type(member)) for member in c_type(const_exp).itervalues())
+    return chain.from_iterable(bins)
 
 
-def dec_binaries(declaration):
+def dec_binaries(_):
     return ()
 
 
@@ -70,6 +90,7 @@ def def_binaries(definition):
 
 
 def const_exp_binaries(const_exp):
+    assert isinstance(const_exp, ConstantExpression)
     return const_exp_binaries.rules[type(c_type(const_exp))](const_exp)
 const_exp_binaries.rules = {
     CharType: integral_const,
@@ -93,14 +114,19 @@ def cast_expr(obj):
         raise ValueError('{l} Could not generate binaries for {g}'.format(l=loc(obj), g=obj))
 
 
+def compound_literal(expr):
+    return chain.from_iterable(imap(binaries, expr))
+
+
 def binaries(obj):
     return binaries.rules[type(obj)](obj)
 binaries.rules = {
     Declaration: dec_binaries,
     Definition: def_binaries,
+    EmptyExpression: const_exp_binaries,
     ConstantExpression: const_exp_binaries,
     CastExpression: cast_expr,
-
+    CompoundLiteral: compound_literal,
 }
 binaries.rules.update({rule: const_exp_binaries for rule in const_exp_binaries.rules})
 

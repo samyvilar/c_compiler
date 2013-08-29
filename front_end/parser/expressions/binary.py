@@ -4,10 +4,11 @@ from sequences import peek, consume
 from front_end.loader.locations import loc
 from front_end.tokenizer.tokens import TOKENS
 
-from front_end.parser.types import NumericType, IntegralType, c_type, VoidPointer, PointerType, safe_type_coercion
+from front_end.parser.types import NumericType, IntegralType, c_type, safe_type_coercion, supported_operators
+from front_end.parser.types import PointerType
 
 from front_end.parser.ast.expressions import BinaryExpression, AssignmentExpression, CompoundAssignmentExpression, oper
-from front_end.parser.ast.expressions import TernaryExpression, left_exp, right_exp
+from front_end.parser.ast.expressions import TernaryExpression, left_exp, right_exp, SizeOfExpression
 from front_end.parser.expressions.reduce import reduce_expression
 
 from front_end.errors import error_if_not_type, error_if_not_value
@@ -20,14 +21,38 @@ def get_binary_expression(tokens, symbol_table, l_exp, right_exp_func, exp_type,
         r_exp = right_exp_func(tokens, symbol_table)
     else:
         r_exp = right_exp_func(tokens, symbol_table, cast_expression)
-    exp_type = max(error_if_not_type([c_type(l_exp)], exp_type), error_if_not_type([c_type(r_exp)], exp_type))
+    exp_type = max(error_if_not_type(c_type(l_exp), exp_type), error_if_not_type(c_type(r_exp), exp_type))
+
+    if operator not in supported_operators(c_type(l_exp)):
+        raise ValueError('{l} ctype {g} does not support {o}'.format(l=loc(l_exp), g=c_type(l_exp), o=operator))
+    if operator not in supported_operators(c_type(r_exp)):
+        raise ValueError('{l} ctype {g} does not support {o}'.format(l=loc(l_exp), g=c_type(l_exp), o=operator))
+
+    if isinstance(c_type(l_exp), PointerType):
+        if not isinstance(c_type(r_exp), IntegralType):
+            raise ValueError('{l} invalid operand with pointer type {t}'.format(l=loc(l_exp), t=c_type(l_exp)))
+        if operator in {TOKENS.PLUS, TOKENS.MINUS, TOKENS.PLUS_EQUAL, TOKENS.MINUS_EQUAL}:
+            r_exp = BinaryExpression(r_exp, TOKENS.STAR, SizeOfExpression(c_type(c_type(l_exp))),
+                                     c_type(l_exp)(loc(operator)), loc(operator))
+        else:
+            raise ValueError('{l} Pointer type does not support operator {o}'.format(l=loc(operator), o=operator))
+
+    if isinstance(c_type(r_exp), PointerType):
+        if not isinstance(c_type(l_exp), IntegralType):
+            raise ValueError('{l} invalid operand with pointer type {t}'.format(l=loc(r_exp), t=c_type(r_exp)))
+        if operator in {TOKENS.PLUS, TOKENS.MINUS, TOKENS.PLUS_EQUAL, TOKENS.MINUS_EQUAL}:
+            l_exp = BinaryExpression(l_exp, TOKENS.STAR, SizeOfExpression(c_type(c_type(r_exp))),
+                                     c_type(r_exp)(loc(operator)), loc(operator))
+        else:
+            raise ValueError('{l} Pointer type does not support operator {o}'.format(l=loc(operator), o=operator))
+
     return BinaryExpression(l_exp, operator, r_exp, exp_type(loc(operator)), loc(operator))
 
 
 def multiplicative_expression(tokens, symbol_table, cast_expression):
     # : cast_expression ('*' cast_expression | '/' cast_expression | '%' cast_expression)*
     exp = cast_expression(tokens, symbol_table)
-    while peek(tokens, default='') in {TOKENS.STAR, TOKENS.PERCENTAGE, TOKENS.FORWARD_SLASH}:
+    while peek(tokens, '') in {TOKENS.STAR, TOKENS.PERCENTAGE, TOKENS.FORWARD_SLASH}:
         # noinspection PyUnresolvedReferences
         exp = multiplicative_expression.rules[peek(tokens)](tokens, symbol_table, exp, cast_expression)
     return exp
@@ -46,7 +71,7 @@ multiplicative_expression.rules = {
 def additive_expression(tokens, symbol_table, cast_expression):
     # : multiplicative_expression ('+' multiplicative_expression | '-' multiplicative_expression)*
     exp = multiplicative_expression(tokens, symbol_table, cast_expression)
-    while peek(tokens, default='') in {TOKENS.PLUS, TOKENS.MINUS}:
+    while peek(tokens, '') in {TOKENS.PLUS, TOKENS.MINUS}:
         exp = get_binary_expression(tokens, symbol_table, exp, multiplicative_expression, NumericType, cast_expression)
     return exp
 
@@ -54,7 +79,7 @@ def additive_expression(tokens, symbol_table, cast_expression):
 def shift_expression(tokens, symbol_table, cast_expression):
     # : additive_expression (('<<'|'>>') additive_expression)*
     exp = additive_expression(tokens, symbol_table, cast_expression)
-    while peek(tokens, default='') in {TOKENS.SHIFT_LEFT, TOKENS.SHIFT_RIGHT}:
+    while peek(tokens, '') in {TOKENS.SHIFT_LEFT, TOKENS.SHIFT_RIGHT}:
         exp = get_binary_expression(tokens, symbol_table, exp, additive_expression, IntegralType, cast_expression)
     return exp
 
@@ -62,7 +87,7 @@ def shift_expression(tokens, symbol_table, cast_expression):
 def relational_expression(tokens, symbol_table, cast_expression):
     # : shift_expression (('<'|'>'|'<='|'>=') shift_expression)*
     exp = shift_expression(tokens, symbol_table, cast_expression)
-    while peek(tokens, default='') in {
+    while peek(tokens, '') in {
         TOKENS.LESS_THAN, TOKENS.GREATER_THAN, TOKENS.LESS_THAN_OR_EQUAL, TOKENS.GREATER_THAN_OR_EQUAL
     }:
         exp = get_binary_expression(tokens, symbol_table, exp, shift_expression, NumericType, cast_expression)
@@ -72,7 +97,7 @@ def relational_expression(tokens, symbol_table, cast_expression):
 def equality_expression(tokens, symbol_table, cast_expression):
     # : relational_expression (('=='|'!=') relational_expression)*
     exp = relational_expression(tokens, symbol_table, cast_expression)
-    while peek(tokens, default='') in {TOKENS.EQUAL_EQUAL, TOKENS.NOT_EQUAL}:
+    while peek(tokens, '') in {TOKENS.EQUAL_EQUAL, TOKENS.NOT_EQUAL}:
         exp = get_binary_expression(tokens, symbol_table, exp, relational_expression, NumericType, cast_expression)
     return exp
 
@@ -80,7 +105,7 @@ def equality_expression(tokens, symbol_table, cast_expression):
 def and_expression(tokens, symbol_table, cast_expression):
     # : equality_expression ('&' equality_expression)*
     exp = equality_expression(tokens, symbol_table, cast_expression)
-    while peek(tokens, default='') == TOKENS.AMPERSAND:
+    while peek(tokens, '') == TOKENS.AMPERSAND:
         exp = get_binary_expression(tokens, symbol_table, exp, equality_expression, IntegralType, cast_expression)
     return exp
 
@@ -88,7 +113,7 @@ def and_expression(tokens, symbol_table, cast_expression):
 def exclusive_or_expression(tokens, symbol_table, cast_expression):
     # : and_expression ('^' and_expression)*
     exp = and_expression(tokens, symbol_table, cast_expression)
-    while peek(tokens, default='') == TOKENS.CARET:
+    while peek(tokens, '') == TOKENS.CARET:
         exp = get_binary_expression(tokens, symbol_table, exp, and_expression, IntegralType, cast_expression)
     return exp
 
@@ -96,7 +121,7 @@ def exclusive_or_expression(tokens, symbol_table, cast_expression):
 def inclusive_or_expression(tokens, symbol_table, cast_expression):
     # : exclusive_or_expression ('|' exclusive_or_expression)*
     exp = exclusive_or_expression(tokens, symbol_table, cast_expression)
-    while peek(tokens, default='') == TOKENS.BAR:
+    while peek(tokens, '') == TOKENS.BAR:
         exp = get_binary_expression(tokens, symbol_table, exp, exclusive_or_expression, IntegralType, cast_expression)
     return exp
 
@@ -104,7 +129,7 @@ def inclusive_or_expression(tokens, symbol_table, cast_expression):
 def logical_and_expression(tokens, symbol_table, cast_expression):
     # : inclusive_or_expression ('&&' inclusive_or_expression)*
     exp = inclusive_or_expression(tokens, symbol_table, cast_expression)
-    while peek(tokens, default='') == TOKENS.LOGICAL_AND:
+    while peek(tokens, '') == TOKENS.LOGICAL_AND:
         exp = get_binary_expression(tokens, symbol_table, exp, inclusive_or_expression, NumericType, cast_expression)
     return exp
 
@@ -112,7 +137,7 @@ def logical_and_expression(tokens, symbol_table, cast_expression):
 def logical_or_expression(tokens, symbol_table, cast_expression):
     # : logical_and_expression ('||' logical_and_expression)*
     exp = logical_and_expression(tokens, symbol_table, cast_expression)
-    while peek(tokens, default='') == TOKENS.LOGICAL_OR:
+    while peek(tokens, '') == TOKENS.LOGICAL_OR:
         exp = get_binary_expression(tokens, symbol_table, exp, logical_and_expression, NumericType, cast_expression)
     return exp
 
@@ -120,9 +145,9 @@ def logical_or_expression(tokens, symbol_table, cast_expression):
 def conditional_expression(tokens, symbol_table, cast_expression):
     # logical_or_expression ('?' expression ':' conditional_expression)?
     exp = logical_or_expression(tokens, symbol_table, cast_expression)
-    if peek(tokens, default='') in conditional_expression.rules:
+    if peek(tokens, '') in conditional_expression.rules:
         location = loc(error_if_not_value(tokens, TOKENS.QUESTION))
-        _ = error_if_not_type([c_type(exp)], NumericType)
+        _ = error_if_not_type(c_type(exp), NumericType)
         if_true_exp = assignment_expression(tokens, symbol_table, cast_expression)
         _ = error_if_not_value(tokens, TOKENS.COLON)
         if_false_exp = conditional_expression(tokens, symbol_table, cast_expression)
@@ -133,7 +158,7 @@ def conditional_expression(tokens, symbol_table, cast_expression):
         elif safe_type_coercion(ctype_2, ctype_1):
             ctype = ctype_2(location)
         else:
-            raise ValueError('{l} Could not determine cond-expr return type giving the types {t1} and {t2}'.format(
+            raise ValueError('{l} Could not determine type for ternary-expr, giving the types {t1} and {t2}'.format(
                 t1=ctype_1, t2=ctype_2
             ))
         return TernaryExpression(exp, if_true_exp, if_false_exp, ctype, location)
@@ -153,15 +178,14 @@ def integral_type(tokens, symbol_table, l_exp, cast_expression):
 
 
 def assign(tokens, symbol_table, l_exp, cast_expression):
-    operator = consume(tokens)
-    r_exp = assignment_expression(tokens, symbol_table, cast_expression)
+    operator, r_exp = consume(tokens), assignment_expression(tokens, symbol_table, cast_expression)
     return AssignmentExpression(l_exp, operator, r_exp, c_type(l_exp)(loc(oper)), loc(oper))
 
 
 def assignment_expression(tokens, symbol_table, cast_expression):
     # : conditional_expression | conditional_expression assignment_operator assignment_expression
     left_value_exp = conditional_expression(tokens, symbol_table, cast_expression)
-    if peek(tokens, default='') in assignment_expression.rules:
+    if peek(tokens, '') in assignment_expression.rules:
         return assignment_expression.rules[peek(tokens)](tokens, symbol_table, left_value_exp, cast_expression)
     return left_value_exp
 assignment_expression.rules = {

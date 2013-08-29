@@ -12,8 +12,10 @@ typedef struct FILE {
     int _id;
     int state;
     char buffer[FILE_BUFFER_SIZE];
-    char *current;
+    unsigned int buffer_index;
 } FILE;
+
+#define EOF -1
 
 int	 fclose(FILE *);
 FILE	*fopen(const char *, const char *);

@@ -1,6 +1,6 @@
 __author__ = 'samyvilar'
 
-from itertools import chain
+from itertools import chain, izip, repeat
 
 from types import NoneType
 
@@ -11,7 +11,7 @@ from front_end.loader.locations import loc
 import front_end.parser.ast.declarations as declarations
 import front_end.parser.ast.statements as statements
 import front_end.parser.ast.expressions as expressions
-from front_end.parser.types import c_type, FunctionType
+from front_end.parser.types import c_type, FunctionType, VoidType
 from front_end.parser.symbol_table import SymbolTable, push, pop
 
 
@@ -33,7 +33,8 @@ from back_end.emitter.object_file import Data, Code
 # but they could be referenced (extern, or function type)
 def declaration(stmnt, symbol_table, *_):
     symbol_type = Code if isinstance(c_type(stmnt), FunctionType) else Data
-    stmnt.symbol = symbol_type(declarations.name(stmnt), (), size(c_type(stmnt)), stmnt.storage_class, loc(stmnt))
+    stmnt.symbol = symbol_type(declarations.name(stmnt), (), None, stmnt.storage_class, loc(stmnt))
+    stmnt.symbol.size = (not isinstance(c_type(stmnt), FunctionType) and size(c_type(stmnt))) or None
     symbol_table[declarations.name(stmnt)] = stmnt
     yield Pass(loc(stmnt))
 
@@ -64,8 +65,9 @@ def definition(stmnt, symbol_table, stack, *_):
         symbol_table[declarations.name(stmnt)] = stmnt
         # If definition is initialized simply evaluate the expression
         expr = declarations.initialization(stmnt)
-        instrs = cast(expression(expr, symbol_table), c_type(expr), c_type(stmnt), loc(stmnt)) if expr \
-            else (Allocate(loc(stmnt), size(c_type(stmnt))),)
+        instrs = (expr and cast(expression(expr, symbol_table), c_type(expr), c_type(stmnt), loc(stmnt))) or (
+            Allocate(loc(stmnt), size(c_type(stmnt))),
+        )
     return instrs
 
 
@@ -79,25 +81,24 @@ def compound_statement(stmnt, symbol_table, stack, statement_func):
     stack.stack_pointer = stack_pointer
 
 
-def _expression(expr, symbol_table, *_):
+def _expression(expr, symbol_table, stack, *_):
     return expression(expr, symbol_table)
 
 
 # Entry point to all statements, or statement expressions.
 def statement(stmnt, symbol_table=None, stack=None, statement_func=None):
     is_expression = isinstance(stmnt, expressions.Expression)
-    symbol_table = symbol_table or SymbolTable()
 
     # Set entry point to expression or use statement function.
     instrs = statement.rules[type(stmnt)](
         stmnt,
-        symbol_table,
+        symbol_table or SymbolTable(),
         stack or Stack(),
         not is_expression and (statement_func or statement),
     )
 
-    # All Expression statements leave a value on the stack, so we must remove it.
-    if stmnt and is_expression and not statement_func:
+    # Almost all Expression statements leave a value on the stack, so we must remove it.
+    if stmnt and is_expression and not statement_func and not isinstance(c_type(stmnt), VoidType):
         instrs = chain(instrs, (Allocate(loc(stmnt), Integer(-1 * size(c_type(stmnt)), loc(stmnt))),))
     return instrs
 statement.rules = {
@@ -108,8 +109,10 @@ statement.rules = {
     statements.EmptyStatement: lambda *args: (),
     statements.CompoundStatement: compound_statement,
 }
-statement.rules.update({rule: iteration_statement for rule in iteration_statement.rules})
-statement.rules.update({rule: jump_statement for rule in jump_statement.rules})
-statement.rules.update({rule: selection_statement for rule in selection_statement.rules})
-statement.rules.update({rule: label_statement for rule in label_statement.rules})
-statement.rules.update({rule: _expression for rule in expression.rules})
+statement.rules.update(chain(
+    izip(iteration_statement.rules, repeat(iteration_statement)),
+    izip(jump_statement.rules, repeat(jump_statement)),
+    izip(selection_statement.rules, repeat(selection_statement)),
+    izip(label_statement.rules, repeat(label_statement)),
+    izip(expression.rules, repeat(_expression)),
+))

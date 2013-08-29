@@ -25,17 +25,14 @@ def preprocess(
         directives=None,
         macros=None,
         include_dirs=(),
-        takewhile=lambda token_seq: peek(token_seq, default=False),
+        takewhile=lambda token_seq: peek(token_seq, False),
         ignore_tokens=IGNORE,
 ):
     return ifilterfalse(
         lambda token: isinstance(token, IGNORE),
         _apply(
-            iter(token_seq),
-            directives or get_directives(),
-            macros or Macros(),
-            include_dirs,
-            takewhile,
-            ignore_tokens
+            iter(token_seq), directives or get_directives(), macros or Macros(), include_dirs, takewhile, ignore_tokens
         )
     )
+
+

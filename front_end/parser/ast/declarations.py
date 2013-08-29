@@ -1,10 +1,22 @@
 __author__ = 'samyvilar'
 
-from front_end.loader.locations import loc
+from front_end.loader.locations import loc, LocationNotSet
 
 from front_end.parser.types import CType, c_type, safe_type_coercion
 from front_end.parser.ast.general import Node, EmptyNode
 from front_end.parser.ast.expressions import ConstantExpression, TypedNode
+
+
+class Designation(Node):
+    pass
+
+
+class Identifier(Designation):
+    pass
+
+
+class Range(Designation):
+    pass
 
 
 class StorageClass(Node):
@@ -29,7 +41,7 @@ class Static(StorageClass):
 
 
 class Declaration(TypedNode):
-    def __init__(self, name, ctype, location, _storage_class=None):
+    def __init__(self, name, ctype, location=LocationNotSet, _storage_class=None):
         self.name = name
         self.storage_class = _storage_class
         super(Declaration, self).__init__(ctype, location)
@@ -46,7 +58,7 @@ class Declaration(TypedNode):
 
 
 class Definition(Declaration):
-    def __init__(self, name, ctype, initialization, location, storage_class):
+    def __init__(self, name, ctype, initialization, location=LocationNotSet, storage_class=None):
         self._initialization = initialization
         super(Definition, self).__init__(name, ctype, location, storage_class)
 
@@ -58,7 +70,7 @@ class Definition(Declaration):
     def initialization(self, value):
         if value and c_type(self) and not safe_type_coercion(c_type(self), c_type(value)):
             raise ValueError('{l} Could not coerce types from {from_type} to {to_type}'.format(
-                from_type=c_type(value), to_type=c_type(self)
+                l=loc(self), from_type=c_type(value), to_type=c_type(self)
             ))
         if isinstance(self.storage_class, (Static, Extern)) and not isinstance(value, ConstantExpression):
             raise ValueError('{l} Static/Extern definition may only be initialized with constant expressions'.format(
@@ -74,7 +86,7 @@ class Definition(Declaration):
 
 
 class TypeDef(Definition, StorageClass):
-    def __init__(self, name, c_type, location):
+    def __init__(self, name, c_type, location=LocationNotSet):
         super(TypeDef, self).__init__(name, c_type, None, location, self)
 
     def __call__(self, location):
@@ -89,7 +101,7 @@ class EmptyDeclaration(Declaration, EmptyNode):
 
 
 class Declarator(TypedNode):
-    def __init__(self, name, c_type, initialization, location):
+    def __init__(self, name, c_type, initialization, location=LocationNotSet):
         self.name, self.initialization = name, initialization
         super(Declarator, self).__init__(c_type, location)
 
@@ -118,5 +130,8 @@ def name(obj):
     return getattr(obj, 'name')
 
 
-def initialization(obj, *d):
-    return getattr(obj, 'initialization', d[0]) if d else getattr(obj, 'initialization')
+__required__ = object()
+
+
+def initialization(obj, default=__required__):
+    return getattr(obj, 'initialization', default) if default is not __required__ else getattr(obj, 'initialization')

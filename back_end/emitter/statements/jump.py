@@ -7,7 +7,7 @@ from front_end.parser.ast.expressions import exp
 from front_end.parser.ast.declarations import name
 from front_end.parser.ast.statements import BreakStatement, ContinueStatement, ReturnStatement, GotoStatement
 from front_end.parser.ast.statements import LabelStatement
-from front_end.parser.types import c_type, VoidPointer
+from front_end.parser.types import c_type, void_pointer_type, VoidType
 
 from back_end.virtual_machine.instructions.architecture import Push, Address, AbsoluteJump, Pass, RelativeJump
 from back_end.virtual_machine.instructions.architecture import LoadBaseStackPointer, Integer, Set, Load, Add, Allocate
@@ -47,21 +47,24 @@ def return_instrs(location):
     yield LoadBaseStackPointer(location)
     yield Push(location, 1)
     yield Add(location)
-    yield Load(location, size(VoidPointer))  # Push return Address.
+    yield Load(location, size(void_pointer_type))  # Push return Address.
     yield AbsoluteJump(location)  # Jump back, caller is responsible for clean up as well as set up.
 
 
 def return_statement(stmnt, symbol_table, *_):
     return_type = c_type(c_type(symbol_table['__ CURRENT FUNCTION __']))
+    if isinstance(return_type, VoidType):
+        return return_instrs(loc(stmnt))
     return chain(
         cast(expression(exp(stmnt), symbol_table), c_type(exp(stmnt)), return_type, loc(stmnt)),
         (  # Copy return value onto stack
             LoadBaseStackPointer(loc(stmnt)),
             # move to previous frame, skipping return address ...
-            Push(loc(stmnt), Integer(1 + size(VoidPointer), loc(stmnt))),
+            Push(loc(stmnt), Integer(1 + size(void_pointer_type), loc(stmnt))),
             Add(loc(stmnt)),
-            Load(loc(stmnt), size(VoidPointer)),
-            Set(loc(stmnt), size(return_type)),  # copy return value to previous Frame.
+            Load(loc(stmnt), size(void_pointer_type)),
+            # copy return value to previous Frame.
+            Set(loc(stmnt), size(return_type)),
             Allocate(loc(stmnt), Integer(-1 * size(return_type), loc(stmnt))),  # Set leaves the value on the stack
         ),
         return_instrs(loc(stmnt))

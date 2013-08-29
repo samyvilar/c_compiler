@@ -13,7 +13,7 @@ def error_if_empty(value_stream, location=LocationNotSet):
 
 def error_if_not_empty(value_stream, location=LocationNotSet):
     terminal = object()
-    value = peek(value_stream, default=terminal)
+    value = peek(value_stream, terminal)
     if value is not terminal:
         raise ValueError('{l} Got {got} but expected nothing'.format(l=location or loc(value), got=value))
 
@@ -26,25 +26,9 @@ def error_if_not_value(value_stream, value, location=LocationNotSet):
     return curr
 
 
-def error_if_not_type(value_stream, value_type, location=LocationNotSet):
-    error_if_empty(value_stream)
-    v = consume(value_stream)
-    if not isinstance(v, value_type):
+def error_if_not_type(obj_type, value_type, location=LocationNotSet):
+    if not isinstance(obj_type, value_type):
         raise ValueError('{l} Expected a value of type {t_type}, but got {got}'.format(
-            l=location or loc(v), t_type=value_type, got=v
+            l=location or loc(obj_type), t_type=value_type, got=obj_type
         ))
-    return v
-
-
-def error_if_not_lvalue(obj, oper):
-    if not obj.lvalue:
-        raise ValueError('{l} Operator {oper} requires an lvalue for {obj}'.format(oper=oper, obj=obj, l=loc(oper)))
-
-
-def error_if_not_assignable(obj, oper):  # TODO: implement
-    error_if_not_addressable(obj)
-    raise NotImplementedError
-
-
-def error_if_not_addressable(obj):  # TODO: implement
-    raise NotImplementedError
+    return obj_type

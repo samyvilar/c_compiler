@@ -2,7 +2,7 @@ __author__ = 'samyvilar'
 
 import os
 
-from itertools import chain, ifilter, ifilterfalse, imap, product
+from itertools import chain, ifilter, ifilterfalse, imap, product, starmap, izip, repeat
 
 try:
     import cPickle as pickle
@@ -14,12 +14,7 @@ from front_end.parser.symbol_table import SymbolTable
 from back_end.emitter.object_file import Data, Reference, Symbol
 from back_end.emitter.c_types import size
 
-from front_end.parser.types import VoidPointer
-
-from front_end.tokenizer.tokens import IDENTIFIER
-from front_end.parser.ast.expressions import FunctionCallExpression, AssignmentExpression, IdentifierExpression
-
-from back_end.emitter.expressions.expression import expression
+from front_end.parser.types import void_pointer_type
 
 from back_end.virtual_machine.instructions.architecture import Push, PushFrame, PopFrame, Halt, Integer, Allocate, Set
 from back_end.virtual_machine.instructions.architecture import RelativeJump, Pass, Address, operns, Byte
@@ -40,8 +35,8 @@ def insert(symbol, symbol_table):
                 symbol_table[symbol.name] = symbol
 
 
-def static(instrs, symbol_table=None, library_dirs=(), libraries=()):
-    symbol_table = symbol_table or SymbolTable()
+def static(instrs, symbol_table=None, libraries=()):
+    symbol_table = SymbolTable() if symbol_table is None else symbol_table
     references = {}
     for instr in instrs:
         for o in operns(instr):
@@ -49,25 +44,17 @@ def static(instrs, symbol_table=None, library_dirs=(), libraries=()):
                 references[o.obj.name] = o
         yield instr
 
-    instrs = None
-    for ref_name in ifilter(lambda n, table=symbol_table: n not in table, references.iterkeys()):
-        for lib_file in ifilter(os.path.isfile, imap(lambda p: os.path.join(*p), product(library_dirs, libraries))):
-            with open(lib_file) as file_obj:
-                lib_symbol_table = pickle.load(file_obj)
-                if ref_name in lib_symbol_table:
-                    instrs = static(
-                        binaries(lib_symbol_table[ref_name], symbol_table), symbol_table, library_dirs, libraries
-                    )
-                    break
-        if instrs is None:
+    for ref_name in ifilterfalse(lambda n, table=symbol_table: n in table, references.iterkeys()):
+        try:
+            l = next(ifilter(lambda lib, ref_name=ref_name: ref_name in lib, libraries))
+            for instr in static(binaries(l[ref_name], symbol_table), symbol_table, libraries):
+                yield instr
+        except StopIteration as _:
             raise ValueError('{l} Could no locate symbol {s}'.format(l=loc(references[ref_name]), s=ref_name))
 
-    for instr in instrs or ():
-        yield instr
 
-
-def shared(instrs, symbol_table=None, library_dirs=(), libraries=()):
-    pass
+def shared(instrs, symbol_table=None, libraries=()):
+    raise NotImplementedError
 
 
 def library(symbols, symbol_table=None):
@@ -94,57 +81,58 @@ def set_binaries(symbol):
 
 
 def executable(symbols, symbol_table=None, entry_point='main', library_dirs=(), libraries=(), linker=static):
-    symbol_table = symbol_table if symbol_table is not None else SymbolTable()
+    symbol_table = SymbolTable() if symbol_table is None else symbol_table
     location = '__SOP__'  # Start of Program
     clean = Pass(location)
     heap_ptr = Byte(0, location)
 
+    libs = []
+    for lib_file in ifilter(os.path.isfile, starmap(os.path.join, product(library_dirs, libraries))):
+        with open(lib_file, 'rb') as file_obj:
+            libs.append(pickle.load(file_obj))
+
     symbols = chain(
         symbols,
-        (Data('__heap_ptr__', (Address(0, location),), size(VoidPointer), None, location),)
+        (Data('__heap_ptr__', (Address(0, location),), size(void_pointer_type), None, location),)
     )
 
-    def symbol_binaries(symbols, symbol_table):
-        for instr in chain.from_iterable(binaries(symbol, symbol_table) for symbol in symbols):
-            yield instr
-        for value in chain.from_iterable(imap(set_binaries,
-                                              ifilterfalse(lambda symbol: symbol.binaries, symbol_table.itervalues()))):
-            yield value
+    def declarations(symbol_table):
+        for v in chain.from_iterable(imap(set_binaries, ifilterfalse(lambda s: s.binaries, symbol_table.itervalues()))):
+            yield v   # declarations ....
 
-    return linker(
-        chain(
-            (   # Initialize heap pointer ...
-                Push(location, Address(heap_ptr, location)),
-                Push(location, Address(Reference('__heap_ptr__'), location)),
-                Set(location, size(VoidPointer)),
-                Allocate(location, -1 * size(VoidPointer)),
+    instr_seq = chain(
+        (   # Initialize heap pointer ...
+            Push(location, Address(heap_ptr, location)),
+            Push(location, Address(Reference('__heap_ptr__'), location)),
+            Set(location, size(void_pointer_type)),
+            Allocate(location, -1 * size(void_pointer_type)),
 
-                Push(location, Integer(0, location)),  # return value
-                PushFrame(location),
-                # Add parameters ...
+            Push(location, Integer(0, location)),  # return value
+            PushFrame(location),
+            # Add parameters ...
 
-                # Add pointer to return values
-                LoadStackPointer(location),
-                Push(location, Integer(1, location)),
-                Add(location),
+            # Add pointer to return values
+            LoadStackPointer(location),
+            Push(location, Integer(1, location)),
+            Add(location),
 
-                Push(location, Address(clean, location)),  # clean up after main exits
-                LoadStackPointer(location),
-                SetBaseStackPointer(location),
-                RelativeJump(location, Address(Reference(entry_point))),  # jump to main
-            ),
-            symbol_binaries(symbols, symbol_table),
-            (
-                clean,
-                PopFrame(location),
-                Allocate(location, -1 * size(Integer(0, location))),
-                Halt(location),
-                heap_ptr
-            )
+            Push(location, Address(clean, location)),  # clean up after main exits
+            LoadStackPointer(location),
+            SetBaseStackPointer(location),
+            RelativeJump(location, Address(Reference(entry_point))),  # jump to main
         ),
-        symbol_table,
-        library_dirs,
-        libraries,
+        chain.from_iterable(starmap(binaries, izip(symbols, repeat(symbol_table)))),
+    )
+    return chain(
+        linker(instr_seq, symbol_table, libs),
+        declarations(symbol_table),
+        (
+            clean,
+            PopFrame(location),
+            Allocate(location, -1 * size(Integer(0, location))),
+            Halt(location),
+            heap_ptr
+        )
     )
 
 
@@ -158,7 +146,6 @@ def resolve(instrs, symbol_table):
 
     for operand in references:
         symbol = symbol_table[operand.obj.name]
-        if hasattr(symbol, 'first_element'):
-            operand.obj = symbol.first_element
-        else:
+        if not hasattr(symbol, 'first_element'):
             raise ValueError('{l} Unable to resolve symbol {s}'.format(l=loc(symbol), s=symbol))
+        operand.obj = symbol.first_element

@@ -4,7 +4,7 @@ from collections import defaultdict
 
 from sequences import peek, consume
 
-from front_end.loader.locations import loc
+from front_end.loader.locations import loc, EOFLocation
 from front_end.tokenizer.tokens import TOKENS, IDENTIFIER
 
 from front_end.parser.ast.expressions import exp
@@ -18,7 +18,7 @@ from front_end.errors import error_if_not_value, error_if_not_type
 
 def no_rule(tokens, *_):
     raise ValueError('{l} Expected IDENTIFIER:, case, default got {got}.'.format(
-        l=loc(peek(tokens, default='')) or '__EOF__', got=peek(tokens, default='')
+        l=loc(peek(tokens, EOFLocation)), got=peek(tokens, '')
     ))
 
 
@@ -32,7 +32,7 @@ def label(tokens, symbol_table, statement_func):
 def case(tokens, symbol_table, statement_func):
     location = loc(loc(consume(tokens)))
     expr = constant_expression(tokens, symbol_table)
-    _, _ = error_if_not_value(tokens, TOKENS.COLON), error_if_not_type([c_type(expr)], IntegralType)
+    _, _ = error_if_not_value(tokens, TOKENS.COLON), error_if_not_type(c_type(expr), IntegralType)
     switch = symbol_table['__ SWITCH STATEMENT __']
     if exp(expr) in switch:
         raise ValueError('{l} duplicate case statement previous at {p}'.format(l=location), loc(switch[exp(expr)]))

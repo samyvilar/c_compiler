@@ -3,12 +3,12 @@ __author__ = 'samyvilar'
 from collections import defaultdict
 from itertools import chain
 
-from front_end.loader.locations import loc, LocationNotSet
+from front_end.loader.locations import loc
 from front_end.parser.symbol_table import push, pop, SymbolTable
 
 from front_end.parser.ast.statements import FunctionDefinition
 from front_end.parser.ast.declarations import Declaration, Definition, name, initialization
-from front_end.parser.types import c_type, VoidPointer, FunctionType
+from front_end.parser.types import c_type, void_pointer_type, FunctionType
 
 
 from back_end.emitter.statements.statement import statement
@@ -46,7 +46,7 @@ def bind_load_instructions(obj):
 
 def declaration(dec, symbol_table):
     symbol_table[name(dec)] = bind_load_instructions(dec)
-    symbol_table[name(dec)].symbol = Code(name(dec), (), size(c_type(dec)), dec.storage_class, loc(dec)) \
+    symbol_table[name(dec)].symbol = Code(name(dec), (), None, dec.storage_class, loc(dec)) \
         if isinstance(c_type(dec), FunctionType) \
         else Data(name(dec), (), size(c_type(dec)), dec.storage_class, loc(dec))
     return symbol_table[name(dec)].symbol
@@ -82,7 +82,7 @@ def function_definition(dec, symbol_table):
         Callee will place the return value in the specified pointer.
         Caller Pops frame, and uses the set value.
     """
-    symbol = Code(name(dec), None, size(c_type(dec)), dec.storage_class, loc(dec))
+    symbol = Code(name(dec), None, None, dec.storage_class, loc(dec))
     symbol_table[name(dec)] = bind_load_instructions(dec)  # bind load/reference instructions, add to symbol table.
     symbol_table[name(dec)].symbol = symbol
 
@@ -91,11 +91,11 @@ def function_definition(dec, symbol_table):
         stack = Stack()  # Each function call has its own Frame which is nothing more than a stack.
 
         # Skip return address and pointer to return value ...
-        offset = 1 + 2 * size(VoidPointer)
+        offset = 1 + 2 * size(void_pointer_type)
         for parameter in c_type(dec):
             # monkey patch declarator objects add Load commands according to stack state; add to symbol table.
             symbol_table[name(parameter)] = bind_instructions(parameter, offset)
-            offset += size(c_type(dec))
+            offset += size(c_type(parameter))
 
         symbol_table['__ CURRENT FUNCTION __'] = dec
         symbol_table['__ LABELS __'] = SymbolTable()

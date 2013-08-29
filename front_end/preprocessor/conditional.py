@@ -13,11 +13,11 @@ from front_end.errors import error_if_not_empty, error_if_not_value
 def exhaust(
         token_seq,
         takewhile=lambda token_seq:
-        peek(token_seq, default=TOKENS.PENDIF) not in {TOKENS.PELIF, TOKENS.PELSE, TOKENS.PENDIF}
+        peek(token_seq, TOKENS.PENDIF) not in {TOKENS.PELIF, TOKENS.PELSE, TOKENS.PENDIF}
 ):
     while takewhile(token_seq):
         if consume(token_seq) in {TOKENS.PIF, TOKENS.PIFDEF, TOKENS.PIFNDEF}:   # nested if blocks...
-            exhaust(token_seq, takewhile=lambda token_seq: peek(token_seq, default=TOKENS.PENDIF) != TOKENS.PENDIF)
+            exhaust(token_seq, takewhile=lambda token_seq: peek(token_seq, TOKENS.PENDIF) != TOKENS.PENDIF)
             _ = error_if_not_value(token_seq, TOKENS.PENDIF)
 
 
@@ -42,11 +42,11 @@ def __calc_if(if_token, token_seq, expr, preprocess, macros, include_dirs):
             macros=macros,
             include_dirs=include_dirs,
             takewhile=lambda token_seq:
-            peek(token_seq, default=TOKENS.PENDIF) not in {TOKENS.PELIF, TOKENS.PELSE, TOKENS.PENDIF}
+            peek(token_seq, TOKENS.PENDIF) not in {TOKENS.PELIF, TOKENS.PELSE, TOKENS.PENDIF}
         )
     else:
         exhaust(token_seq)
-        token = peek(token_seq, default='')
+        token = peek(token_seq, '')
         if token == TOKENS.PENDIF:
             tokens = (IGNORE(peek(token_seq), loc(token)),)
         elif token == TOKENS.PELIF:
@@ -61,16 +61,16 @@ def __calc_if(if_token, token_seq, expr, preprocess, macros, include_dirs):
     for t in tokens:
         yield t
 
-    while peek(token_seq, default=TOKENS.PENDIF) != TOKENS.PENDIF:
+    while peek(token_seq, TOKENS.PENDIF) != TOKENS.PENDIF:
         token = consume(token_seq)
         if token == TOKENS.PELIF:
             exhaust(
                 token_seq,
                 takewhile=lambda token_seq:
-                peek(token_seq, default=TOKENS.PENDIF) not in {TOKENS.PELIF, TOKENS.PELSE, TOKENS.PENDIF}
+                peek(token_seq, TOKENS.PENDIF) not in {TOKENS.PELIF, TOKENS.PELSE, TOKENS.PENDIF}
             )
         elif token == TOKENS.PELSE:
-            exhaust(token_seq, takewhile=lambda token_seq: peek(token_seq, default=TOKENS.PENDIF) != TOKENS.PENDIF)
+            exhaust(token_seq, takewhile=lambda token_seq: peek(token_seq, TOKENS.PENDIF) != TOKENS.PENDIF)
             break
         else:
             raise ValueError('{l} Expected either #elif, #else or #endif, got {g} for #if {at}'.format(
@@ -99,7 +99,7 @@ def _else_block(token_seq, macros, preprocess, include_dirs):
         token_seq,
         macros=macros,
         include_dirs=include_dirs,
-        takewhile=lambda token_seq: peek(token_seq, default=TOKENS.PENDIF) != TOKENS.PENDIF
+        takewhile=lambda token_seq: peek(token_seq, TOKENS.PENDIF) != TOKENS.PENDIF
     )
 
 

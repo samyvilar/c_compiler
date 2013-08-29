@@ -181,15 +181,16 @@ unary_expression
 // Function Call
 argument_expression_list :  assignment_expression (',' assignment_expression)*
 postfix_expression
-	:   primary_expression
-        (   '[' expression ']'
-        |   '(' ')'
-        |   '(' argument_expression_list ')'
-        |   '.' IDENTIFIER
-        |   '->' IDENTIFIER
-        |   '++'
-        |   '--'
-        )*
+	:   ( '(' type_name ')' '{' initializer_list '}' | primary_expression)
+            (   '[' expression ']'
+            |   '(' ')'
+            |   '(' argument_expression_list ')'
+            |   '.' IDENTIFIER
+            |   '->' IDENTIFIER
+            |   '++'
+            |   '--'
+            )*
+
 
 unary_operator
 	: '&'

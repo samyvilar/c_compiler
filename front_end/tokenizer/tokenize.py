@@ -7,7 +7,7 @@ from front_end.tokenizer.tokens import IGNORE
 
 
 def tokens(values, directives):
-    while peek(values, default=False):
+    while True:
         yield directives[peek(values)](values)
 
 

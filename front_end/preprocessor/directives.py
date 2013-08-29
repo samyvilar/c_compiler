@@ -24,16 +24,16 @@ def INCLUDE(token_seq, macros, preprocess, include_dirs):
     line = get_line(token_seq)
     _ = consume(line)
     search_paths = (os.getcwd(),)
-    if isinstance(peek(line, default=False), STRING):
+    if isinstance(peek(line, None), STRING):
         file_path = consume(line)
-    elif peek(line, default=False) == TOKENS.LESS_THAN:
+    elif peek(line, '') == TOKENS.LESS_THAN:
         _ = consume(line)
         file_path = ''.join(takewhile(lambda token: token != TOKENS.GREATER_THAN, line))
         _ = error_if_not_value(line, TOKENS.GREATER_THAN)
         search_paths = chain(search_paths, include_dirs)
     else:
         raise ValueError('{l} Expected an IDENTIFIER, STRING or `<` got {g}'.format(
-            l=loc(peek(line, default=EOFLocation)),  g=peek(line, default='')
+            l=loc(peek(line, EOFLocation)),  g=peek(line, '')
         ))
     return preprocess(
         tokenize(load(file_path, search_paths)), macros=macros, include_dirs=include_dirs
@@ -47,9 +47,9 @@ def DEFINE(token_seq, macros, *_):
     value = consume(line, default=IGNORE(''))
     if value == TOKENS.LEFT_PARENTHESIS and loc(name).column_number + len(name) == loc(value).column_number:
         arguments = []
-        while peek(line, default='') != TOKENS.RIGHT_PARENTHESIS:
-            arguments.append(error_if_not_type(line, (IDENTIFIER, KEYWORD)))
-            _ = peek(token_seq, default='') == TOKENS.COMMA and consume(token_seq)
+        while peek(line, '') != TOKENS.RIGHT_PARENTHESIS:
+            arguments.append(error_if_not_type(consume(line, EOFLocation), (IDENTIFIER, KEYWORD)))
+            _ = peek(token_seq, '') == TOKENS.COMMA and consume(token_seq)
         _ = error_if_not_value(line, TOKENS.RIGHT_PARENTHESIS)
         macro = FunctionMacro(name, arguments, tuple(line))
     else:
@@ -64,7 +64,7 @@ def DEFINE(token_seq, macros, *_):
 def UNDEF(token_seq, macros, *_):
     line = get_line(token_seq)
     _ = consume(line)
-    macro_name = error_if_not_type(line, IDENTIFIER)
+    macro_name = error_if_not_type(consume(line, EOFLocation), IDENTIFIER)
     error_if_not_empty(line)
     _ = macros.pop(macro_name, None)
     yield IGNORE('', loc(_))

@@ -1,7 +1,7 @@
 __author__ = 'samyvilar'
 
 from test.test_back_end.test_emitter.test_declarations.test_definitions import TestDeclarations
-from test.test_back_end.test_emitter.test_statements.test_statements import TestStatements
+from test.test_back_end.test_emitter.test_statements.test_compound import TestStatements
 
 
 class TestPostfix(TestStatements):
@@ -117,6 +117,16 @@ class TestPostfix(TestStatements):
         super(TestPostfix, self).evaluate(source)
         self.assertEqual(self.mem[self.cpu.stack_pointer], 10)
 
+    # def test_compound_literal(self):
+    #     code = """
+    #     {
+    #         int value;
+    #         value = (int){1} + 1;
+    #     }
+    #     """
+    #     super(TestPostfix, self).evaluate(code)
+    #     self.assertEqual(self.mem[self.cpu.stack_pointer], 1)
+
 
 class TestPostFixFunction(TestDeclarations):
     def test_function_call(self):
@@ -189,28 +199,3 @@ class TestPostFixFunction(TestDeclarations):
         """
         super(TestPostFixFunction, self).evaluate(source)
         self.assertEqual(self.mem[self.cpu.stack_pointer], 11)
-
-    def test_malloc_function(self):
-        source = """
-        void *heap_ptr;
-        void *malloc(unsigned long number_of_bytes);
-
-        int main()
-        {
-            int *temp = malloc(sizeof(int));
-            *temp = 10;
-            return *temp;
-        }
-
-        void *malloc(unsigned long number_of_bytes)
-        {
-            if (!heap_ptr)
-                heap_ptr = &heap_ptr;
-
-            void *allocation = heap_ptr;
-            heap_ptr += number_of_bytes;
-
-            return allocation;
-        }
-        """
-        super(TestPostFixFunction, self).evaluate(source)

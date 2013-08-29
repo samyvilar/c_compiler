@@ -13,7 +13,7 @@ from itertools import chain, izip
 
 from sequences import peek, takewhile
 
-from front_end.loader.locations import loc, Location
+from front_end.loader.locations import loc, Location, EOFLocation
 import front_end.loader.load as loader
 import front_end.tokenizer.tokenize as tokenizer
 import front_end.preprocessor.preprocess as preprocessor
@@ -28,12 +28,13 @@ import ovm
 
 
 def get_line(tokens):
-    return takewhile(lambda t, line_number=loc(peek(tokens)).line_number: loc(t).line_number == line_number, tokens)
+    return takewhile(
+        lambda t, line_number=loc(peek(tokens, EOFLocation)).line_number: loc(t).line_number == line_number, tokens
+    )
 
 
 def get_lines(tokens):
-    terminal = object()
-    while peek(tokens, default=terminal) is not terminal:
+    while True:
         yield loc(peek(tokens)).line_number, get_line(tokens)
 
 
@@ -56,7 +57,7 @@ def preprocess(files, include_dirs):
     output = ''
     for input_file in files:
         tokens = preprocessor.preprocess(tokenizer.tokenize(loader.load(input_file)), include_dirs=include_dirs)
-        prev_line_number = loc(peek(tokens, default=Location('', 1, 1))).line_number - 1
+        prev_line_number = loc(peek(tokens, Location('', 1, 1))).line_number - 1
         for line_number, line in get_lines(tokens):
             if line_number != prev_line_number + 1:
                 output += os.linesep
@@ -66,7 +67,7 @@ def preprocess(files, include_dirs):
 
 
 def symbols(file_name, include_dirs=()):
-    if os.path.splitext(file_name)[1] == '.o.p':
+    if isinstance(file_name, str) and os.path.splitext(file_name)[1] == '.o.p':
         with open(file_name) as file_obj:
             symbol_table = pickle.load(file_obj)
         symbol_seq = symbol_table.itervalues()
@@ -79,9 +80,28 @@ def symbols(file_name, include_dirs=()):
     return symbol_seq
 
 
-def main():
-    curr_dir = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
+curr_dir = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
+std_include_dirs = [curr_dir, os.path.join(curr_dir, 'stdlib', 'include')]
+std_libraries_dirs = [curr_dir, os.path.join(curr_dir, 'stdlib', 'libs')]
+std_libraries = ['libc.p']
+std_symbols = system.SYMBOLS.itervalues()
 
+
+def instrs(files, include_dirs=(), library_dirs=(), libraries=()):
+    symbol_table = SymbolTable()
+    return linker.resolve(
+        linker.executable(
+            chain(std_symbols, chain.from_iterable(symbols(f, include_dirs=include_dirs) for f in files)),
+            symbol_table=symbol_table,
+            libraries=libraries,
+            library_dirs=library_dirs,
+            linker=linker.static,
+        ),
+        symbol_table
+    )
+
+
+def main():
     cli = argparse.ArgumentParser(description='C Compiler ...')
 
     cli.add_argument('files', nargs='+')
@@ -90,24 +110,24 @@ def main():
     cli.add_argument('-static', '--static', action='store_true', default=True, help='Static Linking (default).')
     cli.add_argument('-shared', '--shared', action='store_true', default=False, help='Shared Linking.')
     cli.add_argument('--ovm', action='store_true', default=False, help='Execute code on the Object Based Virtual Mach.')
+    cli.add_argument('-a', '--archive', action='store_true', default=False, help='Archive files into a single output')
 
-    cli.add_argument('-o', '--output', default=(), nargs='?', action='append',
+    cli.add_argument('-o', '--output', default=[], nargs='?', action='append',
                      help='Name of output, file(s) default is the original')
 
-    cli.add_argument('-I', '--Include', default=(), nargs='?', action='append',
+    cli.add_argument('-I', '--Include', default=[], nargs='?', action='append',
                      help='Directories to be used by the preprocessor')
 
-    cli.add_argument('-L', '--Libraries', default=(), nargs='?', action='append',
+    cli.add_argument('-L', '--Libraries', default=[], nargs='?', action='append',
                      help='Directories to be used to search for libraries')
 
-    cli.add_argument('-l', '--libraries', default=(), nargs='?', action='append',
+    cli.add_argument('-l', '--libraries', default=[], nargs='?', action='append',
                      help='Name of libraries to search for symbols')
 
-    args = cli.parse_args(
-        ('a.c', 'stdlib/src/string.c', 'stdlib/src/stdlib.c', 'stdlib/src/stdio.c', 'stdlib/src/unistd.c', '--ovm')
-    )
-    args.Include += (os.path.join(curr_dir, 'stdlib', 'include'),)
-    args.Libraries += (os.path.join(curr_dir, 'stdlib', 'libs'),)
+    args = cli.parse_args()
+    args.Include += std_include_dirs
+    args.Libraries += std_libraries_dirs
+    args.libraries += std_libraries
 
     if args.preprocess:
         print(preprocess(args.files, args.Include))
@@ -117,8 +137,7 @@ def main():
                 raise ValueError('Expected {e} but got {g} output file names.'.format(
                     e=len(args.files), g=len(args.output)
                 ))
-            else:
-                output_files = args.output
+            output_files = args.output
         else:
             output_files = (os.path.splitext(file_name)[0] + '.o.p' for file_name in args.files)
 
@@ -126,35 +145,30 @@ def main():
             symbol_table = linker.library(symbols(input_file, args.Include))
             with open(output_file, 'wb') as file_obj:
                 pickle.dump(symbol_table, file_obj)
-    elif args.shared:
-        pass
-    else:
+    elif args.archive:
         symbol_table = SymbolTable()
-        instrs = linker.resolve(
-            linker.executable(
-                chain(
-                    system.SYMBOLS.itervalues(),
-                    chain.from_iterable(symbols(f, include_dirs=args.Include) for f in args.files),
-                ),
-                symbol_table=symbol_table,
-                libraries=args.libraries,
-                library_dirs=args.Libraries,
-                linker=linker.static,
-            ),
-            symbol_table
-        )
+        for input_file in args.files:
+            symbol_table = linker.library(symbols(input_file, args.Include), symbol_table)
+        if len(args.output) != 1:
+            raise ValueError('Need exactly one output archive name got {g}'.format(g=len(args.output)))
+        with open(args.output[0], 'wb') as file_obj:
+            pickle.dump(symbol_table, file_obj)
+    elif args.shared:
+        raise NotImplementedError
+    else:  # static linking ...
+        instructions = instrs(args.files, args.Include, args.Libraries, args.libraries)
 
         if len(args.output) > 1:
-            raise ValueError('Cannot specify output greater than 1 for binary output got {g}'.format(
+            raise ValueError('Cannot specify more than 1 output for binary got {g}'.format(
                 g=len(args.output)
             ))
         if args.ovm:
-            ovm.start(instrs)
+            ovm.start(instructions)
         else:
-            instrs = tuple(instrs)
+            instructions = tuple(instructions)
             file_output = args.output and args.output[0] or 'a.out.p'
             with open(file_output, 'wb') as file_obj:
-                pickle.dump(instrs, file_obj)
+                pickle.dump(instructions, file_obj)
 
 
 if __name__ == '__main__':

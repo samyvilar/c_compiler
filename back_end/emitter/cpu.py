@@ -9,7 +9,7 @@ from logging_config import logging
 from front_end.loader.locations import loc, LocationNotSet
 
 from back_end.emitter.c_types import size
-from front_end.parser.types import IntegerType, VoidPointer, CharType, PointerType, c_type, LongType
+from front_end.parser.types import IntegerType, void_pointer_type, CharType, PointerType, c_type, LongType
 from back_end.emitter.object_file import Reference, Code, Data
 
 from back_end.virtual_machine.instructions.architecture import Instruction, Allocate, Push, Pop, Halt, Pass, operns, Dup
@@ -264,11 +264,6 @@ def evaluate(cpu, mem, os=None):
             os.calls[cpu.instr_pointer](cpu, mem, os)
 
         instr = mem[cpu.instr_pointer]
-        # print instr.location
-
-        if cpu.instr_pointer == 6127:
-            pass
-
         if isinstance(instr, Halt):
             break
         evaluate.rules[type(instr)](instr, cpu, mem)
@@ -396,7 +391,7 @@ def __return__(value, cpu, mem):
 
 
 def argument_address(func_type, cpu, mem):
-    index = 1 + 2 * size(VoidPointer)
+    index = 1 + 2 * size(void_pointer_type)
     for ctype in imap(c_type, func_type):
         yield cpu.base_pointer + index
         index += size(ctype)
@@ -512,7 +507,7 @@ def __write__(cpu, mem, kernel):
             (
                 AbstractDeclarator(IntegerType(l), l),
                 AbstractDeclarator(PointerType(CharType(l), l), l),
-                LongType(LongType(IntegerType(l), l), l, unsigned=True)
+                AbstractDeclarator(LongType(LongType(IntegerType(l), l), l, unsigned=True), l)
             ),
             l
         ),

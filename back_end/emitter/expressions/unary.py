@@ -9,7 +9,7 @@ from front_end.parser.ast.expressions import SizeOfExpression, UnaryExpression, 
 from front_end.parser.ast.expressions import PrefixIncrementExpression, PrefixDecrementExpression, ConstantExpression
 from front_end.parser.ast.expressions import BinaryExpression, DereferenceExpression, AddressOfExpression
 
-from front_end.parser.types import c_type, base_c_type, IntegerType, IntegralType, NumericType, unsigned
+from front_end.parser.types import c_type, base_c_type, IntegerType, IntegralType, NumericType, unsigned, CType
 
 from back_end.emitter.c_types import size
 from back_end.virtual_machine.instructions.architecture import Push, Not, Load, Integer, LoadZeroFlag, Double
@@ -32,7 +32,9 @@ def inc_dec(value, expr, symbol_table, expression_func):
 
 
 def size_of(expr, *_):
-    yield Push(loc(expr), size(c_type(exp(expr))))
+    yield Push(loc(expr), size(
+        (isinstance(exp(expr), CType) and exp(expr)) or c_type(exp(expr))
+    ))
 
 
 def address_of(expr, symbol_table, expression_func):
