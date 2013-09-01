@@ -46,7 +46,7 @@ def _return(tokens, symbol_table, statement_func):
     if peek(tokens, '') != TOKENS.SEMICOLON:
         ret_exp = expression(tokens, symbol_table)
 
-    if ret_exp and isinstance(ret_type, VoidType):
+    if not isinstance(ret_exp, EmptyExpression) and isinstance(ret_type, VoidType):
         raise ValueError('{l} void-function returning a value ...'.format(l=loc(ret_exp)))
 
     if not safe_type_coercion(c_type(ret_exp), ret_type):
@@ -68,8 +68,9 @@ def jump_statement(tokens, symbol_table, statement_func):
         | 'return' ';'
         | 'return' expression ';'
     """
-    yield jump_statement.rules[peek(tokens)](tokens, symbol_table, statement_func)
+    stmnt = jump_statement.rules[peek(tokens)](tokens, symbol_table, statement_func)
     _ = error_if_not_value(tokens, TOKENS.SEMICOLON)
+    yield stmnt
 jump_statement.rules = defaultdict(lambda: no_rule)
 jump_statement.rules.update({
     TOKENS.GOTO: _goto,

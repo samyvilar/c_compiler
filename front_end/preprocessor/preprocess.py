@@ -2,7 +2,7 @@ __author__ = 'samyvilar'
 
 from itertools import ifilterfalse
 
-from sequences import peek
+from sequences import peek, terminal
 from front_end.preprocessor.directives import get_directives
 from front_end.preprocessor.macros import Macros
 from front_end.tokenizer.tokens import IGNORE
@@ -25,7 +25,7 @@ def preprocess(
         directives=None,
         macros=None,
         include_dirs=(),
-        takewhile=lambda token_seq: peek(token_seq, False),
+        takewhile=lambda token_seq: peek(token_seq, terminal) is not terminal,
         ignore_tokens=IGNORE,
 ):
     return ifilterfalse(

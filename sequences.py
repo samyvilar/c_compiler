@@ -6,6 +6,7 @@ from collections import Iterable
 __iterators__ = {}
 
 __required__ = object()
+terminal = object()
 
 
 def peek(seq, default=__required__):

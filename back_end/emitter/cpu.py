@@ -258,12 +258,15 @@ def dequeue(instr, cpu, mem):
 
 
 def evaluate(cpu, mem, os=None):
-    os = os or Kernel()
+    os = os or Kernel(CALLS)
     while True:
         while cpu.instr_pointer in os.calls:
             os.calls[cpu.instr_pointer](cpu, mem, os)
 
         instr = mem[cpu.instr_pointer]
+        # if cpu.instr_pointer == 1168:
+        #     pass
+        # print loc(instr), cpu.instr_pointer, instr, loc(instr)
         if isinstance(instr, Halt):
             break
         evaluate.rules[type(instr)](instr, cpu, mem)
@@ -364,6 +367,7 @@ def load(instrs, mem, symbol_table=None, address_gen=None):
                     mem[symbol.first_element.address] = symbol.first_element
                     mem.update({next(address_gen): Byte(0, '') for _ in xrange(symbol.size - 1)})
             else:
+                assert not isinstance(obj, Instruction)  # Make sure we are not referencing omitted instruction
                 ref_addr = o
             operands.append(ref_addr - (addr if isinstance(instr, RelativeJump) else 0))
         instr.operands = operands
@@ -612,15 +616,13 @@ class SystemCall(Code):
     def first_element(self, _):
         pass
 
-SYMBOLS = {}
-CALLS = {}
-for call_name, call_id, call_code in (
+__ids__ = (
     ('__open__', 5, __open__),
     ('__read__', 3, __read__),
     ('__write__', 4, __write__),
     ('__close__', 6, __close__),
     ('__tell__', 198, __tell__),
     ('__seek__', 199, __seek__),
-):
-    SYMBOLS[call_name] = SystemCall(call_name, 1, None, LocationNotSet, call_id)
-    CALLS[call_id] = call_code
+)
+SYMBOLS = {call_name: SystemCall(call_name, 1, None, LocationNotSet, call_id) for call_name, call_id, _ in __ids__}
+CALLS = {call_id: call_code for _, call_id, call_code in __ids__}

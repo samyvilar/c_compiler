@@ -9,7 +9,7 @@ try:
 except ImportError as e:
     import pickle
 
-from itertools import chain, izip
+from itertools import chain, izip, starmap, repeat
 
 from sequences import peek, takewhile
 
@@ -81,17 +81,18 @@ def symbols(file_name, include_dirs=()):
 
 
 curr_dir = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
+str_src_dirs = [os.path.join(curr_dir, 'stdlib', 'src')]
 std_include_dirs = [curr_dir, os.path.join(curr_dir, 'stdlib', 'include')]
 std_libraries_dirs = [curr_dir, os.path.join(curr_dir, 'stdlib', 'libs')]
 std_libraries = ['libc.p']
-std_symbols = system.SYMBOLS.itervalues()
+std_symbols = system.SYMBOLS
 
 
 def instrs(files, include_dirs=(), library_dirs=(), libraries=()):
     symbol_table = SymbolTable()
     return linker.resolve(
         linker.executable(
-            chain(std_symbols, chain.from_iterable(symbols(f, include_dirs=include_dirs) for f in files)),
+            chain(std_symbols.itervalues(), chain.from_iterable(starmap(symbols, izip(files, repeat(include_dirs))))),
             symbol_table=symbol_table,
             libraries=libraries,
             library_dirs=library_dirs,

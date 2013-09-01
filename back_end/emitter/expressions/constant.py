@@ -11,7 +11,7 @@ from back_end.emitter.c_types import binaries, size
 from front_end.parser.ast.expressions import exp
 
 from front_end.parser.types import CharType, ShortType, IntegerType, LongType, FloatType, DoubleType, PointerType
-from front_end.parser.types import StringType, c_type, StructType
+from front_end.parser.types import StringType, c_type, StructType, ArrayType
 
 from back_end.virtual_machine.instructions.architecture import Push, Integer, Double, Address, Pass, Add, RelativeJump
 
@@ -56,4 +56,5 @@ constant_expression.rules = {
     StringType: const_string_expr,
 
     StructType: const_struct_expr,
+    ArrayType: const_struct_expr,
 }

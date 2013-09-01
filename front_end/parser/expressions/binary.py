@@ -5,7 +5,7 @@ from front_end.loader.locations import loc
 from front_end.tokenizer.tokens import TOKENS
 
 from front_end.parser.types import NumericType, IntegralType, c_type, safe_type_coercion, supported_operators
-from front_end.parser.types import PointerType
+from front_end.parser.types import LOGICAL_OPERATIONS, IntegerType
 
 from front_end.parser.ast.expressions import BinaryExpression, AssignmentExpression, CompoundAssignmentExpression, oper
 from front_end.parser.ast.expressions import TernaryExpression, left_exp, right_exp, SizeOfExpression
@@ -17,34 +17,20 @@ from front_end.errors import error_if_not_type, error_if_not_value
 @reduce_expression
 def get_binary_expression(tokens, symbol_table, l_exp, right_exp_func, exp_type, cast_expression):
     operator = consume(tokens)
+
     if right_exp_func == cast_expression:
         r_exp = right_exp_func(tokens, symbol_table)
     else:
         r_exp = right_exp_func(tokens, symbol_table, cast_expression)
+
     exp_type = max(error_if_not_type(c_type(l_exp), exp_type), error_if_not_type(c_type(r_exp), exp_type))
+    if operator in LOGICAL_OPERATIONS:
+        exp_type = IntegerType
 
     if operator not in supported_operators(c_type(l_exp)):
         raise ValueError('{l} ctype {g} does not support {o}'.format(l=loc(l_exp), g=c_type(l_exp), o=operator))
     if operator not in supported_operators(c_type(r_exp)):
-        raise ValueError('{l} ctype {g} does not support {o}'.format(l=loc(l_exp), g=c_type(l_exp), o=operator))
-
-    if isinstance(c_type(l_exp), PointerType):
-        if not isinstance(c_type(r_exp), IntegralType):
-            raise ValueError('{l} invalid operand with pointer type {t}'.format(l=loc(l_exp), t=c_type(l_exp)))
-        if operator in {TOKENS.PLUS, TOKENS.MINUS, TOKENS.PLUS_EQUAL, TOKENS.MINUS_EQUAL}:
-            r_exp = BinaryExpression(r_exp, TOKENS.STAR, SizeOfExpression(c_type(c_type(l_exp))),
-                                     c_type(l_exp)(loc(operator)), loc(operator))
-        else:
-            raise ValueError('{l} Pointer type does not support operator {o}'.format(l=loc(operator), o=operator))
-
-    if isinstance(c_type(r_exp), PointerType):
-        if not isinstance(c_type(l_exp), IntegralType):
-            raise ValueError('{l} invalid operand with pointer type {t}'.format(l=loc(r_exp), t=c_type(r_exp)))
-        if operator in {TOKENS.PLUS, TOKENS.MINUS, TOKENS.PLUS_EQUAL, TOKENS.MINUS_EQUAL}:
-            l_exp = BinaryExpression(l_exp, TOKENS.STAR, SizeOfExpression(c_type(c_type(r_exp))),
-                                     c_type(r_exp)(loc(operator)), loc(operator))
-        else:
-            raise ValueError('{l} Pointer type does not support operator {o}'.format(l=loc(operator), o=operator))
+        raise ValueError('{l} ctype {g} does not support {o}'.format(l=loc(r_exp), g=c_type(r_exp), o=operator))
 
     return BinaryExpression(l_exp, operator, r_exp, exp_type(loc(operator)), loc(operator))
 

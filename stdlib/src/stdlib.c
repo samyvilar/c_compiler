@@ -178,6 +178,20 @@ void free(void *block)
     de_fragment(); // de-fragment memory.
 }
 
+
+unsigned long int next = 1;
+
+int rand()
+{
+    next = (next * 1103515245) % (1 << (sizeof(int) - 1) * 8) + 12345;
+    return (unsigned int)(next/65536) % 32768;
+}
+
+void srand(unsigned int seed)
+{
+    next = seed;
+}
+
 #undef size
 #undef set_size
 #undef next

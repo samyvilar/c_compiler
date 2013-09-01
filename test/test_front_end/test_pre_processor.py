@@ -71,3 +71,12 @@ class TestPreProcessor(TestCase):
             '( ( ( ( block_type * ) ( ( ( block_type * ) blocks ) -> next ) ) -> next ) = block ) ;',
             ' '.join(preprocess(tokenize(source(code))))
         )
+
+    def test_bug(self):
+        code = """
+        #define vector_type void *
+        #define __copy_element__(src, dest, element_type, index) (*(element_type *)(dest + index) = *(element_type *)(src + index))
+        __copy_element__(src, dest, vector_type, index);
+        """
+        self.assertEqual('( * ( void * * ) ( dest + index ) = * ( void * * ) ( src + index ) ) ;',
+                         ' '.join(preprocess(tokenize(source(code)))))

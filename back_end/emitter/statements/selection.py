@@ -5,7 +5,6 @@ from copy import deepcopy
 
 from front_end.loader.locations import loc
 from front_end.parser.symbol_table import push, pop
-from front_end.parser.ast.declarations import Definition
 from front_end.parser.ast.expressions import exp
 from front_end.parser.ast.statements import IfStatement, SwitchStatement, CaseStatement, DefaultStatement
 

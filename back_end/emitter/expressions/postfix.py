@@ -71,16 +71,16 @@ def function_call(expr, symbol_table, expression_func):
     _size.rules = defaultdict(lambda: size)
     _size.rules.update(
         {   # calling size() on array types will yield their total byte size but they are passed as pointers
-            ArrayType: size(void_pointer_type),
-            StringType: size(void_pointer_type),
+            ArrayType: lambda ctype: size(void_pointer_type),
+            StringType: lambda ctype: size(void_pointer_type),
         }
     )
     return chain(
         # Allocate space for return value, save frame.
-        (Allocate(
-            l,
-            (not isinstance(c_type(expr), VoidType) and size(c_type(expr))) or Integer(0, loc(expr))
-        ), PushFrame(l)),
+        (
+            Allocate(l, (not isinstance(c_type(expr), VoidType) and size(c_type(expr))) or Integer(0, loc(expr))),
+            PushFrame(l)
+        ),
         # Push arguments in reverse order (right to left) ...
         chain.from_iterable(reverse(expression_func(arg, symbol_table, expression_func) for arg in right_exp(expr))),
         (

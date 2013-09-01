@@ -6,3 +6,4 @@ syntax: glob
 .coverage
 a.c
 a.out
+a.s

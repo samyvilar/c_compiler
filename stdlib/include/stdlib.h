@@ -11,6 +11,7 @@ typedef unsigned long size_t;
 #endif
 
 int rand();
+void srand(unsigned int);
 
 void* malloc (size_t);
 void* calloc (size_t, size_t);

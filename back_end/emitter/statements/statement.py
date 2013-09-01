@@ -59,7 +59,9 @@ def definition(stmnt, symbol_table, stack, *_):
             raise ValueError('{l} Static definitions may only be initialized with a ConstantExpression got {g}'.format(
                 l=loc(stmnt), g=declarations.initialization(stmnt)
             ))
-        instrs = chain((RelativeJump(loc(stmnt), Address(end_of_data, loc(stmnt))),), binaries(stmnt), (end_of_data,))
+        instrs = chain(
+            (RelativeJump(loc(stmnt), Address(end_of_data, loc(stmnt))), start_of_data), binaries(stmnt), (end_of_data,)
+        )
     else:  # Definition with either Auto/Register/None storage class.
         stmnt = stack_allocation(stack, stmnt)
         symbol_table[declarations.name(stmnt)] = stmnt

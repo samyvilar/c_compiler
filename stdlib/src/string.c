@@ -27,19 +27,21 @@
 void *memcpy(void *dest, const void *src, size_t numb)
 {
     size_t index = 0;
+    #define __copy_element__(src, dest, element_type, index) (*(element_type *)(dest + index) = *(element_type *)(src + index))
     if (is_aligned(dest, sizeof(vector_type)) && is_aligned(src, sizeof(vector_type)))
         while (numb > sizeof(vector_type))
         {
-            *(vector_type *)(dest + index) = *(vector_type *)(src + index);
+            __copy_element__(src, dest, vector_type, index);
             index += sizeof(vector_type);
             numb -= sizeof(vector_type);
         }
 
     while (numb--)
     {
-        *(unsigned char *)(dest + index) = *(unsigned char *)(dest + index);
+        __copy_element__(src, dest, unsigned char, index);
         ++index;
     }
+    #undef __copy_element__
 
     return dest;
 }
@@ -49,9 +51,9 @@ void *memmove(void *dest, const void *src, size_t numb)
     if (dest < src)
         return memcpy(dest, src, numb);
 
-    if (numb > sizeof(vector_type) &&
-            is_aligned((dest + numb - sizeof(vector_type)), sizeof(vector_type)) &&
-            is_aligned((src + numb - sizeof(vector_type)), sizeof(vector_type)))
+    if (numb > sizeof(vector_type)
+        && is_aligned((dest + numb - sizeof(vector_type)), sizeof(vector_type))
+        && is_aligned((src + numb - sizeof(vector_type)), sizeof(vector_type)))
         while (numb > sizeof(vector_type))
         {
             numb -= sizeof(vector_type);
@@ -75,21 +77,17 @@ int memcmp(const void *src_0, const void *src_1, size_t numb)
         }
 
     while (numb && (*(unsigned char *)(src_0 + index) == *(unsigned char *)(src_1 + index)))
-    {
-        ++index;
-        --numb; // safe guard against numb == 0;
-    }
-    return numb ? (*(char *)(src_0 + index) - *(char *)(src_1 + index)) : 0;
+        ++index, --numb; // safe guard against numb == 0;
+
+    return numb ? (*(unsigned char *)(src_0 + index) - *(unsigned char *)(src_1 + index)) : 0;
 }
 
 void *memchr(const void *dest, int value, size_t numb)
 {
     size_t index = 0;
     while (numb && *(unsigned char *)(dest + index) != (unsigned char)value)
-    {
-        --numb;
-        ++index;
-    }
+        --numb, ++index;
+
     return numb ? (void *)(dest + index) : NULL;   // if numb is 0 then byte wasn't found.
 }
 
@@ -123,18 +121,17 @@ void *memset(void *dest, int value, size_t numb)
 char *strcpy(char *dest, const char *src)
 {
     size_t index = 0;
-    while ( (dest[index] = src[index]) ) ++index;
+    while ((dest[index] = src[index]))
+        ++index;
     return dest;
 }
 
 char *strncpy(char *dest, const char *src, size_t numb)
 {
     size_t index = 0;
+
     while (numb && (dest[index] = src[index]))
-    {
-        --numb;
-        ++index;
-    }
+        --numb, ++index;
 
     memset((dest + index), '\0', numb);
     return dest;
@@ -142,22 +139,15 @@ char *strncpy(char *dest, const char *src, size_t numb)
 
 char *strcat(char *dest, const char *src)
 {
-    size_t index = 0;
-    while (dest[index])
-        ++index;
-
-    strcpy((dest + index), src);
+    strcpy((dest + strlen(dest)), src);
     return dest;
 
 }
 
 char *strncat(char *dest, const char *src, size_t numb)
 {
-    size_t index = 0;
-    while (dest[index])
-        ++index;
-    while (numb-- && (dest[index] = *src++))
-        ++index;
+    size_t index = strlen(dest);
+    while (numb-- && (dest[index++] = *src++)) ;
     dest[index] = '\0';
     return dest;
 }
@@ -165,33 +155,29 @@ char *strncat(char *dest, const char *src, size_t numb)
 int strcmp(const char *str1, const char *str2)
 {
     while (*str1 && *str2 && *str1 == *str2)
-    {
-        ++str1; ++str2;
-    }
+        ++str1, ++str2;
     return *str1 - *str2;
 }
 
 int strncmp(const char *str1, const char *str2, size_t numb)
 {
     while (numb && *str1 && *str2 && *str1 == *str2)
-    {
-        --numb; ++str1; ++str2;
-    }
+        --numb, ++str1, ++str2;
     return numb ? *str1 - *str2 : 0;
 }
 
 
 char *strchr(const char *str, int ch)
 {
-    --str;
-    while (*++str && *str != (char)ch);
+    while (*str && *str != (char)ch)
+        ++str;
     return (*str == (char)ch) ? (char *)str : NULL;
 }
 
 size_t strcspn(const char *str, const char *set)
 {
     const char *temp = str;
-    while (!(strchr(set, *str)))
+    while (!strchr(set, *str))
         ++str;
     return str - temp;
 }
@@ -205,31 +191,39 @@ char *strpbrk(const char *str, const char *set)
 char *strrchr(const char *str, int ch)
 {
     char *temp = NULL;
-    --str;
-    while (*++str)
+    do
         if (*str == (char)ch)
             temp = (char *)str;
+    while (*str++) ;
+
     return temp;
 }
 
 size_t strspn(const char *str, const char *set)
 {
+    if (!*set) // if set is empty just return 0;
+        return 0;
     const char *temp = str;
-    --str;
-    while (strchr(set, *++str));
+    while (*str && strchr(set, *str)) // strchr includes '\0' but strspn doesn't
+        ++str;
     return str - temp;
 }
 
 char *strstr(const char *str, const char *sub_str)
 {
-    char *temp = strchr(str, *sub_str);
+    if (!(*sub_str && *str))
+        return NULL;
+
+    char *temp = str - 1; // strchr(str, *sub_str);
     size_t len = strlen(sub_str);
-    while (temp && strncmp(temp, sub_str, len))
-        temp = strchr(temp + 1, *sub_str);
+    while ((temp = strchr(temp + 1, *sub_str)) && strncmp(temp, sub_str, len)) ;
+        // temp = strchr(temp + 1, *sub_str);
     return temp;
 }
 
-char *strtok(char *str, const char *delims)
+#include <stdio.h>
+
+char *strtok(char *str, const char *delimiters)
 {
     static char *current = NULL;
     char *start = NULL;
@@ -239,11 +233,11 @@ char *strtok(char *str, const char *delims)
 
     if (*current)
     {
-        start = current + strspn(current, delims); // search for first occurrence of delimiter if any ...
-        current = start + strcspn(start + 1, delims) + 1; // search for end of token, include 1 delimiter for '\0'
-        *current++ = '\0';
+        start = current + strspn(current, delimiters); // search for first occurrence of delimiter if any ...
+        current = start + strcspn(start, delimiters);  // search for end of token
+        if (*current) // if not at end set '\0 and increment
+            *current++ = '\0';
     }
-
 
     return start;
 }
@@ -251,8 +245,8 @@ char *strtok(char *str, const char *delims)
 size_t strlen(const char *str)
 {
     const char *temp = str;
-    --str;
-    while (*++str) ;
+    while (*str)
+        ++str;
     return str - temp;
 }
 

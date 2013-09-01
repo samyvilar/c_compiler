@@ -46,6 +46,52 @@ class TestDefinitions(TestDeclarations):
         """
         super(TestDefinitions, self).evaluate(code)
 
+    def test_astatic_definitions(self):
+        code = """
+
+        int foo(int call_number)
+        {
+            static int d = 10;
+            static char cs[6] = "hello";
+
+            if (call_number == 1)
+            {
+                if (d != 10 || cs[4] != 'o')
+                    return -1;
+                d = 1;
+                cs[4] = 'l';
+            }
+
+            if (call_number == 2)
+            {
+                if (d != 1 || cs[4] != 'l')
+                    return -1;
+                d = 2;
+                cs[0] = 'g';
+            }
+
+            if (call_number == 3)
+            {
+                if (d != 2 || cs[0] != 'g')
+                    return -1;
+            }
+
+            return 0;
+        }
+
+        int main()
+        {
+            foo(0);
+            int call_1 = foo(1);
+            foo(0);
+            int call_2 = foo(2);
+            int call_3 = foo(3);
+            return !(call_1 || call_2 || call_3);
+        }
+        """
+        self.evaluate(code)
+        self.assertEqual(self.mem[self.cpu.stack_pointer], 1)
+
 
 class TestInitializer(TestDeclarations):
     def test_global_constant_initializer(self):

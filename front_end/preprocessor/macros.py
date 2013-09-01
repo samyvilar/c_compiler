@@ -1,6 +1,6 @@
 __author__ = 'samyvilar'
 
-from itertools import izip_longest, chain
+from itertools import izip_longest, chain, imap, starmap, repeat, izip
 
 from front_end.loader.load import Str
 from sequences import peek, consume, takewhile
@@ -63,28 +63,15 @@ class FunctionMacro(ObjectMacro):
             raise ValueError('{l} Macro function {f} requires {t} arguments but got {g}.'.format(
                 f=self.name, t=len(self.arguments), g=len(expansion), l=location
             ))
-        return chain.from_iterable(
-            (STRING(' '.join(expansion.get(token[1:], (token,)))),)
-            if token.startswith(TOKENS.NUMBER_SIGN) and token != TOKENS.PP else expansion.get(token, (token,))
-            for token in self._body
+        # Generate a new token objs sequence since, expand uses the token id to track expansions ...
+        return imap(
+            lambda token: token.__class__(token, loc(token)),
+            chain.from_iterable(
+                (STRING(' '.join(expansion.get(token[1:], (token,)))),)
+                if token.startswith(TOKENS.NUMBER_SIGN) and token != TOKENS.PP else expansion.get(token, (token,))
+                for token in self._body
+            )
         )
-
-
-class DefinedMacro(FunctionMacro):
-    def __init__(self, macros):
-        self.macros = macros
-        super(DefinedMacro, self).__init__(TOKENS.DEFINED, ('argument',), ())
-
-    def body(self, arguments=()):
-        if peek(arguments, '') == TOKENS.LEFT_PARENTHESIS:
-            _ = consume(arguments)
-            name = error_if_not_type(consume(arguments, EOFLocation), (IDENTIFIER, KEYWORD))
-            _ = error_if_not_value(arguments, TOKENS.RIGHT_PARENTHESIS)
-        elif isinstance(peek(arguments, ''), (IDENTIFIER, KEYWORD)):
-            name = consume(arguments)
-        else:
-            raise ValueError('Expected either LEFT_PARENTHESIS or IDENTIFIER for function macro defined')
-        return INTEGER('1', loc(name)) if name in self.macros else INTEGER('0', loc(name)),
 
 
 def expand(token, tokens, macros, expanded_macros=None):
@@ -109,6 +96,23 @@ def merge_tokens(token_seq):
         yield prev_token
     else:
         yield IGNORE('')
+
+
+class DefinedMacro(FunctionMacro):
+    def __init__(self, macros):
+        self.macros = macros
+        super(DefinedMacro, self).__init__(TOKENS.DEFINED, ('argument',), ())
+
+    def body(self, arguments=()):
+        if peek(arguments, '') == TOKENS.LEFT_PARENTHESIS:
+            _ = consume(arguments)
+            name = error_if_not_type(consume(arguments, EOFLocation), (IDENTIFIER, KEYWORD))
+            _ = error_if_not_value(arguments, TOKENS.RIGHT_PARENTHESIS)
+        elif isinstance(peek(arguments, ''), (IDENTIFIER, KEYWORD)):
+            name = consume(arguments)
+        else:
+            raise ValueError('Expected either LEFT_PARENTHESIS or IDENTIFIER for function macro defined')
+        return INTEGER('1', loc(name)) if name in self.macros else INTEGER('0', loc(name)),
 
 
 class Macros(dict):

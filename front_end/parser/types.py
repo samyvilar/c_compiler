@@ -77,7 +77,7 @@ LOGICAL_OPERATIONS = {
 }
 
 ARITHMETIC_OPERATIONS = {TOKENS.PLUS, TOKENS.MINUS, TOKENS.STAR, TOKENS.FORWARD_SLASH}
-COMPOUND_ARITHMETIC_OPERATIONS = {TOKENS.PLUS_EQUAL, TOKENS.MINUS_EQUAL, TOKENS.STAR_EQUAL, TOKENS.FORWARD_SLASH}
+COMPOUND_ARITHMETIC_OPERATIONS = {TOKENS.PLUS_EQUAL, TOKENS.MINUS_EQUAL, TOKENS.STAR_EQUAL, TOKENS.FORWARD_SLASH_EQUAL}
 BITWISE_OPERATIONS = {
     TOKENS.TILDE, TOKENS.AMPERSAND, TOKENS.BAR, TOKENS.CARET, TOKENS.PERCENTAGE, TOKENS.SHIFT_LEFT, TOKENS.SHIFT_RIGHT,
 }
@@ -201,7 +201,9 @@ class ShortType(WidthType):
 
 class PointerType(ChainedType, IntegralType):
     rank = 4
-    supported_operations = LOGICAL_OPERATIONS | {TOKENS.PLUS,  TOKENS.MINUS, SUBSCRIPT_OPERATOR}
+    supported_operations = LOGICAL_OPERATIONS | {
+        TOKENS.PLUS,  TOKENS.MINUS, TOKENS.PLUS_EQUAL, TOKENS.MINUS_EQUAL, SUBSCRIPT_OPERATOR
+    }
 
     def __call__(self, location):
         return self.__class__(c_type(self)(location), location)
@@ -399,3 +401,4 @@ float_type = FloatType()
 double_type = DoubleType()
 
 void_pointer_type = PointerType(VoidType(LocationNotSet), LocationNotSet)
+char_array_type = ArrayType(CharType(LocationNotSet), None, LocationNotSet)

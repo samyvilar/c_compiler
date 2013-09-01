@@ -5,10 +5,10 @@ from itertools import chain, izip, repeat
 from front_end.loader.locations import loc
 
 from front_end.parser.ast.declarations import name
-from front_end.parser.ast.expressions import ConstantExpression, CastExpression, IdentifierExpression
+from front_end.parser.ast.expressions import ConstantExpression, CastExpression, IdentifierExpression, exp
 from front_end.parser.ast.expressions import BinaryExpression, AssignmentExpression, CompoundAssignmentExpression
-from front_end.parser.ast.expressions import EmptyExpression
-from front_end.parser.types import c_type, FunctionType, ArrayType
+from front_end.parser.ast.expressions import EmptyExpression, CommaExpression
+from front_end.parser.types import c_type, FunctionType, ArrayType, VoidType
 
 from back_end.emitter.expressions.cast import cast_expression
 from back_end.emitter.expressions.constant import constant_expression
@@ -19,7 +19,7 @@ from back_end.emitter.expressions.ternary import ternary_expression
 
 from back_end.emitter.c_types import size
 
-from back_end.virtual_machine.instructions.architecture import Load
+from back_end.virtual_machine.instructions.architecture import Load, Allocate
 
 
 def identifier_expression(expr, symbol_table, expression_func):
@@ -30,6 +30,19 @@ def identifier_expression(expr, symbol_table, expression_func):
     return chain(dec.load_address(loc(expr)), (Load(loc(expr), size(c_type(expr))),),)
 
 
+def comma_expression(expr, symbol_table, expression_func):
+    return chain(
+        chain.from_iterable(
+            chain(
+                expression_func(e, symbol_table, expression_func),
+                (not isinstance(c_type(e), VoidType) and Allocate(loc(e), -1 * size(c_type(e))),) or ()
+            )
+            for e in exp(expr)[:-1]
+        ),
+        expression_func(exp(expr)[-1], symbol_table, expression_func)
+    )
+
+
 # Entry point to all expression or expression statements
 def expression(expr, symbol_table=None, expression_func=None):
     return expression.rules[type(expr)](expr, symbol_table or {}, expression_func or expression)
@@ -38,6 +51,7 @@ expression.rules = {
     ConstantExpression: constant_expression,
     CastExpression: cast_expression,
     IdentifierExpression: identifier_expression,
+    CommaExpression: comma_expression,
 
     BinaryExpression: binary_expression,
     AssignmentExpression: binary_expression,

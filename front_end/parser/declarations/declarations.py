@@ -16,7 +16,8 @@ from front_end.parser.ast.declarations import Extern, Definition, TypeDef
 from front_end.parser.ast.declarations import initialization
 from front_end.parser.ast.expressions import ConstantExpression, EmptyExpression, exp
 
-from front_end.parser.types import CType, StructType, set_core_type, c_type, FunctionType, VAListType
+from front_end.parser.types import CType, StructType, set_core_type, c_type, FunctionType, VAListType, StringType
+from front_end.parser.types import ArrayType, CharType
 
 from front_end.parser.declarations.declarators import declarator, storage_class_specifier
 from front_end.parser.declarations.declarators import type_specifier, specifier_qualifier_list
@@ -47,6 +48,17 @@ def init_declarator(tokens, symbol_table, base_type=CType('')):
         else:
             decl.initialization = assignment_expression(tokens, symbol_table, cast_expression)
 
+        ctype = c_type(decl.initialization)
+        if isinstance(c_type(decl), ArrayType) and isinstance(c_type(c_type(decl)), CharType) and \
+                isinstance(ctype, StringType):
+            decl.initialization = ConstantExpression(
+                [next(
+                    exp(decl.initialization),
+                    ConstantExpression(ord('\0'), CharType(loc(ctype)), loc(ctype)))
+                 for _ in xrange(len(c_type(decl)))],
+                ArrayType(CharType(loc(ctype)), len(c_type(decl)), loc(ctype)),
+                loc(decl.initialization)
+            )
     else:
         decl = Declaration(name(decl), c_type(decl), loc(decl))
         symbol_table[name(decl)] = decl
@@ -115,14 +127,13 @@ def declaration(tokens, symbol_table):  # storage_class? type_specifier init_dec
         if isinstance(decl, FunctionDefinition):
             raise ValueError('{l} Nested function definitions are not allowed.'.format(l=loc(decl)))
         # Non Function declaration without storage class is set to auto
-        if type(decl) is Declaration and not decl.storage_class and not isinstance(c_type(decl), FunctionType) or \
-           isinstance(decl.storage_class, Static):
+        if type(decl) is Declaration and not isinstance(c_type(decl), FunctionType):
             decl = Definition(
                 name(decl),
                 c_type(decl),
                 EmptyExpression(c_type(decl), loc(decl)),
                 loc(decl),
-                Auto(loc(decl))
+                decl.storage_class or Auto(loc(decl))
             )
         yield decl
 
