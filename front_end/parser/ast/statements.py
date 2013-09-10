@@ -1,15 +1,14 @@
 __author__ = 'samyvilar'
 
-from types import NoneType
 from collections import defaultdict
 
-from front_end.loader.locations import loc
+from front_end.loader.locations import loc, LocationNotSet
 from front_end.parser.ast.general import Node, EmptyNode
 
 from front_end.parser.ast.declarations import Declaration, Definition, Declarator, name
 
 from front_end.parser.ast.expressions import ConstantExpression, SizeOfExpression, IdentifierExpression, TrueExpression
-from front_end.parser.ast.expressions import EmptyExpression
+from front_end.parser.ast.expressions import EmptyExpression, Expression
 from front_end.parser.types import c_type, FunctionType
 
 from front_end.errors import error_if_not_type
@@ -74,9 +73,9 @@ class StatementBody(Statement):
     @property
     def statement(self):
         stmnt = next(self._statement)
-        if isinstance(stmnt, Declaration):
-            raise ValueError('{l} statement {i} cannot have a declaration/definition as a body'.format(
-                l=loc(stmnt), i=self
+        if not isinstance(stmnt, (Expression, Statement)):
+            raise ValueError('{l} statement {i} expected either expression/statement as a body got {g}'.format(
+                l=loc(stmnt), i=self, g=stmnt
             ))
         return stmnt
 
@@ -91,24 +90,24 @@ class IterationStatement(ExpressionBody):
     pass
 
 
+class ForStatement(IterationStatement):
+    def __init__(self, init_exp, loop_exp, upd_exp, stmnt, location):
+        self.init_exp, self.upd_exp = init_exp, upd_exp
+        super(ForStatement, self).__init__(loop_exp, stmnt, location)
+
+
 class WhileStatement(IterationStatement):
     pass
 
 
 class DoWhileStatement(IterationStatement):
-    @property
+    @property  # do while statement is the only iteration statement that calculates the expr after the body ...
     def exp(self):
         return next(self._exp)
 
     @exp.setter
     def exp(self, value):
         self._exp = value
-
-
-class ForStatement(IterationStatement):
-    def __init__(self, init_exp, loop_exp, upd_exp, stmnt, location):
-        self.init_exp, self.upd_exp = init_exp, upd_exp
-        super(ForStatement, self).__init__(loop_exp, stmnt, location)
 
 
 class SelectionStatement(ExpressionBody):
@@ -131,38 +130,18 @@ class ElseStatement(SelectionStatement):
 
 
 class SwitchStatement(SelectionStatement):
-    def __init__(self, exp, comp_statement, location):
-        self.exp = exp
-        super(SwitchStatement, self).__init__(exp, comp_statement, location)
-
     @property
     def statement(self):
         stmnt = super(SwitchStatement, self).statement
         if not isinstance(stmnt, CompoundStatement):
             raise ValueError('{l} switch statement expected compound statement, got {g}'.format(l=loc(stmnt), g=stmnt))
 
-        def _iter(comp_statement):
-            def __iter(stmnt):
-                yield stmnt
-            invalid_type = NoneType
+        def _check_for_declarations(comp_statement):
             for gener in comp_statement:
-                for stmnt in gener:
-                    yield __iter(stmnt)
-                    if isinstance(stmnt, CaseStatement):
-                        invalid_type = Declaration
-                        break
-                if not isinstance(invalid_type, NoneType):
-                    break
+                yield gener
+            _ = super(SwitchStatement, self).statement  # Pop symbol table after completion...
 
-            for gener in comp_statement:
-                for stmnt in gener:
-                    if isinstance(stmnt, invalid_type):
-                        raise ValueError('{l} Switch may not have declaration(s) after case stmnt.'.format(
-                            l=loc(stmnt)
-                        ))
-                    yield __iter(stmnt)
-
-        stmnt.statements = _iter(stmnt.statements)
+        stmnt.statements = _check_for_declarations(stmnt.statements)
         return stmnt
 
 

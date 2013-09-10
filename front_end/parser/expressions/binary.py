@@ -8,7 +8,7 @@ from front_end.parser.types import NumericType, IntegralType, c_type, safe_type_
 from front_end.parser.types import LOGICAL_OPERATIONS, IntegerType
 
 from front_end.parser.ast.expressions import BinaryExpression, AssignmentExpression, CompoundAssignmentExpression, oper
-from front_end.parser.ast.expressions import TernaryExpression, left_exp, right_exp, SizeOfExpression
+from front_end.parser.ast.expressions import TernaryExpression, left_exp, right_exp
 from front_end.parser.expressions.reduce import reduce_expression
 
 from front_end.errors import error_if_not_type, error_if_not_value

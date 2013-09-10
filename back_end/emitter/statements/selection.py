@@ -66,11 +66,9 @@ def switch_statement(stmnt, symbol_table, stack, statement_func):
                         (RelativeJump(loc(stmnt), Address(instr, loc(instr))),)
                     )
                 )
-                addr = Address(start, loc(instr))
-                if isinstance(instr.case, DefaultStatement):
-                    cases['default'] = addr
-                else:
-                    cases[exp(exp(instr.case))] = addr
+                cases[(isinstance(instr.case, DefaultStatement) and 'default') or exp(exp(instr.case))] = Address(
+                    start, loc(instr)
+                )
                 del instr.case
             yield instr
 

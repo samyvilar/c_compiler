@@ -115,40 +115,45 @@ int	fflush(FILE *file)
 }
 
 
-void upper(const char *src, const char *dest)
+char *upper(char *src)
 {
-    while (*src)
-        if (*src >= 'a' && *src <= 'z')
-            *dest++ = 'A' + (*src++ - 'a');
-        else
-            *dest++ = *src++;
-    *dest = *src;
+    char *temp = (src - 1);
+    while (*++temp)
+        if (*temp >= 'a' && *temp <= 'z')
+            *temp = 'A' + (*temp - 'a');
+    return src;
 }
 
-char *number_to_string(long long value, int base, char *dest)
+char *number_to_string(long long value, int base, char *dest, unsigned long long max_size)
 {
     if (base < 2 || base > 36)
         return NULL;
 
+    unsigned long long current = value;
     char *destination = dest;
-    if (value < 0 && base == 10)
-        *destination++ = '-';
-    char *temp = destination;
-
     if (value < 0)
-        value *= -1;
-
-    #define digit_ch(__numb__) ((__numb__) + (((__numb__) < 10) ? '0' : 'a'))
-    while (value >= base)
     {
-        *destination++ = digit_ch(value % base);
-        value /= base;
+        if (base == 10)
+        {
+            *destination++ = '-';
+            current = -1 * value;
+        }
+        else
+            current = max_size + value + 1;
     }
-    *destination++ = digit_ch(value);
+
+    #define digit_ch(__numb__) ((__numb__) + (((__numb__) < 10) ? '0' : ('a' - 10)))
+    while (current >= base)
+    {
+        *destination++ = digit_ch(current % base);
+        current /= base;
+    }
+    *destination++ = digit_ch(current % base);
     #undef digit_ch
+
     *destination-- = '\0';
 
-    char ch; // swap values ...
+    char ch, *temp = (*dest == '-') ? (dest + 1) : dest;  // swap values ..
     while (destination > temp)
     {
         ch = *destination;
@@ -161,22 +166,27 @@ char *number_to_string(long long value, int base, char *dest)
 
 char *float_to_string(double value, char *dest)
 {
-    dest = number_to_string((long long)value, 10, dest);
-    size_t index = 0;
-    while (dest[index]) ++index;
-    dest[index++] = '.';
+    // TODO: take into account mantissa, double values can be up to 1024 bits large
+    char *current = dest = lltoa((long long)value, dest, 10);
+    while (*++current); //loc end; safe to assume that lltoa at the very least returns '0' so we can pre-increment.
+    *current++ = '.';
 
     // TODO: find a better method for locating fraction, this isn't accurate
-    double fraction = value - (long long)value;
+    // slower but more accurate than incrementing by 10 and sub;
+    // we can only or rather should display up to 16 decimal place accuracy according to IEEE 754 double format
+                      // We need to negate the difference if value less than 0.
+    double fraction = (value < 0 ? -1.0 : 1.0) * (value - (long long)value);
+    unsigned long long numeric_fraction = fraction * 100000000000000000LL;
+    while (fraction && (fraction *= 10.0) < 1.0)    // set leading zeros
+        *current++ = '0';
+    current = lltoa(numeric_fraction, current, 10);
+    // search for '\0'
+    while (*++current); // again assume that lltoa at the very least returns '0'
+    while (*--current == '0'); // remove/skip any trailing zeros.
 
-    if (!fraction)
-        dest[index++] = '0';
-
-    while (fraction - (long long)fraction)
-    {
-        fraction *= 10;
-        dest[index++] = '0' + (long long)fraction % 10;
-    }
+    if (*current == '.') // if they where all trailing 0s than just add one more
+        *++current = '0';
+    *++current = '\0';
 
     return dest;
 }
@@ -193,6 +203,16 @@ int printf(const char *format, ...)
     int base = 10;
     unsigned long long total = 0;
 
+    #define NUMERIC_CASES(default_type, func, unsigned_max) \
+        case 'i': case 'd': total += _puts(func(va_arg(args, default_type), temp, 10)); break ; \
+        case 'X': total += _puts(upper(func(va_arg(args, unsigned default_type), temp, 16))); break ; \
+        case 'x': total += _puts(func(va_arg(args, unsigned default_type), temp, 16)); break ; \
+        case 'o': total += _puts(func(va_arg(args, unsigned default_type), temp, 8)); break ; \
+        case 'u': total += _puts(func(va_arg(args, unsigned default_type) % (unsigned_max + 1), temp, 10)); break ; \
+        default: _error_unknown_specifier(*format); return total;
+
+    #define _error_unknown_specifier(format) printf("Unknown Specifier found: %c", format);
+    #define _puts(values) fputs(values, &stdout)
     while (*format)
     {
         if (*format == '%')
@@ -203,55 +223,33 @@ int printf(const char *format, ...)
 
             switch (*format)
             {
-                case '%':
-                    fputc(*format, &stdout);
-                    ++total;
+                // lengths
+                case 'h':
+                    if (*++format == 'h') switch (*++format) { NUMERIC_CASES(char, itoa, UINT_MAX) }
+                    else switch (*format) { NUMERIC_CASES(short int, itoa, UINT_MAX) }
                     break ;
 
-                case 'c':
-                    fputc(va_arg(args, char), &stdout);
-                    ++total;
-                    break ;
-
-                case 's':
-                    total += fputs(va_arg(args, char *), &stdout);
-                    break ;
-
-                case 'X':
-                case 'x':
-                case 'p':
                 case 'l':
-                case 'o':
-                case 'u':
-                case 'i':
-                case 'd':
-                    if (*format == 'p' || *format == 'x' || *format == 'X')
-                        base = 16;
-                    else if (*format == 'o')
-                        base = 8;
-                    else
-                        base = 10;
-                    str = number_to_string(va_arg(args, void *), base, temp);
-                    if (*format == 'X')
-                        upper(str, str);
-                    total += fputs(str, &stdout);
+                    if (*++format == 'l') switch (*++format) { NUMERIC_CASES(long, ltoa, ULLONG_MAX) }
+                    else switch (*format) { NUMERIC_CASES(long int, ltoa, ULLONG_MAX) }
                     break ;
 
-                case 'F':
-                case 'f':
-                    total += fputs(float_to_string(va_arg(args, double), temp), &stdout);
-                    break ;
+                // default specifiers no length ...
+                case '%': putchar(*format); ++total; break ;
+                case 'c': putchar(va_arg(args, int)); ++total; break ;
+                case 's': total += _puts(va_arg(args, char *)); break ;
+                case 'p': total += _puts("0x"); total += _puts(lltoa(va_arg(args, void *), temp, 16)); break ;
+                case 'F': case 'f': total += _puts(float_to_string(va_arg(args, double), temp)); break ;
 
-                default: // error
-                    printf("Unknown Specifier found: %c", *format);
-                    return total;
+                NUMERIC_CASES(int, itoa, UINT_MAX)
             }
+            #undef _puts
+            #undef NUMERIC_CASES
+            #undef _error_unknown_specifier
+
         }
         else
-        {
-            fputc(*format, &stdout);
-            ++total;
-        }
+            putchar(*format), ++total;
         ++format;
     }
 

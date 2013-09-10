@@ -80,3 +80,11 @@ class TestPreProcessor(TestCase):
         """
         self.assertEqual('( * ( void * * ) ( dest + index ) = * ( void * * ) ( src + index ) ) ;',
                          ' '.join(preprocess(tokenize(source(code)))))
+
+    def test_bug_1(self):
+        code = """
+        #define LEFT_NODE(tree) tree->left
+        #define VALUE LEFT_NODE
+        VALUE(VALUE(old_leaf)) = old_leaf;
+        """
+        self.assertEqual('old_leaf -> left -> left = old_leaf ;', ' '.join(preprocess(tokenize(source(code)))))

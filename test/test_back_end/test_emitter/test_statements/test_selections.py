@@ -12,7 +12,7 @@ class TestSelectionStatements(TestStatements):
                 a = 0;
         }
         """
-        super(TestSelectionStatements, self).evaluate(source)
+        self.evaluate(source)
         self.assertEqual(self.mem[self.cpu.stack_pointer], 0)
 
     def test_else_statement(self):
@@ -25,7 +25,7 @@ class TestSelectionStatements(TestStatements):
                 a = 0;
         }
         """
-        super(TestSelectionStatements, self).evaluate(source)
+        self.evaluate(source)
         self.assertEqual(self.mem[self.cpu.stack_pointer], 0)
 
     def test_else_if_statement(self):
@@ -40,7 +40,7 @@ class TestSelectionStatements(TestStatements):
                 a = 0;
         }
         """
-        super(TestSelectionStatements, self).evaluate(source)
+        self.evaluate(source)
         self.assertEqual(self.mem[self.cpu.stack_pointer], 1)
 
     def test_switch_statement(self):
@@ -71,6 +71,51 @@ class TestSelectionStatements(TestStatements):
 
         }
         """
-        super(TestSelectionStatements, self).evaluate(source)
+        self.evaluate(source)
         self.assertEqual(self.mem[self.cpu.stack_pointer - 1], 12)
+
+    def test_switch_statement_declarations(self):
+        code = """
+        {
+            int sum = 0, stack_frag = 0;
+            void *stack_ptr = &stack_ptr - 1;
+            int temp;
+            switch (0)
+            {
+                int a;
+                case 0:
+                    a = 10;
+                    sum += 1;
+                    int b = 10;
+                case 20:
+                    sum += a;
+                    int c = 24;
+                case 4:
+                    {
+                        int _ter[10] = {[0 ... 9] = -1};
+                        case 10:
+                            sum += b + c;
+                            int d = 49;
+                            void *curr = &curr - 1;
+                            if (((void *)stack_ptr - (void *)curr) != 15 * sizeof(int) + sizeof(void *))
+                                sum = -1;
+                    }
+                    void *curr = &curr - 1;
+                    if ((stack_ptr - curr) != 4 * sizeof(int) + sizeof(void *))
+                        sum = (stack_ptr - curr);
+                    break ;
+                    int u = 124;
+                    sum += u + a;
+                    break ;
+
+                default:
+                    sum = -1;
+            }
+            int g = -1;
+            if ((stack_ptr - ((void *)&g - 1)) != 2 * sizeof(int))
+                sum = -1;
+        }
+        """
+        self.evaluate(code)
+        self.assertEqual(self.mem[self.cpu.stack_pointer], 45)
 

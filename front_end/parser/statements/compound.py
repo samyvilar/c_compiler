@@ -3,7 +3,7 @@ __author__ = 'samyvilar'
 from collections import defaultdict
 from itertools import chain, izip, repeat
 
-from sequences import peek, consume
+from sequences import peek, consume, terminal
 from logging_config import logging
 
 from front_end.loader.locations import loc, EOFLocation
@@ -40,8 +40,7 @@ def _expression(expr):
 
 
 def compound_statement(tokens, symbol_table, statement_func):  #: '{' statement*  '}'
-    _ = error_if_not_value(tokens, TOKENS.LEFT_BRACE)
-    symbol_table = push(symbol_table)
+    _, symbol_table = error_if_not_value(tokens, TOKENS.LEFT_BRACE), push(symbol_table)
     while peek(tokens) != TOKENS.RIGHT_BRACE:
         yield statement_func(tokens, symbol_table, statement_func)
     _, _ = error_if_not_value(tokens, TOKENS.RIGHT_BRACE), pop(symbol_table)
@@ -80,16 +79,14 @@ def statement(tokens, symbol_table=None, statement_func=None):
             return label_stmnt(label_name, statement_func(tokens, symbol_table, statement_func))
         # it must be an expression, TODO: figure out a way without using dangerous chain!
         tokens = chain((label_name, consume(tokens)), tokens)
-        expr = expression(tokens, symbol_table)
-        _ = error_if_not_value(tokens, TOKENS.SEMICOLON)
+        expr, _ = expression(tokens, symbol_table), error_if_not_value(tokens, TOKENS.SEMICOLON)
         return _expression(expr)
 
     if peek(tokens, '') in statement.rules:
         return statement.rules[peek(tokens)](tokens, symbol_table, statement_func)
 
-    if peek(tokens, ''):
-        expr = expression(tokens, symbol_table)
-        _ = error_if_not_value(tokens, TOKENS.SEMICOLON)
+    if peek(tokens, terminal) is not terminal:
+        expr, _ = expression(tokens, symbol_table), error_if_not_value(tokens, TOKENS.SEMICOLON)
         return _expression(expr)
 
     raise ValueError('{l} No rule could be found to create statement, got {got}'.format(

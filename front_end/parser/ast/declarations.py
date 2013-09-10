@@ -126,12 +126,12 @@ class AbstractDeclarator(TypedNode):
         raise TypeError
 
 
-def name(obj):
-    return getattr(obj, 'name')
-
-
 __required__ = object()
 
 
-def initialization(obj, default=__required__):
-    return getattr(obj, 'initialization', default) if default is not __required__ else getattr(obj, 'initialization')
+def name(obj, argument=__required__):
+    return getattr(obj, 'name') if argument is __required__ else getattr(obj, 'name', argument)
+
+
+def initialization(obj, argument=__required__):
+    return getattr(obj, 'initialization') if argument is __required__ else getattr(obj, 'initialization', argument)

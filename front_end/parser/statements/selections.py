@@ -1,11 +1,13 @@
 __author__ = 'samyvilar'
 
+from itertools import chain
 from collections import defaultdict
 
 from sequences import peek, consume
-from front_end.loader.locations import loc, EOFLocation
+from front_end.loader.locations import loc, EOFLocation, LocationNOTSET
 from front_end.tokenizer.tokens import TOKENS
 
+from front_end.parser.symbol_table import push, pop
 from front_end.parser.ast.statements import IfStatement, ElseStatement, SwitchStatement, EmptyStatement
 from front_end.parser.expressions.expression import expression
 
@@ -44,13 +46,18 @@ def _if(tokens, symbol_table, statement):
 
 
 def switch(tokens, symbol_table, statement):
-    location = loc(consume(tokens))
-    _ = error_if_not_value(tokens, TOKENS.LEFT_PARENTHESIS)
-    exp = expression(tokens, symbol_table)
-    _ = error_if_not_value(tokens, TOKENS.RIGHT_PARENTHESIS)
-    symbol_table['__ SWITCH STATEMENT __'] = {}
-    yield SwitchStatement(exp, statement(tokens, symbol_table, statement), location)
-    _ = symbol_table.pop('__ SWITCH STATEMENT __')
+    def _pop_symbol_table(symbol_table):  # Pop symbol table once we have gone through the whole body ...
+        _ = pop(symbol_table)
+        yield EmptyStatement()
+    location, _ = loc(consume(tokens)), error_if_not_value(tokens, TOKENS.LEFT_PARENTHESIS)
+    exp, _ = expression(tokens, symbol_table), error_if_not_value(tokens, TOKENS.RIGHT_PARENTHESIS)
+    symbol_table = push(symbol_table)
+    symbol_table['__ SWITCH STATEMENT __'] = {}  # Add dict to track cases, emit error on duplicates.
+    yield SwitchStatement(
+        exp,
+        chain(statement(tokens, symbol_table, statement), _pop_symbol_table(symbol_table)),
+        location
+    )
 
 
 def selection_statement(tokens, symbol_table, statement):

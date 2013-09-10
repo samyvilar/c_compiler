@@ -35,7 +35,7 @@ def case(tokens, symbol_table, statement_func):
     _, _ = error_if_not_value(tokens, TOKENS.COLON), error_if_not_type(c_type(expr), IntegralType)
     switch = symbol_table['__ SWITCH STATEMENT __']
     if exp(expr) in switch:
-        raise ValueError('{l} duplicate case statement previous at {p}'.format(l=location), loc(switch[exp(expr)]))
+        raise ValueError('{l} duplicate case statement previous at {p}'.format(l=location, p=loc(switch[exp(expr)])))
     switch[exp(expr)] = CaseStatement(expr, statement_func(tokens, symbol_table, statement_func), location)
     yield switch[exp(expr)]
 

@@ -1,12 +1,15 @@
 __author__ = 'samyvilar'
 
-from itertools import chain, izip, repeat
+from itertools import chain, izip, repeat, imap
 
 from sequences import peek, consume, takewhile
 
 from front_end.loader.locations import loc, EOFLocation
 from front_end.tokenizer.tokens import TOKENS, SYMBOL, KEYWORD, IDENTIFIER, FLOAT, INTEGER, STRING, CHAR, WHITESPACE
-from front_end.tokenizer.tokens import PRE_PROCESSING_SYMBOL, letters, digits, alpha_numeric, whitespace
+from front_end.tokenizer.tokens import HEXADECIMAL, OCTAL
+from front_end.tokenizer.tokens import PRE_PROCESSING_SYMBOL, letters, alpha_numeric, whitespace
+from front_end.tokenizer.tokens import digits, hexadecimal_digits, hexadecimal_prefix, octal_prefix
+from front_end.tokenizer.tokens import possible_numeric_suffix
 from front_end.tokenizer.tokens import SINGLE_LINE_COMMENT, MULTI_LINE_COMMENT
 from front_end.errors import error_if_not_value
 
@@ -88,15 +91,36 @@ def pre_processor(char_stream, location):
     return IDENTIFIER(values, location)
 
 
+def suffix(char_stream):
+    return ''.join(takewhile(lambda c: c in letters, char_stream))
+
+
 def number(char_stream):
-    return ''.join(takewhile(lambda char: char in digits, char_stream))
+    initial_char, _digits = '', digits
+    if peek(char_stream) == '0':
+        initial_char = consume(char_stream)
+        if peek(char_stream, '') in {'x', 'X'}:
+            initial_char += consume(char_stream)
+            _digits = hexadecimal_digits
+    return initial_char + ''.join(takewhile(lambda char: char in _digits, char_stream))
 
 
 def number_literal(char_stream, location):
-    values = number(char_stream)
+    values, suffix_str = number(char_stream), suffix(char_stream)
+
+    if suffix_str and suffix_str not in possible_numeric_suffix:
+        raise ValueError('{l} Invalid numeric suffix {s}'.format(l=location, s=suffix_str))
+
     if is_adjacent(char_stream, TOKENS.DOT, location.column_number + len(values)):
+        assert not suffix_str
         return FLOAT(values + consume(char_stream) + number(char_stream), location)
-    return INTEGER(values, location)
+
+    _token_type = INTEGER
+    if any(imap(values.startswith, octal_prefix)) and values != '0':
+        _token_type = OCTAL
+    if any(imap(values.startswith, hexadecimal_prefix)):
+        _token_type = HEXADECIMAL
+    return _token_type(values, location, suffix_str)
 
 escape_characters = {
     'n': '\n',

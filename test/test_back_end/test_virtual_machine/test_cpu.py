@@ -6,7 +6,7 @@ from collections import defaultdict
 from back_end.virtual_machine.cpu.core import CPU
 
 import back_end.virtual_machine.instructions.encoder as encoder
-from back_end.virtual_machine.instructions.architecture import Push, Pop, Dup, Halt, Allocate, Set, Load
+from back_end.virtual_machine.instructions.architecture import Push, Pop, Halt, Load
 from back_end.virtual_machine.instructions.architecture import ids, LoadBaseStackPointer, LoadStackPointer, Add
 from back_end.virtual_machine.instructions.stack import _push, _pop
 from back_end.virtual_machine.cpu.core import HaltException
@@ -57,12 +57,6 @@ class TestCPUStack(TestCPU):
         _push(value, self.cpu, self.mem)
         self.assertEqual(_pop(self.cpu, self.mem), value)
 
-    def test_dup(self):
-        value = 10
-        self.execute((Push('', value), Dup('')))
-        self.assertEqual(_pop(self.cpu, self.mem), value)
-        self.assertEqual(_pop(self.cpu, self.mem), value)
-
     def test_load_base_stack_pointer(self):
         self.cpu.base_stack_pointer = -1
         self.execute((LoadBaseStackPointer(''),))
@@ -72,32 +66,6 @@ class TestCPUStack(TestCPU):
         stack_pointer = self.cpu.stack_pointer
         self.execute((LoadStackPointer(''),))
         self.assertEqual(_pop(self.cpu, self.mem), stack_pointer)
-
-    def test_allocate(self):
-        quantity = 10
-        stack_pointer = self.cpu.stack_pointer
-        self.execute((Allocate('', quantity),))
-        self.assertEqual(self.cpu.stack_pointer, int(stack_pointer) - quantity)
-        self.setUp()
-        self.execute((Allocate('', quantity), Allocate('', -quantity)))
-        self.assertEqual(int(self.cpu.stack_pointer), int(stack_pointer))
-
-    def test_set(self):
-        values = (5, 6, 8)
-        stack_pointer = self.cpu.stack_pointer
-        self.execute(
-            chain(
-                (Push('', v) for v in values),
-                (
-                    Push('', 128),
-                    Set('', len(values) * size(values[0])),
-                    Allocate('', -len(values) * size(values[0]))
-                )
-            )
-        )
-        self.assertEqual(self.cpu.stack_pointer, stack_pointer)
-        for addr, value in izip(xrange(128, size(values[0]) * len(values), size(values[0])), values):
-            self.assertEqual(self.mem[self.cpu.word_type(addr)], self.cpu.word_type(value))
 
     def test_load(self):
         values = [4, 5, 8]

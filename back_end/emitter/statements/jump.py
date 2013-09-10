@@ -9,8 +9,8 @@ from front_end.parser.ast.statements import BreakStatement, ContinueStatement, R
 from front_end.parser.ast.statements import LabelStatement
 from front_end.parser.types import c_type, void_pointer_type, VoidType
 
-from back_end.virtual_machine.instructions.architecture import Push, Address, AbsoluteJump, Pass, RelativeJump
-from back_end.virtual_machine.instructions.architecture import LoadBaseStackPointer, Integer, Set, Load, Add, Allocate
+from back_end.virtual_machine.instructions.architecture import Push, Address, AbsoluteJump, Pass, RelativeJump, allocate
+from back_end.virtual_machine.instructions.architecture import LoadBaseStackPointer, Integer, Set, Load, Add
 from back_end.emitter.c_types import size
 
 from back_end.emitter.expressions.expression import expression
@@ -45,7 +45,7 @@ def continue_statement(stmnt, symbol_table, stack, *_):
 
 def return_instrs(location):
     yield LoadBaseStackPointer(location)
-    yield Push(location, 1)
+    yield Push(location, Address(1, location))
     yield Add(location)
     yield Load(location, size(void_pointer_type))  # Push return Address.
     yield AbsoluteJump(location)  # Jump back, caller is responsible for clean up as well as set up.
@@ -60,42 +60,40 @@ def return_statement(stmnt, symbol_table, *_):
         (  # Copy return value onto stack
             LoadBaseStackPointer(loc(stmnt)),
             # move to previous frame, skipping return address ...
-            Push(loc(stmnt), Integer(1 + size(void_pointer_type), loc(stmnt))),
+            Push(loc(stmnt), Address(1 + size(void_pointer_type), loc(stmnt))),
             Add(loc(stmnt)),
             Load(loc(stmnt), size(void_pointer_type)),
             # copy return value to previous Frame.
             Set(loc(stmnt), size(return_type)),
-            Allocate(loc(stmnt), Integer(-1 * size(return_type), loc(stmnt))),  # Set leaves the value on the stack
         ),
+        allocate(Integer(-size(return_type), loc(stmnt))),  # Set leaves the value on the stack
         return_instrs(loc(stmnt))
     )
 
 
 def update_stack(source_stack_pointer, target_stack_pointer, location):
-    yield Allocate(location, source_stack_pointer - target_stack_pointer)
+    return allocate(Address(source_stack_pointer - target_stack_pointer, location))
 
 
-# goto is really trouble some, specially on stack based machines, since it can by pass definitions, corrupting offsets.
+# goto is really trouble some, specially on stack based machines, since it can bypass definitions, corrupting offsets.
 # The only way to deal with with it is to save the stack state on the labelled instruction and goto, and recreate it
 # before Jumping to it.
-# Native goto binaries can only be generated once all the binaries of the function have being created.
 def goto_statement(stmnt, symbol_table, stack, *_):
     labels, gotos = symbol_table['__ LABELS __'], symbol_table['__ GOTOS __']
 
-    if stmnt.label in labels:
+    if stmnt.label in labels:  # Label previously defined either in current or previous scope ...
         instr, stack_pointer = labels[stmnt.label]
         instrs = chain(
             update_stack(stack_pointer, stack.stack_pointer, loc(stmnt)),
             (RelativeJump(loc(stmnt), Address(instr, loc(stmnt))),)
         )
-    else:
-        alloc_instr = Allocate(loc(stmnt), None)
+    else:  # Label has yet to be defined ...
+        _load, _push, _add, _set = allocate(Address(None, loc(stmnt)))
         addr = Address(None, loc(stmnt))
-        gotos[stmnt.label].append((alloc_instr, addr, stack.stack_pointer))
-        instrs = (alloc_instr, RelativeJump(loc(stmnt), addr))
+        gotos[stmnt.label].append((_push, addr, stack.stack_pointer))
+        instrs = (_load, _push, _add, _set, RelativeJump(loc(stmnt), addr))
 
-    for instr in instrs:
-        yield instr
+    return instrs
 
 
 def label_statement(stmnt, symbol_table, stack, statement_func):
@@ -104,8 +102,9 @@ def label_statement(stmnt, symbol_table, stack, statement_func):
     labels, gotos = symbol_table['__ LABELS __'], symbol_table['__ GOTOS __']
     labels[name(stmnt)] = (instr, stack.stack_pointer)
 
-    for alloc_instr, addr, goto_stack_pointer in gotos[name(stmnt)]:
-        alloc_instr.operands = (Integer(goto_stack_pointer - stack.stack_pointer, loc(stmnt)),)
+    for alloc_instr, addr, goto_stack_pointer in gotos[name(stmnt)]:  # update all previous gotos referring to this lbl
+        # we invert since allocate negates the amount
+        alloc_instr.operands = (Address(stack.stack_pointer - goto_stack_pointer, loc(stmnt)),)
         addr.obj = instr
     del gotos[name(stmnt)][:]
 

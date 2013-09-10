@@ -83,6 +83,7 @@ BITWISE_OPERATIONS = {
 }
 COMPOUND_BITWISE_OPERATIONS = {
     TOKENS.AMPERSAND_EQUAL, TOKENS.BAR_EQUAL, TOKENS.CARET_EQUAL, TOKENS.SHIFT_LEFT_EQUAL, TOKENS.SHIFT_RIGHT_EQUAL,
+    TOKENS.PERCENTAGE_EQUAL,
 }
 
 COMPOUND_OPERATIONS = {TOKENS.EQUAL} | COMPOUND_ARITHMETIC_OPERATIONS | COMPOUND_BITWISE_OPERATIONS
@@ -246,7 +247,7 @@ class StringType(ArrayType):
 class FunctionType(ChainedType, list):
     supported_operations = {FUNCTION_CALL_OPERATOR}
 
-    def __init__(self, ctype, arguments, location=LocationNotSet):
+    def __init__(self, ctype, arguments=(), location=LocationNotSet):
         super(FunctionType, self).__init__(ctype, location)
         list.__init__(self, arguments or ())
 
@@ -350,11 +351,11 @@ def safe_type_coercion(from_type, to_type):
     return from_type == to_type
 
 
-def c_type(obj, *args):
-    if args:
-        return getattr(obj, 'c_type', args[0])
-    else:
-        return getattr(obj, 'c_type')
+__required__ = object()
+
+
+def c_type(obj, argument=__required__):
+    return getattr(obj, 'c_type') if argument is __required__ else getattr(obj, 'c_type')
 
 
 def base_c_type(ctype):
@@ -372,12 +373,12 @@ def unsigned(obj):
     return getattr(obj, 'unsigned')
 
 
-def const(obj):
-    return getattr(obj, 'const', False)
+def const(obj, argument=__required__):
+    return getattr(obj, 'const') if argument is __required__ else getattr(obj, 'const', False)
 
 
-def volatile(obj):
-    return getattr(obj, 'volatile', False)
+def volatile(obj, argument=__required__):
+    return getattr(obj, 'volatile') if argument is __required__ else getattr(obj, 'volatile', argument)
 
 
 def set_core_type(base_type, fundamental_type):

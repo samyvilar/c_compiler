@@ -3,6 +3,7 @@ __author__ = 'samyvilar'
 from collections import defaultdict
 from itertools import izip, chain
 
+from front_end.loader.locations import LocationNotSet, loc
 
 ids = defaultdict()
 
@@ -11,8 +12,8 @@ def operns(obj):
     return getattr(obj, 'operands', ())
 
 
-class Int(int):
-    def __new__(cls, number, location):
+class Int(long):
+    def __new__(cls, number, location=LocationNotSet):
         value = super(Int, cls).__new__(cls, number)
         value.location = location
         value.number = number  # Needed in order to print or else infinite recursion on str()
@@ -21,7 +22,7 @@ class Int(int):
 
 class Float(float):
     # noinspection PyInitNewSignature
-    def __new__(cls, number, location):
+    def __new__(cls, number, location=LocationNotSet):
         value = super(Float, cls).__new__(cls, number)
         value.location = location
         value.number = number
@@ -29,7 +30,7 @@ class Float(float):
 
 
 class Instruction(tuple):  # No operand instruction.
-    def __new__(cls, location):
+    def __new__(cls, location=LocationNotSet):
         value = super(Instruction, cls).__new__(cls, (Int(ids[cls], location),))
         value.location = location
         return value
@@ -61,8 +62,8 @@ Byte = Integer
 
 
 class Address(Int):  # Address is a special operand since it can take other instructions or labels as operands
-    def __new__(cls, obj=0, location=''):
-        if type(obj) in {Integer, Int, int}:  # If basic integer do nothing.
+    def __new__(cls, obj=0, location=LocationNotSet):
+        if type(obj) in {Integer, Int, int, long}:  # If basic integer do nothing.
             value = super(Address, cls).__new__(cls, obj, location)
         else:  # otherwise get the id of the object.
             value = super(Address, cls).__new__(cls, id(obj), location)
@@ -230,14 +231,6 @@ class StackInstruction(Instruction):
     pass
 
 
-class PushFrame(StackInstruction):
-    pass
-
-
-class PopFrame(StackInstruction):
-    pass
-
-
 class LoadBaseStackPointer(Instruction):
     # Pushes the current address of the base stack pointer, used to reference auto variables.
     pass
@@ -248,6 +241,10 @@ class SetBaseStackPointer(Instruction):
 
 
 class LoadStackPointer(Instruction):
+    pass
+
+
+class SetStackPointer(Instruction):
     pass
 
 
@@ -291,19 +288,6 @@ class Set(MoveInstruction):
     pass
 
 
-class CompoundSet(Set):
-    pass
-
-
-# Aux second memory location in order to handle things like exp++, or exp += 1, this behaves much like a queue.
-class Enqueue(MoveInstruction):
-    pass
-
-
-class Dequeue(MoveInstruction):
-    pass
-
-
 class ConvertToFloat(Instruction):
     pass
 
@@ -314,11 +298,6 @@ class ConvertToInteger(Instruction):
 
 class Mask(Integer):
     pass
-
-
-class Dup(WideInstruction):
-    def __new__(cls, location, number_of_values=1):
-        return super(Dup, cls).__new__(cls, location, Integer(number_of_values, location))
 
 
 class Pass(Instruction):  # Empty instruction similar to NOP
@@ -332,14 +311,11 @@ ids.update({
     Pop: -2,
     Load: 3,
     Set: -4,
-    CompoundSet: -3,
-    Enqueue: 5,
-    Dequeue: -5,
-    Dup: 6,
+
     LoadBaseStackPointer: 7,
     SetBaseStackPointer: -7,
     LoadStackPointer: 8,
-    Allocate: 9,
+    SetStackPointer: -8,
 
     Add: 11,
     Subtract: -11,
@@ -375,10 +351,56 @@ ids.update({
     LoadCarryBorrowFlag: 31,
     LoadOverflowFlag: 32,
 
-    PushFrame: 40,
-    PopFrame: -40,
-
     Pass: 50,
 })
 
 instr_objs = dict(izip(ids.itervalues(), ids.iterkeys()))
+
+
+def dup(amount):
+    yield LoadStackPointer(loc(amount))
+    yield Push(loc(amount), Address(1, loc(amount)))
+    yield Add(loc(amount))
+    yield Load(loc(amount), amount)
+
+
+def swap(amount):
+    for i in dup(amount):
+        yield i
+    yield LoadStackPointer(loc(amount))
+    address_offset = Address(1 + 2 * amount, loc(amount))
+    yield Push(loc(amount), address_offset)  # skip the two values.
+    yield Add(loc(amount))
+    yield Load(loc(amount), amount)
+
+    yield LoadStackPointer(loc(amount))  # calculate destination address ...
+    yield Push(loc(amount), address_offset)
+    yield Add(loc(amount))
+
+    yield Set(loc(amount), Integer(2 * amount, loc(amount)))
+    for i in allocate(Integer(-1 * 2 * amount, loc(amount))):
+        yield i
+
+
+def push_frame(location=LocationNotSet):
+    yield LoadBaseStackPointer(location)
+    yield LoadStackPointer(location)
+
+
+def pop_frame(argument_len, address_size):
+    l = loc(argument_len)
+    yield LoadBaseStackPointer(l)  # skip arguments, return address, pointer to return value
+    yield Push(l, Address(argument_len + 1 + 2*address_size, l))
+    yield Add(l)
+    yield Load(l, address_size)
+    yield SetStackPointer(l)
+    # At this point the stack pointer should just have the previous base pointer on the stack ...
+    yield SetBaseStackPointer(l)
+
+
+def allocate(amount):
+    l = loc(amount)
+    yield LoadStackPointer(l)
+    yield Push(l, Address(-amount, l))
+    yield Add(l)
+    yield SetStackPointer(l)

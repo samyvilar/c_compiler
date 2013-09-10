@@ -3,6 +3,7 @@
 #define _STDIO_H_
 
 #include <stdlib.h>
+#include <limits.h>
 
 #define FILE_BUFFER_SIZE 1024
 
@@ -50,10 +51,15 @@ void perror(const char *);
 
 int	printf(const char *, ...);
 
-int	putc(int, FILE *);
-int	putchar(int);
-int	puts(const char *);
+// int	putc(int, FILE *);
+#define putchar(value) fputc(value, &stdout)
+// int	puts(const char *);
+#define puts(value) fputs(value, &stdout), putchar('\n')
 
 int	scanf(const char *, ...);
+
+#define lltoa(value, str, base) number_to_string(value, base, str, ULLONG_MAX)
+#define ltoa(value, str, base)  number_to_string(value, base, str, ULLONG_MAX)
+#define itoa(value, str, base)  number_to_string(value, base, str, UINT_MAX)
 
 #endif

@@ -16,7 +16,7 @@ class TestJump(TestStatements):
             }
         }
         """
-        super(TestJump, self).evaluate(source)
+        self.evaluate(source)
         self.assertEqual(self.mem[self.cpu.stack_pointer], 0)
 
     def test_break(self):
@@ -30,7 +30,7 @@ class TestJump(TestStatements):
             }
         }
         """
-        super(TestJump, self).evaluate(source)
+        self.evaluate(source)
         self.assertEqual(self.mem[self.cpu.stack_pointer], 1)
 
     def test_nested_continue(self):
@@ -48,7 +48,7 @@ class TestJump(TestStatements):
             }
         }
         """
-        super(TestJump, self).evaluate(source)
+        self.evaluate(source)
         self.assertEqual(self.mem[self.cpu.stack_pointer], 0)
         self.assertEqual(self.mem[self.cpu.stack_pointer - 1], 10)
 
@@ -63,7 +63,7 @@ class TestGoto(TestStatements):
                 index = 1;
         }
         """
-        super(TestGoto, self).evaluate(source)
+        self.evaluate(source)
         self.assertEqual(self.mem[self.cpu.stack_pointer], 1)
 
     def test_goto_into_nested(self):
@@ -76,12 +76,12 @@ class TestGoto(TestStatements):
                 int index = 10;
                 {
                     label:
-                        index = 0;
+                        index1 = 0;
                 }
             }
         }
         """
-        super(TestGoto, self).evaluate(source)
+        self.evaluate(source)
         self.assertEqual(self.mem[self.cpu.stack_pointer], 0)
 
     def test_goto_out_of_nested(self):
@@ -100,5 +100,5 @@ class TestGoto(TestStatements):
             foo = 1;
         }
         """
-        super(TestGoto, self).evaluate(source)
+        self.evaluate(source)
         self.assertEqual(self.mem[self.cpu.stack_pointer - 1], 1)

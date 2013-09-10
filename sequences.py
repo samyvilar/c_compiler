@@ -1,6 +1,6 @@
 __author__ = 'samyvilar'
 
-from itertools import chain, imap
+from itertools import chain, imap, izip_longest
 from collections import Iterable
 
 __iterators__ = {}
@@ -51,3 +51,15 @@ def flatten(values):
             yield v
     else:
         yield values
+
+
+def permute_case(s, index=0):
+    # Permute the case of each char of a giving string ... '' -> ('',) 'a' -> ('a', 'A') 'ab' -> 'ab', 'Ab', 'aB', 'AB'
+    return (len(s) > 1 and chain.from_iterable(
+        (prefix + s[index] + postfix, prefix + s[index].upper() + postfix)
+        for prefix, postfix in izip_longest(
+            permute_case(s[0:index], index + 1),
+            permute_case(s[index + 1:], index + 1),
+            fillvalue=''
+        )
+    )) or (s and (s, s.upper())) or (s,)

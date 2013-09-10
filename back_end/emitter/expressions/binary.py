@@ -6,15 +6,14 @@ from front_end.tokenizer.tokens import TOKENS
 from front_end.parser.ast.expressions import oper, left_exp, right_exp
 
 from front_end.parser.types import IntegralType, NumericType, c_type, base_c_type, unsigned, void_pointer_type
-from front_end.parser.types import PointerType
 
 from back_end.emitter.expressions.cast import cast
 from back_end.virtual_machine.instructions.architecture import Add, Subtract, Multiply, Divide, Mod, ShiftLeft
 from back_end.virtual_machine.instructions.architecture import Or, Xor, And, Load, Set, Pop, ShiftRight
 from back_end.virtual_machine.instructions.architecture import AddFloat, SubtractFloat, MultiplyFloat, DivideFloat
 from back_end.virtual_machine.instructions.architecture import LoadZeroFlag, LoadOverflowFlag, LoadCarryBorrowFlag
-from back_end.virtual_machine.instructions.architecture import Push, Integer, Dup, Pass, JumpFalse, JumpTrue, Address
-from back_end.virtual_machine.instructions.architecture import CompoundSet
+from back_end.virtual_machine.instructions.architecture import Push, Integer, Pass, JumpFalse, JumpTrue, Address
+from back_end.virtual_machine.instructions.architecture import LoadStackPointer, dup, swap, allocate
 
 from back_end.emitter.c_types import size
 
@@ -143,7 +142,8 @@ def short_circuit_logical(l_instrs, r_instrs, jump_type, location, operand_types
     end_instr = Pass(location)
     return chain(
         l_instrs,
-        (Dup(location), jump_type(location, Address(end_instr, location)), Pop(location)),
+        dup(Integer(size(operand_types), location)),
+        (jump_type(location, Address(end_instr, location)), Pop(location)),
         r_instrs,
         (end_instr,)
     )
@@ -223,7 +223,7 @@ def assign(expr, symbol_table, expression_func):
             cast(
                 expression_func(right_exp(expr), symbol_table, expression_func),
                 c_type(right_exp(expr)),
-                c_type(left_exp(expr)),
+                c_type(expr),
                 loc(expr)
             ),
             expression_func(left_exp(expr), symbol_table, expression_func)
@@ -239,14 +239,38 @@ def patch_comp_left_instrs(instrs, location):
         yield value
         value = instr
     if isinstance(value, Load):
-        yield Dup(location, size(void_pointer_type))
+        for i in dup(Integer(size(void_pointer_type), location)):
+            yield i
+        # yield Dup(location, size(void_pointer_type))
         yield value
     else:
         raise ValueError('{l} Expected a load instruction got {g}!'.format(l=location, g=value))
 
 
-def patch_comp_assignment(instrs, set_size, location):
-    return chain(instrs, (CompoundSet(location, set_size),))
+def patch_comp_assignment(instrs, expr_type, location):
+    # At this point the stack contains the Address followed by the value ... (but they may differ in size!)
+    # we need to swap them and call set, but we mut be careful that both have the same size before calling swap
+    # or we could corrupt the value ...
+    assert size(expr_type) <= size(void_pointer_type)
+    return chain(
+        instrs,
+        # Align both value and address, swap them, remove added buffer and set ...
+        # (Allocate(location, Integer(size(void_pointer_type) - size(expr_type), location)),),  # Align values
+        allocate(Address(size(void_pointer_type) - size(expr_type), location)),
+        swap(Integer(size(void_pointer_type), location)),
+        # remove any added elements for alignment
+        dup(Integer(size(void_pointer_type), location)),  # create a buffer
+        (
+            # calculate location right after value ...
+            LoadStackPointer(location),
+            Push(location,
+                 Address(1 + size(void_pointer_type) + (size(void_pointer_type) - size(expr_type)), location)),
+            Add(location),
+            Set(location, size(void_pointer_type)),
+        ),
+        allocate(Integer(-(size(void_pointer_type) + (size(void_pointer_type) - size(expr_type))), location)),  # rm buf
+        (Set(location, size(expr_type)),)
+    )
 
 
 def comp_integral_assign(expr, symbol_table, expression_func):
@@ -257,8 +281,9 @@ def comp_integral_assign(expr, symbol_table, expression_func):
     )
     right_instrs = expression_func(right_exp(expr), symbol_table, expression_func)
     return patch_comp_assignment(
-        comp_integral_assign.rules[oper(expr)](left_instrs, right_instrs, loc(operator), c_type(expr)),
-        size(c_type(expr)),
+        comp_integral_assign.rules[oper(expr)](left_instrs, right_instrs, loc(expr), c_type(expr)),
+
+        c_type(expr),
         loc(expr),
     )
 comp_integral_assign.rules = {
@@ -294,7 +319,7 @@ def comp_numeric_assign(expr, symbol_table, expression_func):
             c_type(expr),
             loc(expr)
         ),
-        size(c_type(expr)),
+        c_type(expr),
         loc(expr),
     )
 comp_numeric_assign.rules = {

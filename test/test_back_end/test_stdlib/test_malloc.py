@@ -4,16 +4,13 @@ from test.test_back_end.test_stdlib.base import TestStdLib
 
 
 class TestMalloc(TestStdLib):
-    def evaluate(self, code):
-        super(TestMalloc, self).evaluate(code)
-
     def test_malloc(self):
         source = """
         #include <stdlib.h>
         #include <string.h>
         #include <stdio.h>
 
-        #define TEST_SIZE 10
+        #define TEST_SIZE 1
         #define MAX_BLOCK_SIZE 1024
 
         struct block_type {int size; char value; void *address;};
@@ -57,4 +54,3 @@ class TestMalloc(TestStdLib):
         """
         self.evaluate(source)
         self.assertEqual(self.mem[self.cpu.stack_pointer], 1)
-

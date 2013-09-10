@@ -1,13 +1,33 @@
 __author__ = 'samyvilar'
 
 import string
+from itertools import imap, chain
+from sequences import permute_case
 from front_end.loader.locations import LocationNotSet
 from front_end.loader.load import Str
 
 letters = set(string.letters) | {'_'}
 digits = set(string.digits)
+octal_digits = digits - {'9', '8'}
+hexadecimal_digits = digits | {'a', 'b', 'c', 'd', 'e', 'f', 'A', 'B', 'C', 'D', 'E', 'F'}
+hexadecimal_prefix = '0x', '0X'
+octal_prefix = '0',
 alpha_numeric = digits | letters
 whitespace = set(string.whitespace) | {' ', '\a'}
+
+unsigned_suffix = 'u'
+long_suffix = 'l'
+long_long_suffix = long_suffix + long_suffix
+
+lower_case_suffix = {unsigned_suffix, long_suffix, long_long_suffix}
+lower_case_possible_numeric_suffix = lower_case_suffix | {
+    unsigned_suffix + long_suffix,
+    long_suffix + unsigned_suffix,
+    unsigned_suffix + long_long_suffix,
+    long_long_suffix + unsigned_suffix
+}
+numeric_suffix_letters = {unsigned_suffix, unsigned_suffix.upper(), long_suffix, long_suffix.upper()}
+possible_numeric_suffix = set(chain.from_iterable(imap(permute_case, lower_case_possible_numeric_suffix)))
 
 
 class Symbol(Str):
@@ -176,6 +196,17 @@ class CHAR(CONSTANT):
 
 
 class INTEGER(CONSTANT):
+    def __new__(cls, value, location=LocationNotSet, suffix=''):
+        value = super(INTEGER, cls).__new__(cls, value, location)
+        value.suffix = suffix
+        return value
+
+
+class HEXADECIMAL(INTEGER):
+    pass
+
+
+class OCTAL(INTEGER):
     pass
 
 
@@ -221,3 +252,7 @@ class PRE_PROCESSING_SYMBOL(TOKEN):
         if values not in TOKENS.pre_processing_directives:
             raise ValueError('{l} Could not locate pre_processing directive {d}'.format(l=location, d=values))
         return super(PRE_PROCESSING_SYMBOL, cls).__new__(cls, values, location)
+
+
+def suffix(token):
+    return getattr(token, 'suffix')

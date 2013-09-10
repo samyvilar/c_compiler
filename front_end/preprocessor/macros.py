@@ -1,6 +1,6 @@
 __author__ = 'samyvilar'
 
-from itertools import izip_longest, chain, imap, starmap, repeat, izip
+from itertools import izip_longest, chain, imap
 
 from front_end.loader.load import Str
 from sequences import peek, consume, takewhile
@@ -16,7 +16,7 @@ class ObjectMacro(object):
         self.name, self._body = name, _body
 
     def body(self, tokens=()):
-        return self._body
+        return (token.__class__(token, loc(token)) for token in self._body)
 
 
 def argument(

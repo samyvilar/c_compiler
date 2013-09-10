@@ -11,14 +11,20 @@ except ImportError as _:
 
 from front_end.loader.locations import loc
 from front_end.parser.symbol_table import SymbolTable
-from back_end.emitter.object_file import Data, Reference, Symbol
+from back_end.emitter.object_file import Data, Reference
 from back_end.emitter.c_types import size
 
 from front_end.parser.types import void_pointer_type
 
-from back_end.virtual_machine.instructions.architecture import Push, PushFrame, PopFrame, Halt, Integer, Allocate, Set
-from back_end.virtual_machine.instructions.architecture import RelativeJump, Pass, Address, operns, Byte
-from back_end.virtual_machine.instructions.architecture import LoadStackPointer, SetBaseStackPointer, Add
+from back_end.virtual_machine.instructions.architecture import Push, Halt, Set
+from back_end.virtual_machine.instructions.architecture import Address, operns, Byte, allocate
+
+
+from back_end.emitter.declarations.declaration import declaration
+from back_end.emitter.statements.statement import statement
+from front_end.parser.ast.declarations import Declaration, name
+from front_end.parser.ast.expressions import FunctionCallExpression, IdentifierExpression
+from front_end.parser.types import IntegerType, FunctionType, c_type
 
 
 def insert(symbol, symbol_table):
@@ -80,17 +86,43 @@ def set_binaries(symbol):
     return symbol.binaries
 
 
-def executable(symbols, symbol_table=None, entry_point='main', library_dirs=(), libraries=(), linker=static):
+class Library(object):
+    # Cached library object will load and maintain a copy of the library only when __contains__ or __getitem__ r called
+    def __init__(self, path):
+        self.path = path
+        self._source = None
+
+    def __contains__(self, item):
+        return item in self.source
+
+    def __getitem__(self, item):
+        return self.source[item]
+
+    @property
+    def source(self):
+        return self._source or self._load()
+
+    def _load(self):
+        with open(self.path, 'rb') as file_obj:
+            self._source = pickle.load(file_obj)
+        return self._source
+
+
+def executable(
+        symbols,
+        symbol_table=None,
+        entry_point=Declaration('main', FunctionType(IntegerType())),
+        library_dirs=(),
+        libraries=(),
+        linker=static):
     symbol_table = SymbolTable() if symbol_table is None else symbol_table
     location = '__SOP__'  # Start of Program
-    clean = Pass(location)
     heap_ptr = Byte(0, location)
 
-    libs = []
-    for lib_file in ifilter(os.path.isfile, starmap(os.path.join, product(library_dirs, libraries))):
-        with open(lib_file, 'rb') as file_obj:
-            libs.append(pickle.load(file_obj))
-
+    libs = tuple(
+        Library(lib_file)
+        for lib_file in ifilter(os.path.isfile, starmap(os.path.join, product(library_dirs, libraries)))
+    )
     symbols = chain(
         symbols,
         (Data('__heap_ptr__', (Address(0, location),), size(void_pointer_type), None, location),)
@@ -100,40 +132,28 @@ def executable(symbols, symbol_table=None, entry_point='main', library_dirs=(), 
         for v in chain.from_iterable(imap(set_binaries, ifilterfalse(lambda s: s.binaries, symbol_table.itervalues()))):
             yield v   # declarations ....
 
+    st = {}
+    _ = declaration(entry_point, st)
     instr_seq = chain(
         (   # Initialize heap pointer ...
             Push(location, Address(heap_ptr, location)),
             Push(location, Address(Reference('__heap_ptr__'), location)),
             Set(location, size(void_pointer_type)),
-            Allocate(location, -1 * size(void_pointer_type)),
-
-            Push(location, Integer(0, location)),  # return value
-            PushFrame(location),
-            # Add parameters ...
-
-            # Add pointer to return values
-            LoadStackPointer(location),
-            Push(location, Integer(1, location)),
-            Add(location),
-
-            Push(location, Address(clean, location)),  # clean up after main exits
-            LoadStackPointer(location),
-            SetBaseStackPointer(location),
-            RelativeJump(location, Address(Reference(entry_point))),  # jump to main
         ),
-        chain.from_iterable(starmap(binaries, izip(symbols, repeat(symbol_table)))),
+        allocate(Address(-1 * size(void_pointer_type), location)),
+        statement(  # call entry point ...
+            FunctionCallExpression(
+                IdentifierExpression(name(entry_point), c_type(entry_point), location),
+                (),
+                c_type(c_type(entry_point)),
+                location
+            ),
+            st
+        ),
+        (Halt(location),),
+        chain.from_iterable(starmap(binaries, izip(symbols, repeat(symbol_table))))
     )
-    return chain(
-        linker(instr_seq, symbol_table, libs),
-        declarations(symbol_table),
-        (
-            clean,
-            PopFrame(location),
-            Allocate(location, -1 * size(Integer(0, location))),
-            Halt(location),
-            heap_ptr
-        )
-    )
+    return chain(linker(instr_seq, symbol_table, libs), declarations(symbol_table), (heap_ptr,))
 
 
 def resolve(instrs, symbol_table):

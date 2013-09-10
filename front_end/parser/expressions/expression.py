@@ -5,10 +5,11 @@ from itertools import product, imap, chain, izip, repeat
 
 from sequences import peek, consume
 from front_end.loader.locations import loc, EOFLocation
-from front_end.tokenizer.tokens import TOKENS, IDENTIFIER, CONSTANT, CHAR, INTEGER, FLOAT, STRING
+from front_end.tokenizer.tokens import TOKENS, IDENTIFIER, CONSTANT, CHAR, INTEGER, FLOAT, STRING, HEXADECIMAL, OCTAL
+from front_end.tokenizer.tokens import long_long_suffix, long_suffix, unsigned_suffix, suffix
 
 from front_end.parser.types import CharType, StringType, IntegerType, DoubleType, c_type, StructType, ArrayType
-from front_end.parser.types import IntegralType, NumericType, safe_type_coercion
+from front_end.parser.types import IntegralType, NumericType, LongType, safe_type_coercion, unsigned
 from front_end.parser.ast.expressions import ConstantExpression, IdentifierExpression, EmptyExpression
 from front_end.parser.ast.expressions import CastExpression, CompoundLiteral, CommaExpression, exp
 
@@ -174,9 +175,21 @@ def char_literal(tokens):
     return ConstantExpression(ord(token), CharType(loc(token)), loc(token))
 
 
+def get_type(suffix_str, location):
+    _type, _eval = IntegerType(location, unsigned=unsigned_suffix in suffix_str), int
+    _type, _eval = (long_suffix in suffix_str and LongType(_type, loc(_type), unsigned(_type))) or _type, long
+    _type, _eval = (long_long_suffix in suffix_str and LongType(_type, loc(_type), unsigned(_type))) or _type, long
+    return _type, _eval
+
+
 def integer_literal(tokens):
     token = consume(tokens)
-    return ConstantExpression(int(token), IntegerType(loc(token)), loc(token))
+    _type, _eval = get_type(suffix(token).lower(), loc(token))
+    return ConstantExpression(
+        _eval(token, (isinstance(token, HEXADECIMAL) and 16) or (isinstance(token, OCTAL) and 8) or 10),
+        _type,
+        loc(token)
+    )
 
 
 def float_literal(tokens):
@@ -212,6 +225,8 @@ def primary_expression(tokens, symbol_table):   #: IDENTIFIER | constant | '(' e
             CHAR: char_literal,
             STRING: string_literal,
             INTEGER: integer_literal,
+            OCTAL: integer_literal,
+            HEXADECIMAL: integer_literal,
             FLOAT: float_literal,
         }
         return rules[type(peek(tokens))](tokens)

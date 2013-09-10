@@ -12,7 +12,7 @@ class TestPostfix(TestStatements):
             int b = a++;
         }
         """
-        super(TestPostfix, self).evaluate(source)
+        self.evaluate(source)
         self.assertEqual(self.mem[self.cpu.stack_pointer], 11)
         self.assertEqual(self.mem[self.cpu.stack_pointer - 1], 10)
 
@@ -23,7 +23,7 @@ class TestPostfix(TestStatements):
             int b = a--;
         }
         """
-        super(TestPostfix, self).evaluate(source)
+        self.evaluate(source)
         self.assertEqual(self.mem[self.cpu.stack_pointer], 9)
         self.assertEqual(self.mem[self.cpu.stack_pointer - 1], 10)
 
@@ -40,7 +40,7 @@ class TestPostfix(TestStatements):
 
         }
         """
-        super(TestPostfix, self).evaluate(source)
+        self.evaluate(source)
         self.assertEqual(self.mem[self.cpu.stack_pointer], 10)
         self.assertEqual(self.mem[self.cpu.stack_pointer - 11], 1)
 
@@ -53,7 +53,7 @@ class TestPostfix(TestStatements):
             b = a[2][2];
         }
         """
-        super(TestPostfix, self).evaluate(source)
+        self.evaluate(source)
         self.assertEqual(self.mem[self.cpu.stack_pointer], 5)
 
     def test_struct_member_selection(self):
@@ -70,7 +70,7 @@ class TestPostfix(TestStatements):
             value = a.b;
         }
         """
-        super(TestPostfix, self).evaluate(source)
+        self.evaluate(source)
         self.assertEqual(self.mem[self.cpu.stack_pointer], 4)
 
     def test_nested_struct_member_selection(self):
@@ -90,7 +90,7 @@ class TestPostfix(TestStatements):
             value = a.n.g[2];
         }
         """
-        super(TestPostfix, self).evaluate(source)
+        self.evaluate(source)
         self.assertEqual(self.mem[self.cpu.stack_pointer], ord('a'))
 
     def test_struct_member_selection_pointer(self):
@@ -114,7 +114,7 @@ class TestPostfix(TestStatements):
             value = b->b->g[2];
         }
         """
-        super(TestPostfix, self).evaluate(source)
+        self.evaluate(source)
         self.assertEqual(self.mem[self.cpu.stack_pointer], 10)
 
     # def test_compound_literal(self):
@@ -140,7 +140,7 @@ class TestPostFixFunction(TestDeclarations):
             return a;
         }
         """
-        super(TestPostFixFunction, self).evaluate(source)
+        self.evaluate(source)
         self.assertEqual(self.mem[self.cpu.stack_pointer], 10)
 
     def test_function_call_parameters(self):
@@ -153,7 +153,7 @@ class TestPostFixFunction(TestDeclarations):
             return a;
         }
         """
-        super(TestPostFixFunction, self).evaluate(source)
+        self.evaluate(source)
         self.assertEqual(self.mem[self.cpu.stack_pointer], 10)
 
     def test_function_return(self):
@@ -166,7 +166,8 @@ class TestPostFixFunction(TestDeclarations):
             return foo(foo1(11), 10);
         }
         """
-        super(TestPostFixFunction, self).evaluate(source)
+        self.evaluate(source)
+        self.assertEqual(self.mem[self.cpu.stack_pointer], 11.0)
 
     def test_function_struct_return(self):
         source = """
@@ -185,7 +186,7 @@ class TestPostFixFunction(TestDeclarations):
             return v.b[2];
         }
         """
-        super(TestPostFixFunction, self).evaluate(source)
+        self.evaluate(source)
         self.assertEqual(self.mem[self.cpu.stack_pointer], ord('a'))
 
     def test_function_pointer(self):
@@ -197,5 +198,5 @@ class TestPostFixFunction(TestDeclarations):
             return foo_fp(10);
         }
         """
-        super(TestPostFixFunction, self).evaluate(source)
+        self.evaluate(source)
         self.assertEqual(self.mem[self.cpu.stack_pointer], 11)

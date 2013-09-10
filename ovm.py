@@ -9,7 +9,8 @@ try:
 except ImportError as _:
     import pickle
 
-from back_end.emitter.cpu import load, CPU, CALLS, Kernel, evaluate
+from back_end.emitter.cpu import load, CPU, Kernel, evaluate
+from back_end.emitter.system_calls import CALLS
 
 
 def start(instrs):

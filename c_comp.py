@@ -22,7 +22,7 @@ from front_end.parser.symbol_table import SymbolTable
 import back_end.emitter.emit as emitter
 import back_end.linker.link as linker
 
-import back_end.emitter.cpu as system
+import back_end.emitter.system_calls as system_calls
 
 import ovm
 
@@ -85,7 +85,7 @@ str_src_dirs = [os.path.join(curr_dir, 'stdlib', 'src')]
 std_include_dirs = [curr_dir, os.path.join(curr_dir, 'stdlib', 'include')]
 std_libraries_dirs = [curr_dir, os.path.join(curr_dir, 'stdlib', 'libs')]
 std_libraries = ['libc.p']
-std_symbols = system.SYMBOLS
+std_symbols = system_calls.SYMBOLS
 
 
 def instrs(files, include_dirs=(), library_dirs=(), libraries=()):

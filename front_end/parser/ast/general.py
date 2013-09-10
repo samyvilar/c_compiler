@@ -1,8 +1,10 @@
 __author__ = 'samyvilar'
 
+from front_end.loader.locations import LocationNotSet
+
 
 class Node(object):
-    def __init__(self, location):
+    def __init__(self, location=LocationNotSet):
         self.location = location
 
     def __eq__(self, other):

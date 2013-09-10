@@ -22,7 +22,7 @@ from back_end.emitter.expressions.expression import expression
 from back_end.emitter.expressions.cast import cast
 
 from back_end.emitter.stack_state import stack_allocation
-from back_end.virtual_machine.instructions.architecture import Allocate, Integer, Pass, Address, Add, Push, RelativeJump
+from back_end.virtual_machine.instructions.architecture import allocate, Integer, Pass, Address, Add, Push, RelativeJump
 
 from back_end.emitter.c_types import size, binaries, bind_load_address_func
 
@@ -67,20 +67,18 @@ def definition(stmnt, symbol_table, stack, *_):
         symbol_table[declarations.name(stmnt)] = stmnt
         # If definition is initialized simply evaluate the expression
         expr = declarations.initialization(stmnt)
-        instrs = (expr and cast(expression(expr, symbol_table), c_type(expr), c_type(stmnt), loc(stmnt))) or (
-            Allocate(loc(stmnt), size(c_type(stmnt))),
-        )
+        instrs = (expr and cast(expression(expr, symbol_table), c_type(expr), c_type(stmnt), loc(stmnt))) or \
+            allocate(Address(size(c_type(stmnt)), loc(stmnt)))
     return instrs
 
 
 def compound_statement(stmnt, symbol_table, stack, statement_func):
-    stack_pointer = stack.stack_pointer
-    symbol_table = push(symbol_table)
-    for instr in chain.from_iterable(statement_func(s, symbol_table, stack) for s in chain.from_iterable(stmnt)):
+    stack_pointer, symbol_table = stack.stack_pointer, push(symbol_table)
+    for instr in chain(chain.from_iterable(statement_func(s, symbol_table, stack) for s in chain.from_iterable(stmnt))):
         yield instr
-    yield Allocate(loc(stmnt), Integer(stack.stack_pointer - stack_pointer, loc(stmnt)))
-    _ = pop(symbol_table)
-    stack.stack_pointer = stack_pointer
+    for instr in allocate(Integer(stack.stack_pointer - stack_pointer, loc(stmnt))):
+        yield instr
+    stack.stack_pointer, _ = stack_pointer, pop(symbol_table)
 
 
 def _expression(expr, symbol_table, stack, *_):
@@ -101,7 +99,7 @@ def statement(stmnt, symbol_table=None, stack=None, statement_func=None):
 
     # Almost all Expression statements leave a value on the stack, so we must remove it.
     if stmnt and is_expression and not statement_func and not isinstance(c_type(stmnt), VoidType):
-        instrs = chain(instrs, (Allocate(loc(stmnt), Integer(-1 * size(c_type(stmnt)), loc(stmnt))),))
+        instrs = chain(instrs, allocate(Address(-size(c_type(stmnt)), loc(stmnt))))
     return instrs
 statement.rules = {
     declarations.EmptyDeclaration: lambda *args: (),

@@ -128,7 +128,7 @@ binaries.rules = {
     CastExpression: cast_expr,
     CompoundLiteral: compound_literal,
 }
-binaries.rules.update({rule: const_exp_binaries for rule in const_exp_binaries.rules})
+binaries.rules.update(izip(const_exp_binaries.rules, repeat(const_exp_binaries)))
 
 
 def struct_member_offset(struct_type, member_exp):
