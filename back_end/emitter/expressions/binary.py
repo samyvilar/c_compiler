@@ -94,8 +94,7 @@ def greater_than(l_instrs, r_instrs, location, operand_types):
     return chain(
         # operand_1 is greater than operand_2 if operand_1 is NOT less than or equal to operand_2.
         less_than_or_equal(l_instrs, r_instrs, location, operand_types),
-        Push(location, Integer(1, location)),
-        Xor(location)
+        (Push(location, Integer(1, location)), Xor(location))
     )
 
 
