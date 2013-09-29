@@ -10,7 +10,7 @@ from front_end.parser.ast.statements import LabelStatement
 from front_end.parser.types import c_type, void_pointer_type, VoidType
 
 from back_end.virtual_machine.instructions.architecture import Push, Address, AbsoluteJump, Pass, RelativeJump, allocate
-from back_end.virtual_machine.instructions.architecture import LoadBaseStackPointer, Integer, Set, Load, Add
+from back_end.virtual_machine.instructions.architecture import LoadBaseStackPointer, Integer, Set, Load, Add, Subtract
 from back_end.emitter.c_types import size
 
 from back_end.emitter.expressions.expression import expression
@@ -76,8 +76,8 @@ def update_stack(source_stack_pointer, target_stack_pointer, location):
 
 
 # goto is really trouble some, specially on stack based machines, since it can bypass definitions, corrupting offsets.
-# The only way to deal with with it is to save the stack state on the labelled instruction and goto, and recreate it
-# before Jumping to it.
+# The only way to deal with with it is to save the stack state on the labelled and goto instructions, and recreate the
+# the appropriate stack state before Jumping.
 def goto_statement(stmnt, symbol_table, stack, *_):
     labels, gotos = symbol_table['__ LABELS __'], symbol_table['__ GOTOS __']
 
@@ -88,10 +88,21 @@ def goto_statement(stmnt, symbol_table, stack, *_):
             (RelativeJump(loc(stmnt), Address(instr, loc(stmnt))),)
         )
     else:  # Label has yet to be defined ...
-        _load, _push, _add, _set = allocate(Address(None, loc(stmnt)))
-        addr = Address(None, loc(stmnt))
-        gotos[stmnt.label].append((_push, addr, stack.stack_pointer))
-        instrs = (_load, _push, _add, _set, RelativeJump(loc(stmnt), addr))
+        _load_sp, _push, _add, _set_st = allocate(Address(None, loc(stmnt)))
+        # Allocate negates the amount since it calls add
+        # TODO, update allocate so it doesn't negate but calls slightly slower sub
+
+        # Basically we need to update the relative jump and the amount to which we need to update the stack ...
+        alloc_operand_addr = Address(None, loc(stmnt))
+        jump_operand_addr = Address(None, loc(stmnt))
+        gotos[stmnt.label].append((alloc_operand_addr, jump_operand_addr, stack.stack_pointer))
+        instrs = (
+            _load_sp,
+            Push(loc(stmnt), alloc_operand_addr),
+            Subtract(loc(stmnt)),
+            _set_st,
+            RelativeJump(loc(stmnt), jump_operand_addr)
+        )
 
     return instrs
 
@@ -102,10 +113,12 @@ def label_statement(stmnt, symbol_table, stack, statement_func):
     labels, gotos = symbol_table['__ LABELS __'], symbol_table['__ GOTOS __']
     labels[name(stmnt)] = (instr, stack.stack_pointer)
 
-    for alloc_instr, addr, goto_stack_pointer in gotos[name(stmnt)]:  # update all previous gotos referring to this lbl
+    # update all previous gotos referring to this lbl
+    for alloc_operand_addr, rel_jump_addr, goto_stack_pointer in gotos[name(stmnt)]:
         # we invert since allocate negates the amount
-        alloc_instr.operands = (Address(stack.stack_pointer - goto_stack_pointer, loc(stmnt)),)
-        addr.obj = instr
+        alloc_operand_addr.obj = Integer(goto_stack_pointer - stack.stack_pointer, loc(alloc_operand_addr))
+        alloc_operand_addr.obj.address = alloc_operand_addr.obj  # TODO: bug! set_address uses obj.address.
+        rel_jump_addr.obj = instr
     del gotos[name(stmnt)][:]
 
     return chain((instr,), statement_func(stmnt.statement, symbol_table, stack))

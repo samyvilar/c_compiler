@@ -89,7 +89,7 @@ class CPU(defaultdict):
         self.word_type = word_type
         self.carry, self.overflow, self.zero = word_type(0), word_type(0), word_type(0)
         self.base_stack_pointer = self.stack_pointer = word_type(-1)
-        self.instr_pointer = instr_pointer or word_type(1)
+        self.instr_pointer = instr_pointer or word_type(0)
         super(CPU, self).__init__(instr_set.default_factory, instr_set)
 
 

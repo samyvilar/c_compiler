@@ -1,6 +1,5 @@
 __author__ = 'samyvilar'
 
-from collections import defaultdict
 from itertools import chain
 from unittest import TestCase
 
@@ -11,20 +10,22 @@ from front_end.preprocessor.preprocess import preprocess
 import front_end.parser.expressions.expression as parser
 import back_end.emitter.expressions.expression as emitter
 
-from back_end.emitter.cpu import load, evaluate, pop, CPU
+from back_end.emitter.cpu import evaluate, pop, CPU, VirtualMemory
+from back_end.loader.load import load
+from back_end.linker.link import set_addresses
 
 from back_end.virtual_machine.instructions.architecture import Halt
 
 
 class TestRawExpression(TestCase):
     def evaluate_expr(self, code):
-        self.mem, self.cpu = defaultdict(int), CPU()
+        self.mem, self.cpu = VirtualMemory(int), CPU()
         load(
-            chain(emitter.expression(parser.expression(preprocess(tokenize(source(code))))), (Halt('__EOP__'),)),
-            self.mem,
-            {}
+            set_addresses(
+                chain(emitter.expression(parser.expression(preprocess(tokenize(source(code))))), (Halt('__EOP__'),)),
+            ),
+            self.mem
         )
-        self.cpu.instr_pointer = min(self.mem.iterkeys())
         evaluate(self.cpu, self.mem)
 
     def test_binary_expr(self):

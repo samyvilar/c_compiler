@@ -12,27 +12,28 @@ from front_end.parser.symbol_table import SymbolTable
 import front_end.parser.statements.compound as parser
 import back_end.emitter.statements.statement as emitter
 
-from back_end.emitter.cpu import load, evaluate, CPU
-
+from back_end.loader.load import load
+from back_end.emitter.cpu import evaluate, CPU, VirtualMemory
+from back_end.linker.link import set_addresses
 from back_end.virtual_machine.instructions.architecture import Halt
 
 
 class TestStatements(TestCase):
     def evaluate(self, code):
-        self.cpu, self.mem = CPU(), defaultdict(int)
+        self.cpu, self.mem = CPU(), VirtualMemory()
         symbol_table = SymbolTable()
         symbol_table['__ LABELS __'] = SymbolTable()
         symbol_table['__ GOTOS __'] = defaultdict(list)
 
         load(
-            chain(
-                emitter.statement(next(parser.statement(preprocess(tokenize(source(code))))), symbol_table),
-                (Halt('__EOP__'),)
+            set_addresses(
+                chain(
+                    emitter.statement(next(parser.statement(preprocess(tokenize(source(code))))), symbol_table),
+                    (Halt('__EOP__'),)
+                )
             ),
             self.mem,
-            {}
         )
-        self.cpu.instr_pointer = min(self.mem.iterkeys())
         evaluate(self.cpu, self.mem)
 
 

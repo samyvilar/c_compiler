@@ -7,6 +7,8 @@ from front_end.loader.locations import loc
 
 from sequences import reverse
 
+from front_end.parser.ast.declarations import name
+
 from front_end.parser.ast.expressions import PostfixIncrementExpression, PostfixDecrementExpression, left_exp, right_exp
 from front_end.parser.ast.expressions import FunctionCallExpression, ArraySubscriptingExpression, exp
 from front_end.parser.ast.expressions import ElementSelectionExpression, ElementSelectionThroughPointerExpression

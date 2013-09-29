@@ -2,22 +2,22 @@ __author__ = 'samyvilar'
 
 import sys
 
-from itertools import izip, count, repeat, chain
+from itertools import izip, repeat, chain
+from collections import defaultdict
 
 from logging_config import logging
-from back_end.emitter.object_file import Reference
-
-from back_end.virtual_machine.instructions.architecture import Instruction, Push, Pop, Halt, Pass, operns
+from front_end.loader.locations import loc
+from back_end.virtual_machine.instructions.architecture import no_operand_instr_ids, wide_instr_ids
+from back_end.virtual_machine.instructions.architecture import Push, Pop, Halt, Pass, Jump
 from back_end.virtual_machine.instructions.architecture import Add, Subtract, Multiply, Divide, Mod
 from back_end.virtual_machine.instructions.architecture import AddFloat, SubtractFloat, MultiplyFloat, DivideFloat
 from back_end.virtual_machine.instructions.architecture import And, Or, Xor, Not, ShiftLeft, ShiftRight
 from back_end.virtual_machine.instructions.architecture import ConvertToInteger, ConvertToFloat
-from back_end.virtual_machine.instructions.architecture import LoadZeroFlag, LoadOverflowFlag, LoadCarryBorrowFlag
-from back_end.virtual_machine.instructions.architecture import Jump, AbsoluteJump
+from back_end.virtual_machine.instructions.architecture import LoadZeroFlag, LoadMostSignificantBit, LoadCarryBorrowFlag
+from back_end.virtual_machine.instructions.architecture import AbsoluteJump
 from back_end.virtual_machine.instructions.architecture import RelativeJump, JumpTrue, JumpFalse, JumpTable
 from back_end.virtual_machine.instructions.architecture import LoadBaseStackPointer, LoadStackPointer, Load, Set
-from back_end.virtual_machine.instructions.architecture import Address, Byte
-from back_end.virtual_machine.instructions.architecture import SetBaseStackPointer, SetStackPointer
+from back_end.virtual_machine.instructions.architecture import SetBaseStackPointer, SetStackPointer, SystemCall, operns
 
 
 logger = logging.getLogger('virtual_machine')
@@ -94,8 +94,8 @@ def bin_arithmetic(instr, cpu, mem):
         raise ValueError('Bad operands!')
     result = bin_arithmetic.rules[type(instr)](oper1, oper2)
     if isinstance(instr, (Add, AddFloat, Subtract, SubtractFloat, Multiply, MultiplyFloat, Divide, DivideFloat)):
-        cpu.overflow = cpu.carry = bool(result < 0)
-        cpu.zero = bool(not result)
+        cpu.most_significant_bit_flag = cpu.carry_borrow_flag = int(result < 0)
+        cpu.zero_flag = int(not result)
     return result
 bin_arithmetic.rules = {
     Add: add,
@@ -124,13 +124,13 @@ unary_arithmetic.rules = {
 }
 
 
-def expr(instr, cpu, mem):
+def expr(instr, cpu, mem, _):
     push(expr.rules[type(instr)](instr, cpu, mem), cpu, mem)
 expr.rules = {rule: bin_arithmetic for rule in bin_arithmetic.rules}
 expr.rules.update(izip(unary_arithmetic.rules, repeat(unary_arithmetic)))
 
 
-def _jump(addr, cpu, mem):
+def _jump(addr, cpu, *_):
     cpu.instr_pointer = addr
 
 
@@ -143,26 +143,18 @@ def rel_jump(instr, cpu, mem):
 
 
 def jump_if_true(instr, cpu, mem):
-    value = pop(cpu, mem)
-    if value:
-        _jump(cpu.instr_pointer + operns(instr)[0], cpu, mem)
-    else:
-        _pass(instr, cpu, mem)
+    _jump(cpu.instr_pointer + (operns(instr)[0] if pop(cpu, mem) else instr_size(instr)), cpu, mem)
 
 
 def jump_if_false(instr, cpu, mem):
-    value = pop(cpu, mem)
-    if not value:
-        _jump(cpu.instr_pointer + operns(instr)[0], cpu, mem)
-    else:
-        _pass(instr, cpu, mem)
+    _jump(cpu.instr_pointer + (operns(instr)[0] if not pop(cpu, mem) else instr_size(instr)), cpu, mem)
 
 
 def jump_table(instr, cpu, mem):
-    _jump(instr.cases.get(pop(cpu, mem), instr.cases['default']).obj.address, cpu, mem)
+    _jump(cpu.instr_pointer + instr.cases.get(pop(cpu, mem), instr.cases['default']), cpu, mem)
 
 
-def jump(instr, cpu, mem):
+def jump(instr, cpu, mem, _):
     jump.rules[type(instr)](instr, cpu, mem)
 jump.rules = {
     RelativeJump: rel_jump,
@@ -173,12 +165,8 @@ jump.rules = {
 }
 
 
-def allocate(instr, cpu, mem):
-    cpu.stack_pointer -= operns(instr)[0]
-
-
-def _pass(instr, cpu, mem):
-    cpu.instr_pointer += 1
+def _pass(instr, cpu, *_):
+    pass
 
 
 # def _dup(instr, cpu, mem):
@@ -205,68 +193,77 @@ def _pass(instr, cpu, mem):
 #     allocate(Allocate(loc(instr), Integer(-1 * 2 * operns(instr)[0], loc(instr))), cpu, mem)  # deallocate copies ...
 
 
-def load_base_pointer(instr, cpu, mem):
+def load_base_pointer(instr, cpu, mem, _):
     push(cpu.base_pointer, cpu, mem)
 
 
-def set_base_pointer(instr, cpu, mem):
-    cpu.base_pointer = _pop(instr, cpu, mem)
+def set_base_pointer(instr, cpu, mem, _):
+    cpu.base_pointer = _pop(instr, cpu, mem, _)
 
 
-def load_stack_pointer(instr, cpu, mem):
+def load_stack_pointer(instr, cpu, mem, _):
     push(cpu.stack_pointer, cpu, mem)
 
 
-def set_stack_pointer(instr, cpu, mem):
+def set_stack_pointer(instr, cpu, mem, _):
     cpu.stack_pointer = pop(cpu, mem)
 
 
-def _load(instr, cpu, mem):
+def _load(instr, cpu, mem, _):
     addr, quantity = pop(cpu, mem), operns(instr)[0]
-    for addr in reversed(xrange(addr, addr + quantity)):
-        push(mem[addr], cpu, mem)
+    for index in reversed(xrange(addr, addr + quantity)):
+        push(mem[index], cpu, mem)
 
 
-def stepper(initial_value=0, step=1):
-    while True:
-        yield initial_value
-        initial_value += step
-
-
-def _set(instr, cpu, mem):
-    addr, quantity, stack_pointer = _pop(instr, cpu, mem), operns(instr)[0], cpu.stack_pointer + 1
+def _set(instr, cpu, mem, os):
+    addr, quantity, stack_pointer = _pop(instr, cpu, mem, os), operns(instr)[0], cpu.stack_pointer + 1
     for addr, stack_addr in izip(xrange(addr, addr + quantity), xrange(stack_pointer, stack_pointer + quantity)):
         mem[addr] = mem[stack_addr]
 
 
-def _push(instr, cpu, mem):
+def _push(instr, cpu, mem, _):
     push(operns(instr)[0], cpu, mem)
 
 
-def _pop(instr, cpu, mem):
+def _pop(instr, cpu, mem, _):
     return pop(cpu, mem)
+
+
+def system_call(instr, cpu, mem, os):
+    os.calls[pop(cpu, mem)](cpu, mem, os)
+
+
+def instr_size(instr):
+    return instr_size.rules[type(instr)]
+instr_size.rules = {instr: 1 for instr in no_operand_instr_ids}  # default all instructions to 1
+instr_size.rules.update((instr, 2) for instr in wide_instr_ids)  # wide instructions ar 2
+
+
+def instr_pointer_update(instr):
+    return instr_pointer_update.rules[type(instr)]
+instr_pointer_update.rules = {JumpTable: 0}  # JumpTable is a variable length instruction ...
+for instr in instr_size.rules:  # Make sure not to update the instruction pointer on Jump instructions ...
+    instr_pointer_update.rules[instr] = 0 if issubclass(instr, Jump) else instr_size.rules[instr]
 
 
 def evaluate(cpu, mem, os=None):
     os = os or Kernel()
-    while True:
-        if cpu.instr_pointer in os.calls:
-            os.calls[cpu.instr_pointer](cpu, mem, os)
+    instr = None
 
+    while not isinstance(instr, Halt):
         instr = mem[cpu.instr_pointer]
-        if isinstance(instr, Halt):
-            break
-        evaluate.rules[type(instr)](instr, cpu, mem)
-        if not isinstance(instr, (Pass, Jump)):  # do not update instr pointer, this instrs manipulate it.
-            _pass(instr, cpu, mem)
+        # print loc(instr), cpu.instr_pointer, instr
+        evaluate.rules[type(instr)](instr, cpu, mem, os)
+        cpu.instr_pointer += instr_pointer_update(instr)
 evaluate.rules = {
+    Halt: _pass,  # evaluate will halt ...
     Pass: _pass,
     Push: _push,
     Pop: _pop,
 
-    LoadZeroFlag: lambda instr, cpu, mem: push(cpu.zero, cpu, mem),
-    LoadCarryBorrowFlag: lambda instr, cpu, mem: push(cpu.carry, cpu, mem),
-    LoadOverflowFlag: lambda instr, cpu, mem: push(cpu.overflow, cpu, mem),
+    LoadZeroFlag: lambda instr, cpu, mem, _: push(cpu.zero_flag, cpu, mem),
+    LoadCarryBorrowFlag: lambda instr, cpu, mem, _: push(cpu.carry_borrow_flag, cpu, mem),
+    LoadMostSignificantBit: lambda instr, cpu, mem, _: push(cpu.most_significant_bit_flag, cpu, mem),
 
     LoadBaseStackPointer: load_base_pointer,
     SetBaseStackPointer: set_base_pointer,
@@ -275,10 +272,9 @@ evaluate.rules = {
 
     Load: _load,
     Set: _set,
+    SystemCall: system_call,
 }
 evaluate.rules.update(chain(izip(expr.rules, repeat(expr)), izip(jump.rules, repeat(jump))))
-# evaluate.rules.update((rule, expr) for rule in expr.rules)
-# evaluate.rules.update((rule, jump) for rule in jump.rules)
 
 stdin_file_no = getattr(sys.stdin, 'fileno', lambda: 0)()
 stdout_file_no = getattr(sys.stdout, 'fileno', lambda: 1)()
@@ -288,15 +284,14 @@ std_files = {stdin_file_no: sys.stdin, stdout_file_no: sys.stdout, stderr_file_n
 
 class Kernel(object):
     def __init__(self, calls=None):
-        self.opened_files = {stdin_file_no: sys.stdin, stdout_file_no: sys.stdout, stderr_file_no: sys.stderr}
+        self.opened_files = std_files
         self.calls = calls or {}
 
 
 class CPU(object):
     def __init__(self):
-        self.frames = []
-        self.instr_pointer = 1024
-        self.zero, self.carry, self.overflow = 0, 0, 0
+        self.instr_pointer = 0
+        self.zero_flag, self.carry_borrow_flag, self.most_significant_bit_flag = 0, 0, 0
         self._stack_pointer, self.base_pointer = -1, -1
 
     @property
@@ -308,44 +303,13 @@ class CPU(object):
         self._stack_pointer = value
         if self._stack_pointer > 0:
             raise ValueError('stack pointer cannot be positive got {g}'.format(g=self._stack_pointer))
-        # if self.stack_pointer > self.base_pointer:
-        #     raise ValueError('Stack corruption base_pointer {b} exceeding stack_pointer {s}'.format(
-        #         b=self.base_pointer, s=self.stack_pointer
-        #     ))
 
 
-address = lambda curr=1024, step=1: count(curr, step)
+class VirtualMemory(defaultdict):
+    def __init__(self, default_factory=long):
+        super(VirtualMemory, self).__init__(default_factory)
 
-
-def load(instrs, mem, symbol_table=None, address_gen=None):
-    address_gen = iter(address_gen or address())
-    symbol_table = symbol_table or {}
-
-    references = {}
-    for instr in instrs:
-        instr.address = next(address_gen)
-        mem[instr.address] = instr
-        if any(isinstance(o, Address) for o in operns(instr)):
-            references[instr.address] = instr
-
-    for addr, instr in references.iteritems():
-        operands = []
-        for o in operns(instr):
-            obj = getattr(o, 'obj', None)
-            if hasattr(obj, 'address'):
-                ref_addr = o.obj.address
-            elif isinstance(obj, Reference):
-                symbol = symbol_table[o.obj.name]
-                if hasattr(symbol, 'first_element'):
-                    ref_addr = symbol.first_element.address
-                else:
-                    ref_addr = next(address_gen)
-                    symbol.first_element = Byte(0, '')
-                    symbol.first_element.address = ref_addr
-                    mem[symbol.first_element.address] = symbol.first_element
-                    mem.update({next(address_gen): Byte(0, '') for _ in xrange(symbol.size - 1)})
-            else:
-                assert not isinstance(obj, Instruction)  # Make sure we are not referencing omitted instruction
-                ref_addr = o
-            operands.append(ref_addr - (addr if isinstance(instr, RelativeJump) else 0))
-        instr.operands = operands
+try:
+    from back_end.virtual_machine.c.cpu import c_evaluate as evaluate, CPU, VirtualMemory, Kernel
+except ImportError as er:
+    print 'Failed to import C implementations, reverting to Python'

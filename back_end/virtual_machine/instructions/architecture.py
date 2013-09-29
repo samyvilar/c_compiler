@@ -1,7 +1,7 @@
 __author__ = 'samyvilar'
 
 from collections import defaultdict
-from itertools import izip, chain
+from itertools import izip, chain, ifilter
 
 from front_end.loader.locations import LocationNotSet, loc
 
@@ -44,6 +44,9 @@ class Instruction(tuple):  # No operand instruction.
     def __repr__(self):  # Simple instruction has no operands.
         return self.name()
 
+    def __int__(self):
+        return self[0]
+
 
 class Halt(Instruction):
     pass
@@ -71,7 +74,7 @@ class Address(Int):  # Address is a special operand since it can take other inst
         return value
 
     def __str__(self):
-        return 'Address ' + repr(self.obj)
+        return 'Address ' + super(Address, self).__str__()
 
 
 class Double(Float, Operand):
@@ -82,7 +85,10 @@ class WideInstruction(Instruction):  # Instruction with a single operand
     # noinspection PyInitNewSignature
     def __new__(cls, location, operand):
         value = super(WideInstruction, cls).__new__(cls, location)
-        value.operands = (operand,)
+        if type(operand) in {int, long}:
+            value.operands = (Integer(operand, location),)
+        else:
+            value.operands = (operand,)
         return value
 
     def __iter__(self):
@@ -95,6 +101,10 @@ class WideInstruction(Instruction):  # Instruction with a single operand
 
     def __len__(self):
         return 2
+
+    def __setitem__(self, key, value):
+        assert key == 0
+        self.operands = (value,)
 
 
 class Arithmetic(Instruction):
@@ -210,21 +220,30 @@ class VariableLengthInstruction(WideInstruction):  # Instructions with more than
         for operand in self.operands:
             yield operand
 
+    def __setitem__(self, key, value):
+        self.operands[key] = value
+
 
 class JumpTable(RelativeJump, VariableLengthInstruction):
     def __new__(cls, location, cases):
-        default_addr = cases.pop('default')
-        value = super(JumpTable, cls).__new__(
-            cls,
-            location,
-            (Integer(len(cases), location), default_addr) + tuple(chain.from_iterable(cases.iteritems()))
+        default_addr = cases.pop('default')  # pop default address to properly calculate number of cases ...
+        operands = [Integer(len(cases), location), default_addr]
+        operands.extend(chain.from_iterable(cases.iteritems()))
+        value = super(JumpTable, cls).__new__(cls, location, operands)
+        value.key_indices = {1: 'default'}
+        value.key_indices.update(
+            (2 * index + 1, addr) for index, addr in enumerate(chain.from_iterable(cases.iterkeys()), 1)
         )
-        cases['default'] = default_addr
+        cases['default'] = default_addr  # add back default
         value.cases = cases
         return value
 
     def __repr__(self):
         return super(JumpTable, self).name() + str(self.cases)
+
+    def __setitem__(self, key, value):
+        super(JumpTable, self).__setitem__(key, value)
+        self.cases[self.key_indices[key]] = value
 
 
 class StackInstruction(Instruction):
@@ -260,15 +279,11 @@ class LoadCarryBorrowFlag(LoadFlagInstruction):
     pass
 
 
-class LoadOverflowFlag(LoadFlagInstruction):
+class LoadMostSignificantBit(LoadFlagInstruction):
     pass
 
 
 class Push(WideInstruction, Integral):
-    pass
-
-
-class Allocate(WideInstruction):
     pass
 
 
@@ -292,6 +307,10 @@ class ConvertToFloat(Instruction):
     pass
 
 
+class ConvertToFloatFromUnsigned(Instruction):
+    pass
+
+
 class ConvertToInteger(Instruction):
     pass
 
@@ -304,57 +323,73 @@ class Pass(Instruction):  # Empty instruction similar to NOP
     pass
 
 
+class SystemCall(Instruction):
+    pass
+
+
 ids.update({
-    Halt: -1,
+    Halt: 255,
 
     Push: 2,
-    Pop: -2,
+    Pop: 254,
     Load: 3,
-    Set: -4,
+    Set: 252,
 
     LoadBaseStackPointer: 7,
-    SetBaseStackPointer: -7,
+    SetBaseStackPointer: 249,
     LoadStackPointer: 8,
-    SetStackPointer: -8,
+    SetStackPointer: 248,
 
     Add: 11,
-    Subtract: -11,
+    Subtract: 245,
 
     Multiply: 12,
-    Divide: -12,
+    Divide: 244,
 
     Mod: 13,
 
     ShiftLeft: 14,
-    ShiftRight: -14,
+    ShiftRight: 242,
 
     Or: 15,
-    And: -15,
+    And: 241,
     Xor: 16,
     Not: 17,
 
     AddFloat: 18,
-    SubtractFloat: -18,
+    SubtractFloat: 238,
     MultiplyFloat: 19,
-    DivideFloat: -19,
+    DivideFloat: 237,
 
     AbsoluteJump: 20,
     JumpFalse: 21,
-    JumpTrue: -21,
+    JumpTrue: 235,
     JumpTable: 22,
     RelativeJump: 33,
 
     ConvertToFloat: 23,
-    ConvertToInteger: -23,
+    ConvertToFloatFromUnsigned: 24,
+    ConvertToInteger: 233,
 
     LoadZeroFlag: 30,
     LoadCarryBorrowFlag: 31,
-    LoadOverflowFlag: 32,
+    LoadMostSignificantBit: 32,
 
     Pass: 50,
+    SystemCall: 128,
 })
 
 instr_objs = dict(izip(ids.itervalues(), ids.iterkeys()))
+variable_length_instr_ids = dict(
+    ifilter(lambda item: issubclass(item[0], VariableLengthInstruction), ids.iteritems())
+)
+wide_instr_ids = dict(
+    ifilter(
+        lambda item: issubclass(item[0], WideInstruction) and not issubclass(item[0], VariableLengthInstruction),
+        ids.iteritems()
+    )
+)
+no_operand_instr_ids = dict(ifilter(lambda item: not issubclass(item[0], WideInstruction), ids.iteritems()))
 
 
 def dup(amount):

@@ -11,7 +11,7 @@ class TestPrefix(TestStatements):
             int b = ++a;
         }
         """
-        super(TestPrefix, self).evaluate(source)
+        self.evaluate(source)
         self.assertEqual(self.mem[self.cpu.stack_pointer], 11)
         self.assertEqual(self.mem[self.cpu.stack_pointer - 1], 11)
 
@@ -22,7 +22,7 @@ class TestPrefix(TestStatements):
             int b = --a;
         }
         """
-        super(TestPrefix, self).evaluate(source)
+        self.evaluate(source)
         self.assertEqual(self.mem[self.cpu.stack_pointer], 9)
         self.assertEqual(self.mem[self.cpu.stack_pointer - 1], 9)
 
@@ -33,7 +33,7 @@ class TestPrefix(TestStatements):
             int *b = &a;
         }
         """
-        super(TestPrefix, self).evaluate(source)
+        self.evaluate(source)
         self.assertEqual(self.mem[self.cpu.stack_pointer], 10)
         self.assertEqual(self.mem[self.cpu.stack_pointer - 1], self.cpu.stack_pointer)
 
@@ -45,28 +45,28 @@ class TestPrefix(TestStatements):
             *b = 9;
         }
         """
-        super(TestPrefix, self).evaluate(source)
+        self.evaluate(source)
         self.assertEqual(self.mem[self.cpu.stack_pointer], 9)
 
     def test_minus(self):
         source = """
         {
-            int a = 10;
+            int a = -10;
             a = -a;
         }
         """
-        super(TestPrefix, self).evaluate(source)
-        self.assertEqual(self.mem[self.cpu.stack_pointer], -10)
+        self.evaluate(source)
+        self.assertEqual(self.mem[self.cpu.stack_pointer], 10)
 
     def test_plus(self):
         source = """
         {
-            int a = -10;
+            int a = 10;
             a = +a;
         }
         """
-        super(TestPrefix, self).evaluate(source)
-        self.assertEqual(self.mem[self.cpu.stack_pointer], -10)
+        self.evaluate(source)
+        self.assertEqual(self.mem[self.cpu.stack_pointer], 10)
 
     def test_not(self):
         source = """
@@ -75,15 +75,15 @@ class TestPrefix(TestStatements):
             a = !a;
         }
         """
-        super(TestPrefix, self).evaluate(source)
+        self.evaluate(source)
         self.assertEqual(self.mem[self.cpu.stack_pointer], 0)
 
     def test_bitwise_not(self):
         source = """
         {
-            int a = 10;
+            int a = -10;
             a = ~a;
         }
         """
-        super(TestPrefix, self).evaluate(source)
-        self.assertEqual(self.mem[self.cpu.stack_pointer], ~10)
+        self.evaluate(source)
+        self.assertEqual(self.mem[self.cpu.stack_pointer], 9)

@@ -1,20 +1,27 @@
 __author__ = 'samyvilar'
 
-import sys
-
 from test.test_back_end.test_stdlib.base import TestStdLib
-from back_end.emitter.cpu import Kernel
+from back_end.emitter.cpu import Kernel, stdout_file_no, stdin_file_no, stderr_file_no
 from back_end.emitter.system_calls import CALLS
-from StringIO import StringIO
+from tempfile import TemporaryFile
 
 
 class TestPrintf(TestStdLib):
     def evaluate(self, code, cpu=None, mem=None, os=None):
         self.os = Kernel(CALLS)
-        self.os.opened_files = {io_id: StringIO() for io_id in self.os.opened_files}
+        self.os.opened_files = {
+            stdin_file_no: TemporaryFile('r+'),
+            stdout_file_no: TemporaryFile('w+'),
+            stderr_file_no: TemporaryFile('r+')
+        }
         super(TestPrintf, self).evaluate(code, cpu, mem, os=self.os)
-        self.stdout = self.os.opened_files[getattr(sys.stdout, 'fileno', lambda: 1)()]
+        self.stdout = self.os.opened_files[stdout_file_no]
+        self.stdout.flush()
         self.stdout.seek(0)
+
+    def tearDown(self):
+        for file_obj in self.os.opened_files.itervalues():
+            file_obj.close()
 
     def test_printf_string(self):
         code = """
@@ -31,7 +38,7 @@ class TestPrintf(TestStdLib):
         }
         """
         self.evaluate(code)
-        self.assertEqual(self.stdout.read(), 'HelloWorld!')
+        self.assertEqual('HelloWorld!', self.stdout.read(),)
 
     def test_printf_int(self):
         code = """
@@ -48,7 +55,7 @@ class TestPrintf(TestStdLib):
         }
         """
         self.evaluate(code)
-        self.assertEqual(self.stdout.read(), "(10)(10)(12312)(12312)")
+        self.assertEqual("(10)(10)(12312)(12312)", self.stdout.read(),)
 
     def test_printf_long(self):
         code = """
@@ -60,8 +67,10 @@ class TestPrintf(TestStdLib):
             printf("(%li)", value);
             printf("(%ld)", 1152921504606846976L);
             printf("(%lld)(%li)", 0LL, 4770931718827366147L);
-            printf("(%lu)(%llu)(%lo)(%llo)(%llx)(%llX)",
-                807023UL, 8736574736ULl, 06576374073l, 07743525251lL, 0x243fa8c1ell, 0XAB7A6LL);
+            printf(
+                "(%lu)(%llu)(%lo)(%llo)(%llx)(%llX)",
+                807023UL, 8736574736ULl, 06576374073l, 07743525251lL, 0x243fa8c1ell, 0XAB7A6LL
+            );
             printf("(%llu)", -1LLU);
 
             return 0;
@@ -69,10 +78,10 @@ class TestPrintf(TestStdLib):
         """
         self.evaluate(code)
         self.assertEqual(
-            self.stdout.read(),
             '(12412421345324)(1152921504606846976)(0)(4770931718827366147)' +
             '(807023)(8736574736)(6576374073)(7743525251)(243fa8c1e)(AB7A6)' +
-            '(18446744073709551615)'
+            '(18446744073709551615)',
+            self.stdout.read(),
         )
 
     def test_printf_float(self):
@@ -89,7 +98,7 @@ class TestPrintf(TestStdLib):
         }
         """
         self.evaluate(code)
-        self.assertEqual(self.stdout.read(), "(10.25)(20.5)(10.25)(10.25)(-9.00500000000000078)")
+        self.assertEqual("(10.25)(20.5)(10.25)(10.25)(-9.00500000000000078)", self.stdout.read())
 
     def test_printf_hexadecimal(self):
         code = """
@@ -106,7 +115,7 @@ class TestPrintf(TestStdLib):
         }
         """
         self.evaluate(code)
-        self.assertEqual(self.stdout.read(), "(14cc)(fffffb30)(EFD4C)(FFF102B4)")
+        self.assertEqual("(14cc)(fffffb30)(EFD4C)(FFF102B4)", self.stdout.read(),)
 
     def test_printf_octal(self):
         code = """
@@ -121,7 +130,7 @@ class TestPrintf(TestStdLib):
         }
         """
         self.evaluate(code)
-        self.assertEqual(self.stdout.read(), "30041655737777773332")
+        self.assertEqual("30041655737777773332", self.stdout.read(),)
 
     def test_printf_pointer(self):
         code = """
@@ -137,4 +146,4 @@ class TestPrintf(TestStdLib):
         }
         """
         self.evaluate(code)
-        self.assertEqual(self.stdout.read(), "0x1fb510xa8eb0xffffffffffffcf6e")
+        self.assertEqual("0x1fb510xa8eb0xffffffffffffcf6e", self.stdout.read())

@@ -2,23 +2,23 @@
 __author__ = 'samyvilar'
 
 import argparse
-from collections import defaultdict
 
 try:
     import cPickle as pickle
 except ImportError as _:
     import pickle
 
-from back_end.emitter.cpu import load, CPU, Kernel, evaluate
-from back_end.emitter.system_calls import CALLS
+from back_end.emitter.cpu import CPU, VirtualMemory, evaluate
+from back_end.linker.link import set_addresses
+# from back_end.emitter.system_calls import CALLS
+from back_end.loader.load import load
 
 
 def start(instrs):
-    mem = defaultdict(int)
+    mem = VirtualMemory()
     cpu = CPU()
-    kernel = Kernel(CALLS)
-    load(instrs, mem)
-    evaluate(cpu, mem, kernel)
+    load(set_addresses(instrs), mem)
+    evaluate(cpu, mem)
 
 
 def main():

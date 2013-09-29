@@ -165,7 +165,7 @@ def integral_type(tokens, symbol_table, l_exp, cast_expression):
 
 def assign(tokens, symbol_table, l_exp, cast_expression):
     operator, r_exp = consume(tokens), assignment_expression(tokens, symbol_table, cast_expression)
-    return AssignmentExpression(l_exp, operator, r_exp, c_type(l_exp)(loc(oper)), loc(oper))
+    return AssignmentExpression(l_exp, operator, r_exp, c_type(l_exp)(loc(oper)), loc(operator))
 
 
 def assignment_expression(tokens, symbol_table, cast_expression):

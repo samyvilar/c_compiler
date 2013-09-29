@@ -1,7 +1,6 @@
 __author__ = 'samyvilar'
 
 from unittest import TestCase
-from collections import defaultdict
 
 from front_end.loader.load import source
 from front_end.tokenizer.tokenize import tokenize
@@ -11,22 +10,22 @@ from front_end.parser.parse import parse
 from front_end.parser.symbol_table import SymbolTable
 
 from back_end.emitter.emit import emit
-from back_end.linker.link import executable
-from back_end.emitter.cpu import CPU, load, address, evaluate
+from back_end.linker.link import executable, set_addresses, resolve
+from back_end.emitter.cpu import CPU, VirtualMemory, evaluate
+from back_end.loader.load import load
 
 
 class TestDeclarations(TestCase):
     def evaluate(self, code):
-        address_gen, symbol_table, self.cpu, self.mem = address(), SymbolTable(), CPU(), defaultdict(int)
+        symbol_table, self.cpu, self.mem = SymbolTable(), CPU(), VirtualMemory()
 
         load(
-            executable(emit(parse(preprocess(tokenize(source(code))))), symbol_table),
+            set_addresses(
+                resolve(executable(emit(parse(preprocess(tokenize(source(code))))), symbol_table), symbol_table)
+            ),
             self.mem,
-            symbol_table,
-            address_gen
         )
 
-        self.cpu.instr_pointer = min(self.mem.iterkeys())
         evaluate(self.cpu, self.mem)
 
 
@@ -44,9 +43,9 @@ class TestDefinitions(TestDeclarations):
             return 0;
         }
         """
-        super(TestDefinitions, self).evaluate(code)
+        self.evaluate(code)
 
-    def test_astatic_definitions(self):
+    def test_static_definitions(self):
         code = """
 
         int foo(int call_number)
@@ -101,10 +100,10 @@ class TestInitializer(TestDeclarations):
 
         int main()
         {
-            return foo.a == 10 && foo.c[1] == -1 && foo.foo[0].a == -1 && foo.foo[1].c == -1 && foo.foo[3].c == 0.0;
+            return foo.a == 10 && foo.c[1] == -1 && foo.foo[0].a == -1 && foo.foo[1].c == -1 && foo.foo[3].c == 0;
         }
         """
-        super(TestInitializer, self).evaluate(code)
+        self.evaluate(code)
         self.assertEqual(1, self.mem[self.cpu.stack_pointer])
 
     def test_local_initializer(self):
@@ -117,5 +116,5 @@ class TestInitializer(TestDeclarations):
             return foo.a == 10 && foo.c[1] == -1 && foo.foo[0].a == -1 && foo.foo[1].c == -1 && foo.foo[3].c == 0.0;
         }
         """
-        super(TestInitializer, self).evaluate(code)
+        self.evaluate(code)
         self.assertEqual(1, self.mem[self.cpu.stack_pointer])

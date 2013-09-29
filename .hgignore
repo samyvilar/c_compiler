@@ -7,3 +7,4 @@ syntax: glob
 a.c
 a.out
 a.s
+*.so

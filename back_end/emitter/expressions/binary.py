@@ -11,7 +11,7 @@ from back_end.emitter.expressions.cast import cast
 from back_end.virtual_machine.instructions.architecture import Add, Subtract, Multiply, Divide, Mod, ShiftLeft
 from back_end.virtual_machine.instructions.architecture import Or, Xor, And, Load, Set, Pop, ShiftRight
 from back_end.virtual_machine.instructions.architecture import AddFloat, SubtractFloat, MultiplyFloat, DivideFloat
-from back_end.virtual_machine.instructions.architecture import LoadZeroFlag, LoadOverflowFlag, LoadCarryBorrowFlag
+from back_end.virtual_machine.instructions.architecture import LoadZeroFlag, LoadMostSignificantBit, LoadCarryBorrowFlag
 from back_end.virtual_machine.instructions.architecture import Push, Integer, Pass, JumpFalse, JumpTrue, Address
 from back_end.virtual_machine.instructions.architecture import LoadStackPointer, dup, swap, allocate
 
@@ -78,7 +78,7 @@ def compare_numbers(l_instrs, r_instrs, location, operand_types):
     return chain(subtract(l_instrs, r_instrs, location, operand_types), (Pop(location),))
 compare_numbers.rules = {
     True: LoadCarryBorrowFlag,  # For unsigned numbers.
-    False: LoadOverflowFlag,  # For signed numbers.
+    False: LoadMostSignificantBit,  # For signed numbers.
 }
 
 
@@ -92,16 +92,10 @@ def less_than(l_instrs, r_instrs, location, operand_types):
 # One number is said to be greater than another when their difference is positive.
 def greater_than(l_instrs, r_instrs, location, operand_types):
     return chain(
-        compare_numbers(l_instrs, r_instrs, location, operand_types),
-        (
-            LoadZeroFlag(location),
-            Push(location, Integer(1, location)),
-            Xor(location),  # check the numbers are not equal
-            compare_numbers.rules[unsigned(operand_types)](location),
-            Push(location, Integer(1, location)),  # and not less than another
-            Xor(location),
-            And(location)
-        )
+        # operand_1 is greater than operand_2 if operand_1 is NOT less than or equal to operand_2.
+        less_than_or_equal(l_instrs, r_instrs, location, operand_types),
+        Push(location, Integer(1, location)),
+        Xor(location)
     )
 
 

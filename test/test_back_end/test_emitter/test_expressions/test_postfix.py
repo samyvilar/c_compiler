@@ -59,10 +59,10 @@ class TestPostfix(TestStatements):
     def test_struct_member_selection(self):
         source = """
         {
-            double value;
+            short value;
             struct foo {
                 int a;
-                double b;
+                short b;
                 char e;
             } a, b;
             int offset = -1;
@@ -161,13 +161,13 @@ class TestPostFixFunction(TestDeclarations):
         int a;
         int foo1(int a1) {  return a1; }
         double foo(int a2, double a3) {  return a2; }
-        double main()
+        int main()
         {
             return foo(foo1(11), 10);
         }
         """
         self.evaluate(source)
-        self.assertEqual(self.mem[self.cpu.stack_pointer], 11.0)
+        self.assertEqual(self.mem[self.cpu.stack_pointer], 11)
 
     def test_function_struct_return(self):
         source = """

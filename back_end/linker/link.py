@@ -1,7 +1,7 @@
 __author__ = 'samyvilar'
 
 import os
-
+from types import NoneType
 from itertools import chain, ifilter, ifilterfalse, imap, product, starmap, izip, repeat
 
 try:
@@ -16,8 +16,8 @@ from back_end.emitter.c_types import size
 
 from front_end.parser.types import void_pointer_type
 
-from back_end.virtual_machine.instructions.architecture import Push, Halt, Set
-from back_end.virtual_machine.instructions.architecture import Address, operns, Byte, allocate
+from back_end.virtual_machine.instructions.architecture import Push, Halt, Set, Instruction, Integer
+from back_end.virtual_machine.instructions.architecture import Address, operns, Byte, allocate, RelativeJump
 
 
 from back_end.emitter.declarations.declaration import declaration
@@ -150,13 +150,14 @@ def executable(
             ),
             st
         ),
-        (Halt(location),),
+        (Halt(location),),  # Halt machine on return, exit() will emit Halt ...
         chain.from_iterable(starmap(binaries, izip(symbols, repeat(symbol_table))))
-    )
+    )                     # link all foreign symbols and emit binaries for declarations ...
     return chain(linker(instr_seq, symbol_table, libs), declarations(symbol_table), (heap_ptr,))
 
 
 def resolve(instrs, symbol_table):
+    # resolve all references ... replace Address(obj=Reference(symbol_name)) by Address(obj=instr)
     references = []
     for instr in instrs:
         for o in operns(instr):
@@ -169,3 +170,45 @@ def resolve(instrs, symbol_table):
         if not hasattr(symbol, 'first_element'):
             raise ValueError('{l} Unable to resolve symbol {s}'.format(l=loc(symbol), s=symbol))
         operand.obj = symbol.first_element
+
+
+def set_addresses(instrs, addresses=None):  # assign addresses ...
+    def default_address_gen():
+        previous_address = 0
+        _ = (yield)
+        while True:
+            _ = (yield previous_address)  # TODO: calculate address based on size of previous instr
+            previous_address += 1
+
+    addresses = addresses or default_address_gen()
+    _ = next(addresses)
+    instr_references = []
+    symbol_references = []
+    label_references = []
+    for instr in instrs:
+        instr.address = addresses.send(instr)  # calculate next address based on current value ...
+        yield instr
+        for operand_index, o in enumerate(operns(instr)):
+            o.address = addresses.send(o)
+            if isinstance(o, Address):
+                if isinstance(o.obj, Reference):  # referencing a symbol that has yet to be resolved ...
+                    symbol_references.append((instr, o, operand_index))
+                elif isinstance(o.obj, NoneType):  # referencing an unseen label ...
+                    label_references.append((instr, o, operand_index))
+                elif isinstance(o.obj, (Instruction, Byte)):  # referencing an instr or Byte..
+                    instr_references.append((instr, o, operand_index))
+                elif not isinstance(o.obj, (Integer, int, long)):
+                    raise ValueError('Bad operand type {t} for Address object ...'.format(t=type(o.obj)))
+            yield o
+
+    # At this point all address have being generated and resolve() should have checked or set first_element on Refs ...
+    # update addresses replace Address(obj=instr) by Address(obj=address or offset)
+    for instr, operand, operand_index in chain(instr_references, symbol_references, label_references):
+        operand.obj = Integer(
+            operand.obj.address - (instr.address if isinstance(instr, RelativeJump) else 0), loc(operand)
+        )
+        # Update instruction operand ...
+        instr[operand_index] = Address(operand.obj, loc(operand))
+        # if not isinstance(operand.obj, Integer):
+        #     raise ValueError('{l} Expected Integer type got {g}'.format(l=loc(operand), g=operand.obj))
+

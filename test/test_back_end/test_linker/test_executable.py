@@ -2,7 +2,6 @@ __author__ = 'samyvilar'
 
 from unittest import TestCase
 from itertools import chain
-from collections import defaultdict
 
 from front_end.loader.load import source
 from front_end.tokenizer.tokenize import tokenize
@@ -12,8 +11,9 @@ from front_end.parser.parse import parse
 from front_end.parser.symbol_table import SymbolTable
 
 from back_end.emitter.emit import emit
-from back_end.linker.link import executable
-from back_end.emitter.cpu import load, evaluate, CPU
+from back_end.linker.link import executable, set_addresses, resolve
+from back_end.emitter.cpu import evaluate, CPU, VirtualMemory
+from back_end.loader.load import load
 
 
 class TestExecutable(TestCase):
@@ -27,16 +27,19 @@ class TestExecutable(TestCase):
             }
         """, 'int b;'
 
-        mem = defaultdict(int)
+        mem = VirtualMemory()
         cpu = CPU()
         symbol_table = SymbolTable()
         load(
-            executable(
-                chain.from_iterable(emit(parse(preprocess(tokenize(source(code))))) for code in source_codes),
-                symbol_table
+            set_addresses(
+                resolve(
+                    executable(
+                        chain.from_iterable(emit(parse(preprocess(tokenize(source(code))))) for code in source_codes),
+                        symbol_table
+                    ),
+                    symbol_table
+                ),
             ),
-            mem,
-            symbol_table,
+            mem
         )
-        cpu.instr_pointer = min(mem.iterkeys())
         evaluate(cpu, mem)

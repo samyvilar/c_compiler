@@ -4,8 +4,6 @@ from logging_config import logging
 from back_end.virtual_machine.memory import VirtualMemory
 from back_end.virtual_machine.cpu.core import CPU, HaltException
 
-from back_end.virtual_machine.instructions.architecture import instr_objs
-
 logger = logging.getLogger('virtual_machine')
 
 
@@ -16,8 +14,6 @@ class VirtualMachine(object):
     def start(self):
         while True:
             instr = self.memory[self.cpu.instr_pointer]
-            # print instr_objs[instr]
-            # print int(self.cpu.stack_pointer
             try:
                 self.cpu[instr](instr, self.cpu, self.memory)
             except HaltException as ex:

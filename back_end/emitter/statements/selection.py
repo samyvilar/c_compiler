@@ -9,7 +9,8 @@ from front_end.parser.ast.expressions import exp
 from front_end.parser.ast.statements import IfStatement, SwitchStatement, CaseStatement, DefaultStatement
 
 from back_end.emitter.expressions.expression import expression
-from back_end.virtual_machine.instructions.architecture import Pass, JumpFalse, Address, JumpTable, RelativeJump, Push
+from back_end.virtual_machine.instructions.architecture import Pass, JumpFalse, Address, JumpTable, RelativeJump
+from back_end.virtual_machine.instructions.architecture import Integer
 
 from back_end.emitter.statements.jump import update_stack
 
@@ -66,9 +67,10 @@ def switch_statement(stmnt, symbol_table, stack, statement_func):
                         (RelativeJump(loc(stmnt), Address(instr, loc(instr))),)
                     )
                 )
-                cases[(isinstance(instr.case, DefaultStatement) and 'default') or exp(exp(instr.case))] = Address(
-                    start, loc(instr)
-                )
+                cases[
+                    (isinstance(instr.case, DefaultStatement) and 'default')
+                    or Integer(exp(exp(instr.case)), loc(instr))
+                ] = Address(start, loc(instr))
                 del instr.case
             yield instr
 

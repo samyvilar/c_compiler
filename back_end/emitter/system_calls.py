@@ -13,8 +13,9 @@ from front_end.parser.ast.statements import ReturnStatement
 from front_end.parser.ast.expressions import ConstantExpression
 
 from back_end.emitter.c_types import size
-from back_end.virtual_machine.instructions.architecture import Integer, Pass, Byte, Set, Address, Push
+from back_end.virtual_machine.instructions.architecture import Integer, Byte, Set, Address, Push
 from back_end.virtual_machine.instructions.architecture import SetStackPointer, SetBaseStackPointer
+from back_end.virtual_machine.instructions.architecture import SystemCall as SysCallInstruction
 
 from back_end.emitter.cpu import evaluate, std_files, logger, Halt
 
@@ -25,11 +26,11 @@ __buffer__ = lambda ptr, count, mem: (mem[ptr] for ptr in xrange(ptr, ptr + coun
 SysCallLocation = Location('__ SYS_CALL __', '', '')
 
 
-def __return__(value, cpu, mem, func_signature=FunctionType(IntegerType(SysCallLocation), (), SysCallLocation)):
+def __return__(value, cpu, mem, os, func_signature=FunctionType(IntegerType(SysCallLocation), (), SysCallLocation)):
     for instr in return_statement(
         ReturnStatement(ConstantExpression(value, IntegerType(SysCallLocation), SysCallLocation), SysCallLocation),
             {'__ CURRENT FUNCTION __': func_signature}):
-        evaluate.rules[type(instr)](instr, cpu, mem)
+        evaluate.rules[type(instr)](instr, cpu, mem, os)
 
 
 def argument_address(func_type, cpu, mem):
@@ -73,7 +74,7 @@ def __open__(
             kernel.opened_files[file_id] = file_obj
         except Exception as ex:
             logger.warning('failed to open file {f}, error: {m}'.format(f=file_name, m=ex))
-    __return__(file_id, cpu, mem)
+    __return__(file_id, cpu, mem, kernel)
 
 
 def __close__(
@@ -95,13 +96,14 @@ def __close__(
     try:
         if file_id not in std_files:
             file_obj = kernel.opened_files.pop(file_id)
+            file_obj.flush()
             file_obj.close()
         return_value = Integer(0, SysCallLocation)
     except KeyError as _:
         logger.warning('trying to close a non-opened file_id {f}'.format(f=file_id))
     except Exception as ex:
         logger.warning('failed to close file {f}, error: {m}'.format(f=getattr(file_obj, 'name', file_obj), m=ex))
-    __return__(return_value, cpu, mem)
+    __return__(return_value, cpu, mem, kernel)
 
 
 def __read__(
@@ -137,7 +139,7 @@ def __read__(
         logger.warning('trying to read from a non-opened file_id {f}'.format(f=file_id))
     except Exception as ex:
         logger.warning('failed to read from file {f}, error: {m}'.format(f=getattr(file_id, 'name', file_id), m=ex))
-    __return__(return_value, cpu, mem)
+    __return__(return_value, cpu, mem, kernel)
 
 
 def __write__(
@@ -172,7 +174,7 @@ def __write__(
     except Exception as ex:
         logger.warning('failed to write to file {f}, error: {m}'.format(f=getattr(file_id, 'name', file_id), m=ex))
         return_value = Integer(-1, LocationNotSet)
-    __return__(return_value, cpu, mem)
+    __return__(return_value, cpu, mem, kernel)
 
 
 def __tell__(
@@ -196,7 +198,7 @@ def __tell__(
         logger.warning('trying to ftell on a non-opened file_id {f}'.format(f=file_id))
     except Exception as ex:
         logger.warning('failed to ftell on file {f}, error: {m}'.format(f=getattr(file_id, 'name', file_id), m=ex))
-    __return__(return_value, cpu, mem)
+    __return__(return_value, cpu, mem, kernel)
 
 
 def __seek__(
@@ -225,7 +227,7 @@ def __seek__(
         logger.warning('trying to fseek on non-opened file_id {f}'.format(f=file_id))
     except Exception as ex:
         logger.warning('failed to fseek on file {f}, error: {m}'.format(f=getattr(file_id, 'name', file_id), m=ex))
-    __return__(return_value, cpu, mem)
+    __return__(return_value, cpu, mem, kernel)
 
 
 def __exit__(
@@ -255,35 +257,20 @@ def __exit__(
         SetStackPointer(SysCallLocation),
     )
     for instr in instrs:
-        evaluate.rules[type(instr)](instr, cpu, mem)
-    mem[cpu.instr_pointer] = Halt(SysCallLocation)
-
-
-class PassImmutable(object):
-    def __init__(self, addr):
-        self.addr = addr
-
-    @property
-    def address(self):
-        return self.addr
-
-    @address.setter
-    def address(self, _):
-        pass
+        evaluate.rules[type(instr)](instr, cpu, mem, kernel)
+    mem[cpu.instr_pointer + 1] = Halt(SysCallLocation)
 
 
 class SystemCall(Code):
     def __init__(self, name, size, storage_class, location, call_id):
-        self._first_element = PassImmutable(call_id)
-        super(SystemCall, self).__init__(name, (Pass(LocationNotSet),), size, storage_class, location)
-
-    @property
-    def first_element(self):
-        return self._first_element
-
-    @first_element.setter
-    def first_element(self, _):
-        pass
+        self._first_element = Push(location, call_id)
+        super(SystemCall, self).__init__(
+            name,
+            (self._first_element, SysCallInstruction(location)),
+            size,
+            storage_class,
+            location
+        )
 
 __ids__ = (
     ('__open__', 5, __open__),

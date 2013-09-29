@@ -59,7 +59,7 @@ int	printf(const char *, ...);
 int	scanf(const char *, ...);
 
 #define lltoa(value, str, base) number_to_string(value, base, str, ULLONG_MAX)
-#define ltoa(value, str, base)  number_to_string(value, base, str, ULLONG_MAX)
+#define ltoa(value, str, base)  number_to_string(value, base, str, ULONG_MAX)
 #define itoa(value, str, base)  number_to_string(value, base, str, UINT_MAX)
 
 #endif

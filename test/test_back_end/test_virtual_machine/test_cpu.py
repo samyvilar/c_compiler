@@ -1,7 +1,7 @@
 __author__ = 'samyvilar'
 
 from unittest import TestCase
-from itertools import izip, chain
+from itertools import izip, chain, imap
 from collections import defaultdict
 from back_end.virtual_machine.cpu.core import CPU
 
@@ -17,11 +17,7 @@ def size(value):
 
 
 def encode(instrs, word_type):
-    return {
-        addr: instr for addr, instr in izip(
-            encoder.addresses(word_type(1), word_type(1)), encoder.encode(instrs, word_type)
-        )
-    }
+    return dict(izip(encoder.addresses(word_type(0), word_type(1)), encoder.encode(imap(int, instrs), word_type)))
 
 
 class TestCPU(TestCase):

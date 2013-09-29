@@ -124,9 +124,11 @@ char *upper(char *src)
     return src;
 }
 
+static FILE stdout = {1, FILE_READY_FOR_WRITING};
+
 char *number_to_string(long long value, int base, char *dest, unsigned long long max_size)
 {
-    if (base < 2 || base > 36)
+    if ((base < 2 || base > 36) && base != -10)
         return NULL;
 
     unsigned long long current = value;
@@ -142,6 +144,9 @@ char *number_to_string(long long value, int base, char *dest, unsigned long long
             current = max_size + value + 1;
     }
 
+    if (base == -10)  // printing unsigned number
+        base = 10;
+
     #define digit_ch(__numb__) ((__numb__) + (((__numb__) < 10) ? '0' : ('a' - 10)))
     while (current >= base)
     {
@@ -149,9 +154,8 @@ char *number_to_string(long long value, int base, char *dest, unsigned long long
         current /= base;
     }
     *destination++ = digit_ch(current % base);
-    #undef digit_ch
-
     *destination-- = '\0';
+    #undef digit_ch
 
     char ch, *temp = (*dest == '-') ? (dest + 1) : dest;  // swap values ..
     while (destination > temp)
@@ -167,31 +171,31 @@ char *number_to_string(long long value, int base, char *dest, unsigned long long
 char *float_to_string(double value, char *dest)
 {
     // TODO: take into account mantissa, double values can be up to 1024 bits large
-    char *current = dest = lltoa((long long)value, dest, 10);
+    char *current = dest = lltoa((long long int)value, dest, 10);
     while (*++current); //loc end; safe to assume that lltoa at the very least returns '0' so we can pre-increment.
     *current++ = '.';
 
     // TODO: find a better method for locating fraction, this isn't accurate
-    // slower but more accurate than incrementing by 10 and sub;
-    // we can only or rather should display up to 16 decimal place accuracy according to IEEE 754 double format
                       // We need to negate the difference if value less than 0.
-    double fraction = (value < 0 ? -1.0 : 1.0) * (value - (long long)value);
+    double fraction = (value < 0 ? -1.0 : 1.0) * (value - (long long int)value);
     unsigned long long numeric_fraction = fraction * 100000000000000000LL;
+
     while (fraction && (fraction *= 10.0) < 1.0)    // set leading zeros
         *current++ = '0';
     current = lltoa(numeric_fraction, current, 10);
+
     // search for '\0'
     while (*++current); // again assume that lltoa at the very least returns '0'
     while (*--current == '0'); // remove/skip any trailing zeros.
 
     if (*current == '.') // if they where all trailing 0s than just add one more
         *++current = '0';
-    *++current = '\0';
+
+    *++current = '\0'; // terminate string.
 
     return dest;
 }
 
-static FILE stdout = {1, FILE_READY_FOR_WRITING};
 
 int printf(const char *format, ...)
 {
@@ -203,12 +207,12 @@ int printf(const char *format, ...)
     int base = 10;
     unsigned long long total = 0;
 
-    #define NUMERIC_CASES(default_type, func, unsigned_max) \
+    #define NUMERIC_CASES(default_type, func) \
         case 'i': case 'd': total += _puts(func(va_arg(args, default_type), temp, 10)); break ; \
         case 'X': total += _puts(upper(func(va_arg(args, unsigned default_type), temp, 16))); break ; \
         case 'x': total += _puts(func(va_arg(args, unsigned default_type), temp, 16)); break ; \
         case 'o': total += _puts(func(va_arg(args, unsigned default_type), temp, 8)); break ; \
-        case 'u': total += _puts(func(va_arg(args, unsigned default_type) % (unsigned_max + 1), temp, 10)); break ; \
+        case 'u': total += _puts(func(va_arg(args, unsigned default_type) , temp, -10)); break ; \
         default: _error_unknown_specifier(*format); return total;
 
     #define _error_unknown_specifier(format) printf("Unknown Specifier found: %c", format);
@@ -225,13 +229,13 @@ int printf(const char *format, ...)
             {
                 // lengths
                 case 'h':
-                    if (*++format == 'h') switch (*++format) { NUMERIC_CASES(char, itoa, UINT_MAX) }
-                    else switch (*format) { NUMERIC_CASES(short int, itoa, UINT_MAX) }
+                    if (*++format == 'h') switch (*++format) { NUMERIC_CASES(char, itoa) }
+                    else switch (*format) { NUMERIC_CASES(short int, itoa) }
                     break ;
 
                 case 'l':
-                    if (*++format == 'l') switch (*++format) { NUMERIC_CASES(long, ltoa, ULLONG_MAX) }
-                    else switch (*format) { NUMERIC_CASES(long int, ltoa, ULLONG_MAX) }
+                    if (*++format == 'l') switch (*++format) { NUMERIC_CASES(long long int, lltoa) }
+                    else switch (*format) { NUMERIC_CASES(long int, ltoa) }
                     break ;
 
                 // default specifiers no length ...
@@ -241,7 +245,7 @@ int printf(const char *format, ...)
                 case 'p': total += _puts("0x"); total += _puts(lltoa(va_arg(args, void *), temp, 16)); break ;
                 case 'F': case 'f': total += _puts(float_to_string(va_arg(args, double), temp)); break ;
 
-                NUMERIC_CASES(int, itoa, UINT_MAX)
+                NUMERIC_CASES(int, itoa)
             }
             #undef _puts
             #undef NUMERIC_CASES

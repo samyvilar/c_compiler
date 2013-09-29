@@ -4,7 +4,7 @@ from test.test_back_end.test_emitter.test_statements.test_compound import TestSt
 
 
 class TestCompoundAssignment(TestStatements):
-    def compound_addition(self):
+    def test_compound_addition(self):
         code = """
         {
             int a = 10, b = 1;

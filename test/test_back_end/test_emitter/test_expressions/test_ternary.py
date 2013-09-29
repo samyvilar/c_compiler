@@ -11,7 +11,7 @@ class TestTernary(TestStatements):
             int foo = b ? b += 2 : (foo += 3);
         }
         '''
-        super(TestTernary, self).evaluate(code)
+        self.evaluate(code)
         self.assertEqual(self.mem[self.cpu.stack_pointer], 13)
         self.assertEqual(self.mem[self.cpu.stack_pointer - 1], 13)
 
@@ -23,7 +23,7 @@ class TestTernary(TestStatements):
             int foo = b ? c += 1 : b;
         }
         '''
-        super(TestTernary, self).evaluate(code)
+        self.evaluate(code)
         self.assertEqual(self.mem[self.cpu.stack_pointer], 0)
         self.assertEqual(self.mem[self.cpu.stack_pointer - 1], 1)
         self.assertEqual(self.mem[self.cpu.stack_pointer - 2], 0)
