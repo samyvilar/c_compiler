@@ -139,11 +139,11 @@ class TestPrintf(TestStdLib):
         int main()
         {
             void *ptr = (void *)129873;
-            printf("%p", ptr);
-            printf("%p%p", (void *)43243, (void *)-12434);
+            printf("(%p)", ptr);
+            printf("(%p)(%p)", (void *)43243, (void *)0);
 
             return 0;
         }
         """
         self.evaluate(code)
-        self.assertEqual("0x1fb510xa8eb0xffffffffffffcf6e", self.stdout.read())
+        self.assertEqual("(0x1fb51)(0xa8eb)(0x0)", self.stdout.read())

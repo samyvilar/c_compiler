@@ -8,17 +8,18 @@ try:
 except ImportError as _:
     import pickle
 
-from back_end.emitter.cpu import CPU, VirtualMemory, evaluate
+from back_end.emitter.cpu import CPU, VirtualMemory, Kernel, evaluate
 from back_end.linker.link import set_addresses
-# from back_end.emitter.system_calls import CALLS
+from back_end.emitter.system_calls import CALLS
 from back_end.loader.load import load
 
 
 def start(instrs):
     mem = VirtualMemory()
     cpu = CPU()
+    os = Kernel(CALLS)
     load(set_addresses(instrs), mem)
-    evaluate(cpu, mem)
+    evaluate(cpu, mem, os)
 
 
 def main():

@@ -8,3 +8,4 @@ a.c
 a.out
 a.s
 *.so
+*.o

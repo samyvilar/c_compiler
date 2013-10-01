@@ -246,10 +246,6 @@ class JumpTable(RelativeJump, VariableLengthInstruction):
         self.cases[self.key_indices[key]] = value
 
 
-class StackInstruction(Instruction):
-    pass
-
-
 class LoadBaseStackPointer(Instruction):
     # Pushes the current address of the base stack pointer, used to reference auto variables.
     pass
@@ -264,6 +260,18 @@ class LoadStackPointer(Instruction):
 
 
 class SetStackPointer(Instruction):
+    pass
+
+
+class Allocate(WideInstruction):
+    pass
+
+
+class Dup(WideInstruction):
+    pass
+
+
+class Swap(WideInstruction):
     pass
 
 
@@ -340,6 +348,10 @@ ids.update({
     LoadStackPointer: 8,
     SetStackPointer: 248,
 
+    Allocate: 9,
+    Dup: 5,
+    Swap: 6,
+
     Add: 11,
     Subtract: 245,
 
@@ -393,6 +405,11 @@ no_operand_instr_ids = dict(ifilter(lambda item: not issubclass(item[0], WideIns
 
 
 def dup(amount):
+    if amount:
+        yield Dup(loc(amount), amount)
+
+
+def manually_dup(amount):
     yield LoadStackPointer(loc(amount))
     yield Push(loc(amount), Address(1, loc(amount)))
     yield Add(loc(amount))
@@ -400,6 +417,11 @@ def dup(amount):
 
 
 def swap(amount):
+    if amount:
+        yield Swap(loc(amount), amount)
+
+
+def manually_swap(amount):
     for i in dup(amount):
         yield i
     yield LoadStackPointer(loc(amount))
@@ -434,6 +456,11 @@ def pop_frame(argument_len, address_size):
 
 
 def allocate(amount):
+    if amount:
+        yield Allocate(loc(amount), -amount)
+
+
+def manually_allocate(amount):
     l = loc(amount)
     yield LoadStackPointer(l)
     yield Push(l, Address(-amount, l))

@@ -6,46 +6,93 @@
 #include <unistd.h>
 #include <string.h>
 
+#include "bit_hash.h"
+
 // define functions inline or not, gcc will take this as a suggestion (BUT clang WILL FAIL TO LINK)
-#define INLINE inline
+
+#ifdef __clang__
+    #define INLINE
+#else
+    #define INLINE inline
+#endif
 
 #define _type_ long long int
 #define float_type double
-#define vm_index_type unsigned short
 #define WORD_PRINTF_FORMAT "%llu"
 
 #define word_type unsigned _type_
 #define signed_word_type signed _type_
 
 #define page_type word_type
-#define book_type page_type *
-#define shelf_type book_type *
-#define virtual_memory_type shelf_type *
 
-#define word_id_mask ((word_type)(vm_index_type)-1)
-#define page_id_mask (word_id_mask << (8*sizeof(vm_index_type)))
-#define book_id_mask (page_id_mask << (8*sizeof(vm_index_type)))
-#define shelf_id_mask (book_id_mask << (8*sizeof(vm_index_type)))
+#define WORD_INDEX_BIT_SIZE 12
+#define PAGE_INDEX_BIT_SIZE 12
+#define BOOK_INDEX_BIT_SIZE 12
+#define SHELF_INDEX_BIT_SIZE 12
+
+#define NUMBER_OF_WORDS ((word_type)1 << (word_type)WORD_INDEX_BIT_SIZE)
+#define NUMBER_OF_PAGES ((word_type)1 << (word_type)PAGE_INDEX_BIT_SIZE)
+#define NUMBER_OF_BOOKS ((word_type)1 << (word_type)BOOK_INDEX_BIT_SIZE)
+#define NUMBER_OF_SHELVES ((word_type)1 << (word_type)SHELF_INDEX_BIT_SIZE)
+
+
+//#define book_type page_type *
+//#define shelf_type book_type *
+//#define virtual_memory_type shelf_type *
+
+typedef struct book_type {
+    page_type *pages[NUMBER_OF_PAGES];
+    bit_hash_type faults[NUMBER_ELEMENTS(NUMBER_OF_PAGES)];
+} book_type;
+#define pages(book) ((page_type **)book)
+#define page(book, page_id) (*(pages(book) + page_id))
+#define set_page(book, page_id, value) (page(book, page_id) = (value))
+
+typedef struct shelf_type {
+    book_type *books[NUMBER_OF_BOOKS];
+    bit_hash_type faults[NUMBER_ELEMENTS(NUMBER_OF_BOOKS)];
+} shelf_type;
+#define books(shelf) ((book_type **)shelf)
+#define book(shelf, shelf_id) (*(books(shelf) + shelf_id))
+#define set_book(shelf, shelf_id, value) (book(shelf, shelf_id) = (value))
+
+typedef struct virtual_memory_type {
+    shelf_type *shelves[NUMBER_OF_SHELVES];
+    bit_hash_type faults[NUMBER_ELEMENTS(NUMBER_OF_SHELVES)];
+} virtual_memory_type;
+#define shelves(vm) ((shelf_type **)vm)
+#define shelf(vm, shelf_id) (*(shelves(vm) + shelf_id))
+#define set_shelf(vm, shelf_id, value) (shelf(vm, shelf_id) = (value))
+
+#define faults(obj) ((obj)->faults)
+#define fault(obj, index) (bit_value(faults(obj), index))
+#define shelf_fault fault
+#define book_fault fault
+#define page_fault fault
+#define clear_fault(obj, index) (clear_bit_value(faults(obj), index))
+#define clear_shelf_fault clear_fault
+#define clear_book_fault clear_fault
+#define clear_page_fault clear_fault
+
+
+#define word_id_mask (NUMBER_OF_WORDS - 1)
+#define page_id_mask ((NUMBER_OF_PAGES - 1) << WORD_INDEX_BIT_SIZE)
+#define book_id_mask ((NUMBER_OF_BOOKS - 1) << (WORD_INDEX_BIT_SIZE + PAGE_INDEX_BIT_SIZE))
+#define shelf_id_mask ((NUMBER_OF_SHELVES - 1) << (WORD_INDEX_BIT_SIZE + PAGE_INDEX_BIT_SIZE + BOOK_INDEX_BIT_SIZE))
 
 #define word_id(addr)  ( (addr) & word_id_mask)
-#define page_id(addr)  (((addr) & page_id_mask) >> 8*sizeof(vm_index_type))
-#define book_id(addr)  (((addr) & book_id_mask) >> 2*8*sizeof(vm_index_type))
-#define shelf_id(addr) (((addr) & shelf_id_mask) >> 3*8*sizeof(vm_index_type))
+#define page_id(addr)  (((addr) & page_id_mask) >> WORD_INDEX_BIT_SIZE)
+#define book_id(addr)  (((addr) & book_id_mask) >> (WORD_INDEX_BIT_SIZE + PAGE_INDEX_BIT_SIZE))
+#define shelf_id(addr) (((addr) & shelf_id_mask) >> (WORD_INDEX_BIT_SIZE + PAGE_INDEX_BIT_SIZE + BOOK_INDEX_BIT_SIZE))
 
-#define NUMBER_OF_WORDS ((vm_index_type)-1)
-#define NUMBER_OF_PAGES NUMBER_OF_WORDS
-#define NUMBER_OF_BOOKS NUMBER_OF_PAGES
-#define NUMBER_OF_SHELVES NUMBER_OF_BOOKS
 
-INLINE virtual_memory_type *new_virtual_memory(word_type);
-INLINE shelf_type *shelf(virtual_memory_type *vm, word_type addr);
-INLINE book_type *book(shelf_type *shelf, word_type addr);
-INLINE page_type *page(book_type *book, word_type addr);
-
+INLINE virtual_memory_type *new_virtual_memory();
 INLINE void initialiaze_virtual_memory(virtual_memory_type *, word_type *, word_type *, word_type);
 
-
-#define translate_address(vm, addr) (page(book(shelf((vm), (addr)), (addr)), (addr)) + word_id((addr)))
+//word_type __addr;
+//#define translate_address(vm, addr) (page(book(shelf((vm), (addr)), (addr)), (addr)) + word_id((addr)))
+//#define translate_address(vm, addr) ((__addr = (addr)), (page(book(shelf((vm), (__addr)), (__addr)), (__addr)) + word_id((__addr))))
+INLINE word_type *translate_address(virtual_memory_type *vm, word_type addr);
 #define get_word(vm, addr) (*translate_address(vm, addr))
 #define set_word(vm, addr, value) ((get_word(vm, addr)) = (value))
 
@@ -54,5 +101,7 @@ void dealloc_virtual_memory(virtual_memory_type *);
 void dealloc_shelf(shelf_type *);
 void dealloc_book(book_type *);
 void dealloc_page(page_type *);
+
+
 
 #endif

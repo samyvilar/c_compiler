@@ -21,7 +21,7 @@ const word_type _instr_pointer_updates_[] = {
         [SYSTEM_CALL] = 0,
 };
 
-#define inrement_instr_pointer(cpu, instr) (update_instr_pointer(cpu, _instr_pointer_updates_[instr]))
+#define increment_instr_pointer(cpu, instr) (update_instr_pointer(cpu, _instr_pointer_updates_[instr]))
 
 const char *_instr_names_[] = {
         [0 ... 255] = "INVALID INSTRUCTION",
@@ -35,6 +35,9 @@ const char *_instr_names_[] = {
         [SET_BASE_STACK_POINTER] = "SET_BASE_STAC_POINTER",
         [LOAD_STACK_POINTER] = "LOAD_STACK_POINTER",
         [SET_STACK_POINTER] = "SET_STACK_POINTER",
+        [ALLOCATE] = "ALLOCATE",
+        [DUP] = "DUP",
+        [SWAP] = "SWAP",
         [ADD] = "ADD",
         [SUBTRACT] = "SUBTRACT",
         [MULTIPLY] = "MULTIPLY",
@@ -88,21 +91,49 @@ INLINE_FUNC_SIGNATURE(push)  { push_word(operand(cpu, mem, 0), cpu, mem, os); }
 INLINE_FUNC_SIGNATURE(pop)   { (void)pop_word(cpu, mem, os); }
 INLINE_FUNC_SIGNATURE(load)
 {
-    word_type dest = pop_word(cpu, mem, os), amount = operand(cpu, mem, 0);
+    register word_type amount = operand(cpu, mem, 0);
+    register word_type dest = pop_word(cpu, mem, os) + amount;
     while (amount--)
-        push_word(get_word(mem, dest + amount), cpu, mem, os);
+        --dest, push_word(get_word(mem, dest), cpu, mem, os);
 }
 INLINE_FUNC_SIGNATURE(set)
 {
-    word_type dest = pop_word(cpu, mem, os), amount = operand(cpu, mem, 0);
-    word_type stack_ptr = stack_pointer(cpu) + 1;
+    register word_type
+            dest = pop_word(cpu, mem, os),
+            amount = operand(cpu, mem, 0);
+    register word_type stack_ptr = stack_pointer(cpu) + 1;
     while (amount--)
-        set_word(mem, dest, get_word(mem, stack_ptr)), dest++, stack_ptr++;
+        set_word(mem, dest, get_word(mem, stack_ptr)), ++dest, ++stack_ptr;
 }
-INLINE_FUNC_SIGNATURE(load_base_stack_pointer) {    push_word(base_pointer(cpu), cpu, mem, os);     }
-INLINE_FUNC_SIGNATURE(set_base_stack_pointer)  {    set_base_pointer(cpu, pop_word(cpu, mem, os));  }
-INLINE_FUNC_SIGNATURE(load_stack_pointer)      {    push_word(stack_pointer(cpu), cpu, mem, os);    }
-INLINE_FUNC_SIGNATURE(_set_stack_pointer)      {    set_stack_pointer(cpu, pop_word(cpu, mem, os)); }
+INLINE_FUNC_SIGNATURE(load_base_stack_pointer) {    push_word(base_pointer(cpu), cpu, mem, os);      }
+INLINE_FUNC_SIGNATURE(set_base_stack_pointer)  {    set_base_pointer(cpu, pop_word(cpu, mem, os));   }
+INLINE_FUNC_SIGNATURE(load_stack_pointer)      {    push_word(stack_pointer(cpu), cpu, mem, os);     }
+INLINE_FUNC_SIGNATURE(_set_stack_pointer)      {    set_stack_pointer(cpu, pop_word(cpu, mem, os));  }
+INLINE_FUNC_SIGNATURE(_allocate)               {    update_stack_pointer(cpu, operand(cpu, mem, 0)); }
+
+INLINE_FUNC_SIGNATURE(_dup) {
+    register word_type amount = operand(cpu, mem, 0);
+    register word_type addr = amount + stack_pointer(cpu);
+
+    while (amount--)
+            push_word(get_word(mem, addr), cpu, mem, os), --addr;
+}
+
+INLINE_FUNC_SIGNATURE(_swap) {
+    register word_type amount = operand(cpu, mem, 0);
+    register word_type
+            addr = amount + stack_pointer(cpu),
+            total = amount,
+            temp;
+
+    while (total--)
+    {
+        temp = get_word(mem, addr);
+        set_word(mem, addr, get_word(mem, (addr + amount)));
+        set_word(mem, (addr + amount), temp);
+        --addr;
+    }
+}
 
 #define MSB(value) (value  >> (word_type)((8*sizeof(word_type)) - 1))
 #define BINARY_INTEGRAL_INSTRUCTION(name, _o_) \
@@ -152,9 +183,9 @@ INLINE_FUNC_SIGNATURE(_not) { push_word(~pop_word(cpu, mem, os), cpu, mem, os); 
 
 #define BINARY_FLOATING_INSTRUCTION(name, _o_) INLINE_FUNC_SIGNATURE(name) \
 {  \
-    float_type oper_2 = word_as_float(pop_word(cpu, mem, os)), oper_1 = word_as_float(pop_word(cpu, mem, os)); \
-    float_type result = oper_1 _o_ oper_2; \
-    push_word(*(word_type *)&result, cpu, mem, os); \
+    register float_type oper_2 = word_as_float(pop_word(cpu, mem, os)), oper_1 = word_as_float(pop_word(cpu, mem, os)); \
+    register float_type result = oper_1 _o_ oper_2; \
+    push_word(float_as_word(result), cpu, mem, os); \
     set_zero_flag(cpu, result == 0.0); \
     set_most_significant_bit_flag(cpu, result < 0.0); \
 }
@@ -189,7 +220,7 @@ INLINE_FUNC_SIGNATURE(jump_true)  {
     update_instr_pointer(cpu, (pop_word(cpu, mem, os) ? operand(cpu, mem, 0) : INSTR_SIZE(JUMP_TRUE)));
 }
 INLINE_FUNC_SIGNATURE(jump_table)  {
-    word_type
+    register word_type
             number_of_cases = operand(cpu, mem, 0),
             default_offset = operand(cpu, mem, 1),
             value = pop_word(cpu, mem, os),
@@ -199,12 +230,15 @@ INLINE_FUNC_SIGNATURE(jump_table)  {
     {
         if (get_word(mem, cases) == value)
         {
-            default_offset = get_word(mem, cases + 1);
+            ++cases;
+            default_offset = get_word(mem, cases);
             break ;
         }
-        cases += 2;
+        else
+            ++cases;
+        ++cases;
     }
-    set_instr_pointer(cpu, instr_pointer(cpu) + default_offset);
+    update_instr_pointer(cpu, default_offset);
 }
 INLINE_FUNC_SIGNATURE(load_zero_flag) {  push_word(zero_flag(cpu), cpu, mem, os);  }
 INLINE_FUNC_SIGNATURE(load_carry_borrow_flag) {  push_word(carry_borrow_flag(cpu), cpu, mem, os); }
@@ -223,6 +257,9 @@ FUNC_SIGNATURE((*instrs[256])) = {
         [SET_BASE_STACK_POINTER] = set_base_stack_pointer,
         [LOAD_STACK_POINTER] = load_stack_pointer,
         [SET_STACK_POINTER] = _set_stack_pointer,
+        [ALLOCATE] = _allocate,
+        [DUP] = _dup,
+        [SWAP] = _swap,
         [ADD] = _add,
         [SUBTRACT] = _sub,
         [MULTIPLY] = _mult,
@@ -259,6 +296,6 @@ INLINE_FUNC_SIGNATURE(evaluate) {
     {
         instr_id = (unsigned char)get_word(mem, instr_pointer(cpu));
         instrs[instr_id](cpu, mem, os);
-        inrement_instr_pointer(cpu, instr_id);
+        increment_instr_pointer(cpu, instr_id);
     } while (instr_id != HALT);
 }

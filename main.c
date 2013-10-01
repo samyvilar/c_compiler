@@ -632,8 +632,8 @@ int main()
     for(i=100000; i>=0; i-- )
     {
         insert_bottom( o, p(i) );
-        if (!(i % 1000))
-            printf("%i-", i);
+        //if (!(i % 1000))
+        //    printf("%i-", i);
     }
     printf("done inserting ...\n");
     for(i=100001; i< 300007; i+=2 )

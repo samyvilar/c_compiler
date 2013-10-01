@@ -1,14 +1,17 @@
 /*****************************************************************************************************
   * Four level paged virtual memory ... shelf -> Book -> Page -> Word
   *
-  * we can either use % / + => (addr / TOTAL_SIZE) + (addr % TOTAL_SIZE) to calculate each offset but
-  * the % and / are quite expensive, so we'll just segment the address ino 4 two byte offsets
+  * we can either use % / + => (addr / UNIT_SIZE) + (addr % UNIT_SIZE) to calculate each offset but
+  * the % and / are quite expensive, so we'll just segment the address ino 4:
+  * assuming 64 bit address: two byte offsets
+  * assuming 32 bit address: one byte offsets
   * where:
-  * the first two bytes is the word index or id,
-  * the second two bytes is the page index or id,
-  * the third two bytes is the book index or id,
-  * the fourth two bytes is the shelf index or id ...
-  * this may be faster/simpler but a shelf fault will consume, at a minimum, 8*2**16 = 524288 Byte overhead ...
+  * the first offset is the word index
+  * the second offset is the page index
+  * the third offset is the book index
+  * the fourth offset is the shelf index
+  * this may be faster/simpler but a shelf fault will consume, at a minimum,
+  * 8*2**16 = 524288 bytes overhead or (4*2**8 = 1024 bytes)
   * not to mention making random access a complete disaster since it would generate fault after fault but
   * a fault would most probably halt the machine ... on average the stack and heap move continuously in each
   * of their perspective directions ...
@@ -16,46 +19,16 @@
 #include <stdio.h>
 #include "virtual_memory.h"
 
-INLINE virtual_memory_type *new_virtual_memory(word_type shelf_size) {
-    return calloc(shelf_size, sizeof(shelf_type *));
+#define NEW(func_name, obj_type, quantity) INLINE obj_type* func_name() { \
+    obj_type *temp = malloc(sizeof(obj_type));      \
+    set_all_bits(faults(temp), quantity);           \
+    return temp;    \
 }
 
-#define malloc sbrk
-#define calloc(quantity, size) (memset(malloc(quantity * size), 0, quantity * size))
-// allocate space for the addresses of the shelves, this should only be called once for each cpu or process
-//#define new_virtual_memory(quantity) calloc(quantity, sizeof(shelf_type *))
-#define new_shelf(quantity) calloc(quantity, sizeof(book_type *))
-#define new_book(quantity) calloc(quantity, sizeof(page_type *))
-#define new_page(quantity) malloc(quantity * sizeof(word_type)) // no need to (costly) zero out the actual page ...
-#undef malloc
-#undef calloc
-
-INLINE shelf_type *shelf(virtual_memory_type *vm, word_type addr)
-{
-    shelf_type **curr_shelf = (vm + shelf_id(addr));  // vm is a list of shelve pointers ...
-    if (!*curr_shelf)  // shelf fault, no shelf has being allocated for this address so allocate a new one ...
-        *curr_shelf = new_shelf(NUMBER_OF_BOOKS);
-    return *curr_shelf; // return base address of shelf ...
-}
-//#define shelf(vm, addr) (*(vm + shelf_id(addr)) ? *(vm + shelf_id(addr)) : (*(vm + shelf_id(addr)) = new_shelf(NUMBER_OF_BOOKS)))
-
-INLINE book_type *book(shelf_type *shelf, word_type addr)
-{
-    book_type **curr_book = (shelf + book_id(addr));  // a shelf is a list of book pointers ...
-    if (!*curr_book) // book fault ...
-        *curr_book = new_book(NUMBER_OF_PAGES);
-    return *curr_book;
-}
-//#define book(shelf, addr) (*(shelf + book_id(addr)) ? *(shelf + book_id(addr)) : (*(shelf + book_id(addr)) = new_book(NUMBER_OF_PAGES)))
-
-INLINE page_type *page(book_type *book, word_type addr)
-{
-    page_type **curr_page = (book + page_id(addr)); // a book is a list of page pointers ...
-    if (!*curr_page)  // page fault ...
-        *curr_page = new_page(NUMBER_OF_WORDS);
-    return *curr_page;
-}
-//#define page(book, addr) (*(book + page_id(addr)) ? *(book + page_id(addr)) : (*(book + page_id(addr)) = new_page(NUMBER_OF_WORDS)))
+NEW(new_virtual_memory, virtual_memory_type, NUMBER_OF_SHELVES)
+NEW(new_shelf, shelf_type, NUMBER_OF_SHELVES)
+NEW(new_book, book_type, NUMBER_OF_PAGES)
+#define new_page() malloc(NUMBER_OF_WORDS * sizeof(word_type))
 
 
 INLINE void _set_word_(virtual_memory_type *mem, word_type address, word_type value) {
@@ -70,3 +43,46 @@ void initialize_virtual_memory(virtual_memory_type *mem, word_type *address, wor
     while (amount--)
         set_word(mem, *address, *values), ++address, ++values;
 }
+
+
+#ifndef translate_address
+INLINE word_type *translate_address(virtual_memory_type *vm, word_type addr)
+{
+    register word_type
+        _shelf_id = shelf_id(addr),
+        _book_id = book_id(addr),
+        _page_id = page_id(addr),
+        _word_id = word_id(addr);
+
+    shelf_type *_shelf;
+    book_type *_book;
+    page_type *_page;
+
+    if (shelf_fault(vm, _shelf_id))
+    {
+        _shelf = set_shelf(vm, _shelf_id, new_shelf());
+        clear_shelf_fault(vm, _shelf_id);
+    }
+    else
+        _shelf = shelf(vm, _shelf_id);
+
+    if (book_fault(_shelf, _book_id))
+    {
+        _book = set_book(_shelf, _book_id, new_book());
+        clear_book_fault(_shelf, _book_id);
+    }
+    else
+        _book = book(_shelf, _book_id);
+
+
+    if (page_fault(_book, _page_id))
+    {
+        _page = set_page(_book, _page_id, new_page());
+        clear_page_fault(_book, _page_id);
+    }
+    else
+        _page = page(_book, _page_id);
+
+    return _page + _word_id;
+}
+#endif

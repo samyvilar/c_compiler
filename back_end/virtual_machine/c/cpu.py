@@ -3,15 +3,16 @@ __author__ = 'samyvilar'
 # raise ImportError
 import os
 import sys
-from ctypes import c_ulonglong, c_uint, Structure, POINTER, CDLL, CFUNCTYPE, byref, c_int, c_char_p, c_void_p, c_float, c_double
+from ctypes import c_ulonglong, c_uint, Structure, POINTER, CDLL, CFUNCTYPE, byref, c_int, c_char_p, c_void_p
+from ctypes import c_float, c_double
 from ctypes import pythonapi, py_object
 from struct import pack, unpack
 
 
 word_type, word_format = c_ulonglong, 'Q'
 float_type, float_format = c_double, 'd'
-#word_type, word_format = c_uint, 'I'
-#float_type, float_format = c_float, 'f'
+# word_type, word_format = c_uint, 'I'
+# float_type, float_format = c_float, 'f'
 libvm = CDLL(os.path.join(os.path.dirname(__file__), 'libvm.so'))
 
 
@@ -28,10 +29,8 @@ class CPU(Structure):
         self.stack_pointer = word_type(-1)
         self.base_pointer = word_type(-1)
 
-page_type = word_type
-book_type = POINTER(word_type)
-shelf_type = POINTER(book_type)
-virtual_memory_type = POINTER(shelf_type)
+
+virtual_memory_type = None
 
 
 class FILE(Structure):
@@ -65,6 +64,7 @@ libvm.new_file_node.restype = POINTER(file_node_type)
 libvm.fdopen.argtypes = [c_int, c_char_p]
 libvm.fdopen.restype = c_void_p
 
+
 class Kernel(object):
     def __init__(self, calls=None, c_kernel_pointer=None):
         self.c_kernel_p = c_kernel_pointer or libvm.new_kernel(None, None, None)
@@ -92,10 +92,7 @@ class Kernel(object):
             )
 
 libvm.evaluate.argtypes = [POINTER(CPU), POINTER(virtual_memory_type), POINTER(kernel_type)]
-libvm.initialize_virtual_memory.argtypes = [
-    POINTER(virtual_memory_type), POINTER(word_type), POINTER(word_type), word_type
-]
-libvm.new_virtual_memory.argtypes = [word_type]
+libvm.new_virtual_memory.argtypes = []
 libvm.new_virtual_memory.restype = POINTER(virtual_memory_type)
 
 # kernel_type *new_kernel(FUNC_SIGNATURE((*sys_calls[256])), file_node_type *opened_files, virtual_memory_type *mem)

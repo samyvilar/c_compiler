@@ -18,6 +18,7 @@ from back_end.virtual_machine.instructions.architecture import AbsoluteJump
 from back_end.virtual_machine.instructions.architecture import RelativeJump, JumpTrue, JumpFalse, JumpTable
 from back_end.virtual_machine.instructions.architecture import LoadBaseStackPointer, LoadStackPointer, Load, Set
 from back_end.virtual_machine.instructions.architecture import SetBaseStackPointer, SetStackPointer, SystemCall, operns
+from back_end.virtual_machine.instructions.architecture import Allocate, Dup, Swap
 
 
 logger = logging.getLogger('virtual_machine')
@@ -209,6 +210,23 @@ def set_stack_pointer(instr, cpu, mem, _):
     cpu.stack_pointer = pop(cpu, mem)
 
 
+def _allocate(instr, cpu, mem, _):
+    cpu.stack_pointer += operns(instr)[0]
+
+
+def _dup(instr, cpu, mem, _):
+    for addr in xrange(cpu.stack_pointer + operns(instr)[0], cpu.stack_pointer, -1):
+        push(mem[addr], cpu, mem)
+
+
+def _swap(instr, cpu, mem, _):
+    amount = operns(instr)[0]
+    for addr in xrange(cpu.stack_pointer + operns(instr)[0], cpu.stack_pointer, -1):
+        temp = mem[addr]
+        mem[addr] = mem[addr + amount]
+        mem[addr + amount] = temp
+
+
 def _load(instr, cpu, mem, _):
     addr, quantity = pop(cpu, mem), operns(instr)[0]
     for index in reversed(xrange(addr, addr + quantity)):
@@ -236,7 +254,7 @@ def system_call(instr, cpu, mem, os):
 def instr_size(instr):
     return instr_size.rules[type(instr)]
 instr_size.rules = {instr: 1 for instr in no_operand_instr_ids}  # default all instructions to 1
-instr_size.rules.update((instr, 2) for instr in wide_instr_ids)  # wide instructions ar 2
+instr_size.rules.update((instr, 2) for instr in wide_instr_ids)  # wide instructions are 2
 
 
 def instr_pointer_update(instr):
@@ -269,6 +287,10 @@ evaluate.rules = {
     SetBaseStackPointer: set_base_pointer,
     LoadStackPointer: load_stack_pointer,
     SetStackPointer: set_stack_pointer,
+
+    Allocate: _allocate,
+    Dup: _dup,
+    Swap: _swap,
 
     Load: _load,
     Set: _set,

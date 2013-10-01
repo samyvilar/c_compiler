@@ -17,6 +17,10 @@
 #define LOAD_STACK_POINTER 8
 #define SET_STACK_POINTER 248 // -8
 
+#define ALLOCATE 9
+#define DUP 5
+#define SWAP 6
+
 #define ADD 11
 #define SUBTRACT 245 // -11
 
@@ -91,7 +95,10 @@ typedef struct cpu_type {
     [SET] = WIDE_INSTRUCTION_SIZE, \
     [JUMP_FALSE] = WIDE_INSTRUCTION_SIZE, \
     [JUMP_TRUE] = WIDE_INSTRUCTION_SIZE, \
-    [RELATIVE_JUMP] = WIDE_INSTRUCTION_SIZE
+    [RELATIVE_JUMP] = WIDE_INSTRUCTION_SIZE, \
+    [ALLOCATE] = WIDE_INSTRUCTION_SIZE, \
+    [DUP] = WIDE_INSTRUCTION_SIZE, \
+    [SWAP] = WIDE_INSTRUCTION_SIZE
 
 #define operand(cpu, mem, operand_index) get_word(mem, (instr_pointer(cpu) + INSTR_SIZE(PASS)) + operand_index)
 

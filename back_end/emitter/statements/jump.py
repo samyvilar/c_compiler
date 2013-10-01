@@ -10,6 +10,7 @@ from front_end.parser.ast.statements import LabelStatement
 from front_end.parser.types import c_type, void_pointer_type, VoidType
 
 from back_end.virtual_machine.instructions.architecture import Push, Address, AbsoluteJump, Pass, RelativeJump, allocate
+from back_end.virtual_machine.instructions.architecture import manually_allocate
 from back_end.virtual_machine.instructions.architecture import LoadBaseStackPointer, Integer, Set, Load, Add, Subtract
 from back_end.emitter.c_types import size
 
@@ -88,7 +89,7 @@ def goto_statement(stmnt, symbol_table, stack, *_):
             (RelativeJump(loc(stmnt), Address(instr, loc(stmnt))),)
         )
     else:  # Label has yet to be defined ...
-        _load_sp, _push, _add, _set_st = allocate(Address(None, loc(stmnt)))
+        _load_sp, _push, _add, _set_st = manually_allocate(Address(None, loc(stmnt)))
         # Allocate negates the amount since it calls add
         # TODO, update allocate so it doesn't negate but calls slightly slower sub
 
