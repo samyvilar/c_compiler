@@ -18,7 +18,8 @@ float_type, float_format = c_double, 'd'
 # float_type, float_format = c_float, 'f'
 try:
     libvm = CDLL(os.path.join(os.path.dirname(__file__), 'libvm.so'))
-except OSError as _:
+except OSError as er:
+    logger.warning(er)
     logger.warning("Could not load C virtual machine, please run make or make build-icc at back_end/virtual_machine/c")
     raise ImportError
 
