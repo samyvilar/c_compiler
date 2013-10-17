@@ -13,7 +13,12 @@ word_type, word_format = c_ulonglong, 'Q'
 float_type, float_format = c_double, 'd'
 # word_type, word_format = c_uint, 'I'
 # float_type, float_format = c_float, 'f'
-libvm = CDLL(os.path.join(os.path.dirname(__file__), 'libvm.so'))
+try:
+    libvm = CDLL(os.path.join(os.path.dirname(__file__), 'libvm.so'))
+except OSError as _:
+    print("Could not locate C virtual machine, reverting to SLOWER python based virtual machine.\n" +
+          "Please run make or make build-icc withing back_end/virtual_machine/c")
+    raise ImportError
 
 
 class frame_type(Structure):
