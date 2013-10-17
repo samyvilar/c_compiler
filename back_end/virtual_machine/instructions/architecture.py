@@ -242,7 +242,7 @@ class JumpTable(RelativeJump, VariableLengthInstruction):
 
         value.key_indices = {1: 'default'}
         value.key_indices.update(  # indices of operands ...
-            (index, addr) for index, addr in enumerate((cases[key] for key in _sorted_keys), 2 + len(cases))
+            (index, addr) for index, addr in enumerate(_sorted_keys, 2 + len(cases))
         )
         cases['default'] = default_addr  # add back default
         value.cases = cases
