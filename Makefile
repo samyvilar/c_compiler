@@ -1,3 +1,4 @@
+.PHONY: all test clean stdlib
 
 all: stdlib
 
@@ -6,8 +7,6 @@ stdlib:
 
 test:
 		nosetests
-		./test_cpu
-		rm test_cpu
 
 clean:
 		rm stdlib/libs/libc.p
