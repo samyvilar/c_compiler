@@ -1,7 +1,7 @@
 #! /usr/bin/python
 __author__ = 'samyvilar'
 
-import argparse
+from optparse import OptionParser
 
 try:
     import cPickle as pickle
@@ -23,12 +23,11 @@ def start(instrs):
 
 
 def main():
-    cli = argparse.ArgumentParser(description='Object Based Virtual Machine')
-    cli.add_argument('binary_file', nargs=1, help='Executable file (pickled list of Instruction of objects...)')
-
-    args = cli.parse_args()
-
-    with open(args.binary_file[0]) as input_file:
+    cli = OptionParser()
+    options, files = cli.parse_args()
+    assert len(files) == 1
+    bin_file = files[0]
+    with open(bin_file) as input_file:
         instrs = pickle.load(input_file)
 
     start(instrs)
