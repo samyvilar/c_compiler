@@ -621,7 +621,7 @@ int is_before(ordered_set_tree_node_type *tree, key_type key_a, key_type key_b)
 }
 
 typedef ordered_set_tree_node_type o_t;
-typedef key_type key_t;
+#define key_t key_type;
 
 
 long int p(long int q)
