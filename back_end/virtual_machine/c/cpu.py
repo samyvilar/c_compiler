@@ -8,6 +8,9 @@ from ctypes import c_float, c_double
 from ctypes import pythonapi, py_object
 from struct import pack, unpack
 
+from logging_config import logging
+
+logger = logging.getLogger('virtual_machine')
 
 word_type, word_format = c_ulonglong, 'Q'
 float_type, float_format = c_double, 'd'
@@ -16,8 +19,7 @@ float_type, float_format = c_double, 'd'
 try:
     libvm = CDLL(os.path.join(os.path.dirname(__file__), 'libvm.so'))
 except OSError as _:
-    print("Could not locate C virtual machine, reverting to SLOWER python based virtual machine.\n" +
-          "Please run make or make build-icc withing back_end/virtual_machine/c")
+    logger.warning("Could not load C virtual machine, please run make or make build-icc at back_end/virtual_machine/c")
     raise ImportError
 
 

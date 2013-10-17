@@ -326,4 +326,4 @@ class VirtualMemory(defaultdict):
 try:
     from back_end.virtual_machine.c.cpu import c_evaluate as evaluate, CPU, VirtualMemory, Kernel
 except ImportError as er:
-    print 'Failed to import C implementations, reverting to Python'
+    logger.warning('Failed to import C implementations, reverting to Python')
