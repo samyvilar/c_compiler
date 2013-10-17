@@ -1,47 +1,50 @@
+#include <stdlib.h>
 #include <stdio.h>
+#include "fast_vm.h"
+#include "cpu.h"
 #include "kernel.h"
 
 #define parameter(index, cpu, mem) get_word(mem, base_pointer(cpu) + 3 + index)
 
-INLINE file_node_type *file_node(file_node_type *opened_files, word_type file_id, virtual_memory_type *mem)
+INLINE file_node_type *file_node(file_node_type *opened_files, word_type file_id, struct virtual_memory_type *mem)
 {
     while (opened_files && file_id(opened_files) != file_id)
-        opened_files = next(opened_files);
+        opened_files = next_file_node(opened_files);
     return opened_files;
 }
 
 
-INLINE int is_file_opened(file_node_type *opened_files, word_type file_id, virtual_memory_type *mem)
+INLINE int is_file_opened(file_node_type *opened_files, word_type file_id, struct virtual_memory_type *mem)
 {
     while (opened_files && file_id(opened_files) != file_id)
-        opened_files = next(opened_files);
+        opened_files = next_file_node(opened_files);
     return opened_files ? file_id(opened_files) == file_id : 0;
 }
 
-INLINE file_node_type *new_file_node(virtual_memory_type *mem, word_type file_id, FILE *file_pointer, file_node_type *next)
+INLINE file_node_type *new_file_node(struct virtual_memory_type *mem, word_type file_id, FILE *file_pointer, file_node_type *next)
 {
     file_node_type *new_file = malloc(sizeof(file_node_type)); // TODO:
     set_file_id(new_file, file_id);
     set_file_pointer(new_file, file_pointer);
-    set_next(new_file, next);
+    set_next_file_node(new_file, next);
     return new_file;
 }
 
 
 #define free_file_node free
 
-INLINE file_node_type *remove_file(file_node_type *opened_files, word_type file_id, virtual_memory_type *mem)
+INLINE file_node_type *remove_file(file_node_type *opened_files, word_type file_id, struct virtual_memory_type *mem)
 {   // assumes that the file_id is withing the link list and isn't the first node ...
     // return pointer to removed node ...
     file_node_type *node;
-    while (file_id(next(opened_files)) != file_id)  // search for the previous file ...
-        opened_files = next(opened_files);
-    set_next(opened_files, next((node = next(opened_files))));
+    while (file_id(next_file_node(opened_files)) != file_id)  // search for the previous file ...
+        opened_files = next_file_node(opened_files);
+    set_next_file_node(opened_files, next_file_node((node = next_file_node(opened_files))));
     return node;
 }
 
 
-static INLINE char *set_str(word_type addr, virtual_memory_type *mem, char *buffer, word_type max_length)
+static INLINE char *set_str(word_type addr, struct virtual_memory_type *mem, char *buffer, word_type max_length)
 {
     while (max_length-- && (*buffer++ = (char)get_word(mem, addr)))
         ++addr;
@@ -55,7 +58,7 @@ static INLINE char *set_str(word_type addr, virtual_memory_type *mem, char *buff
 //}
 
 
-INLINE void _return_(word_type value, cpu_type *cpu, virtual_memory_type *mem)
+INLINE void _return_(word_type value, struct cpu_type *cpu, struct virtual_memory_type *mem)
 {
     // set return value ...
     set_word(mem, get_word(mem, base_pointer(cpu) + 2), value);
@@ -110,7 +113,7 @@ INLINE_FUNC_SIGNATURE(__close__) {
         {
             file_node_type *node;
             if (file_id(opened_files(os)) == file_id)  // if removing last added file just update
-                set_opened_files(os, next(next((node = opened_files(os)))));
+                set_opened_files(os, next_file_node(next_file_node((node = opened_files(os)))));
             else  // file has being opened but isn't the initial, so safe to call remove_file ...
                 node = remove_file(opened_files(os), file_id, mem);
             fflush(file_pointer(node));
@@ -200,7 +203,7 @@ INLINE_FUNC_SIGNATURE(__exit__) {
         // close all non std opened files ...
         if (file_id(files) != SYS_STD_IN && file_id(files) != SYS_STD_OUT && file_id(files) != SYS_STD_ERROR)
             fclose(file_pointer(files));
-        files = next(files);
+        files = next_file_node(files);
     }
     set_word(mem, (word_type)-1, exit_status);
     set_stack_pointer(cpu, -1);  // reset the stack
@@ -208,7 +211,7 @@ INLINE_FUNC_SIGNATURE(__exit__) {
     set_word(mem, instr_pointer(cpu), HALT); // update next instruction so machine halts ...
 }
 
-INLINE struct kernel_type *new_kernel(FUNC_SIGNATURE((*sys_calls[256])), file_node_type *opened_files, virtual_memory_type *mem)
+INLINE struct kernel_type *new_kernel(FUNC_SIGNATURE((*sys_calls[256])), file_node_type *opened_files, struct virtual_memory_type *mem)
 {
     struct kernel_type *kernel = malloc(sizeof(struct kernel_type));
 

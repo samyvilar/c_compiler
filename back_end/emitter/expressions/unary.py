@@ -32,9 +32,7 @@ def inc_dec(value, expr, symbol_table, expression_func):
 
 
 def size_of(expr, *_):
-    yield Push(loc(expr), size(
-        (isinstance(exp(expr), CType) and exp(expr)) or c_type(exp(expr))
-    ))
+    yield Push(loc(expr), Integer(size((isinstance(exp(expr), CType) and exp(expr)) or c_type(exp(expr))), loc(expr)))
 
 
 def address_of(expr, symbol_table, expression_func):

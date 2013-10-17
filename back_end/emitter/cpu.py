@@ -14,11 +14,11 @@ from back_end.virtual_machine.instructions.architecture import AddFloat, Subtrac
 from back_end.virtual_machine.instructions.architecture import And, Or, Xor, Not, ShiftLeft, ShiftRight
 from back_end.virtual_machine.instructions.architecture import ConvertToInteger, ConvertToFloat
 from back_end.virtual_machine.instructions.architecture import LoadZeroFlag, LoadMostSignificantBit, LoadCarryBorrowFlag
-from back_end.virtual_machine.instructions.architecture import AbsoluteJump
+from back_end.virtual_machine.instructions.architecture import AbsoluteJump, LoadInstructionPointer
 from back_end.virtual_machine.instructions.architecture import RelativeJump, JumpTrue, JumpFalse, JumpTable
 from back_end.virtual_machine.instructions.architecture import LoadBaseStackPointer, LoadStackPointer, Load, Set
 from back_end.virtual_machine.instructions.architecture import SetBaseStackPointer, SetStackPointer, SystemCall, operns
-from back_end.virtual_machine.instructions.architecture import Allocate, Dup, Swap
+from back_end.virtual_machine.instructions.architecture import Allocate, Dup, Swap, PushFrame, PopFrame
 
 
 logger = logging.getLogger('virtual_machine')
@@ -90,9 +90,9 @@ def convert_to_float(oper1):
 def bin_arithmetic(instr, cpu, mem):
     oper2, oper1 = pop(cpu, mem), pop(cpu, mem)
      # make sure emitter doesn't generate instr that mixes types.
-    if not (isinstance(oper1, (int, long)) and isinstance(oper2, (int, long)) or
-            isinstance(oper1, float) and isinstance(oper2, float)):
-        raise ValueError('Bad operands!')
+    # if not (isinstance(oper1, (int, long)) and isinstance(oper2, (int, long)) or
+    #         isinstance(oper1, float) and isinstance(oper2, float)):
+    #     raise ValueError('Bad operands!')
     result = bin_arithmetic.rules[type(instr)](oper1, oper2)
     if isinstance(instr, (Add, AddFloat, Subtract, SubtractFloat, Multiply, MultiplyFloat, Divide, DivideFloat)):
         cpu.most_significant_bit_flag = cpu.carry_borrow_flag = int(result < 0)
@@ -140,19 +140,19 @@ def abs_jump(instr, cpu, mem):
 
 
 def rel_jump(instr, cpu, mem):
-    _jump(cpu.instr_pointer + operns(instr)[0], cpu, mem)
+    _jump(cpu.instr_pointer + operns(instr)[0] + instr_size(instr), cpu, mem)
 
 
 def jump_if_true(instr, cpu, mem):
-    _jump(cpu.instr_pointer + (operns(instr)[0] if pop(cpu, mem) else instr_size(instr)), cpu, mem)
+    _jump(cpu.instr_pointer + ((operns(instr)[0] + instr_size(instr)) if pop(cpu, mem) else instr_size(instr)), cpu, mem)
 
 
 def jump_if_false(instr, cpu, mem):
-    _jump(cpu.instr_pointer + (operns(instr)[0] if not pop(cpu, mem) else instr_size(instr)), cpu, mem)
+    _jump(cpu.instr_pointer + ((operns(instr)[0] + instr_size(instr)) if not pop(cpu, mem) else instr_size(instr)), cpu, mem)
 
 
 def jump_table(instr, cpu, mem):
-    _jump(cpu.instr_pointer + instr.cases.get(pop(cpu, mem), instr.cases['default']), cpu, mem)
+    _jump(cpu.instr_pointer + instr.cases.get(pop(cpu, mem), instr.cases['default']) + 2, cpu, mem)
 
 
 def jump(instr, cpu, mem, _):
@@ -170,30 +170,6 @@ def _pass(instr, cpu, *_):
     pass
 
 
-# def _dup(instr, cpu, mem):
-#     load_stack_pointer(instr, cpu, mem)
-#     push(Address(1, loc(instr)), cpu, mem)
-#     expr(Add(), cpu, mem)
-#     _load(Load(loc(instr), operns(instr)[0]), cpu, mem)
-#
-#
-# def _swap(instr, cpu, mem):
-#     _dup(Dup(loc(instr), operns(instr)[0]), cpu, mem)  # duplicate initial value ...
-#
-#     load_stack_pointer(instr, cpu, mem)  # load second value ...
-#     address_offset = Address(1 + 2 * operns(instr)[0], loc(instr))
-#     _push(Push(loc(instr), address_offset), cpu, mem)  # skip the two values.
-#     expr(Add(), cpu, mem)
-#     _load(Load(loc(instr), operns(instr)[0]), cpu, mem)
-#
-#     load_stack_pointer(instr, cpu, mem)  # calculate destination address ...
-#     _push(Push(loc(instr), address_offset), cpu, mem)
-#     expr(Add(), cpu, mem)
-#
-#     _set(Set(loc(instr), Integer(2 * operns(instr)[0], loc(instr))), cpu, mem)  # copy swap values to orig location
-#     allocate(Allocate(loc(instr), Integer(-1 * 2 * operns(instr)[0], loc(instr))), cpu, mem)  # deallocate copies ...
-
-
 def load_base_pointer(instr, cpu, mem, _):
     push(cpu.base_pointer, cpu, mem)
 
@@ -208,6 +184,10 @@ def load_stack_pointer(instr, cpu, mem, _):
 
 def set_stack_pointer(instr, cpu, mem, _):
     cpu.stack_pointer = pop(cpu, mem)
+
+
+def load_instr_pointer(instr, cpu, mem, _):
+    push(cpu.instr_pointer + instr_size(instr), cpu, mem)
 
 
 def _allocate(instr, cpu, mem, _):
@@ -247,6 +227,14 @@ def _pop(instr, cpu, mem, _):
     return pop(cpu, mem)
 
 
+def _push_frame(instr, cpu, mem, _):
+    cpu.frames.append((cpu.base_pointer, cpu.stack_pointer))
+
+
+def _pop_frame(instr, cpu, mem, _):
+    cpu.base_pointer, cpu.stack_pointer = cpu.frames.pop()
+
+
 def system_call(instr, cpu, mem, os):
     os.calls[pop(cpu, mem)](cpu, mem, os)
 
@@ -255,6 +243,7 @@ def instr_size(instr):
     return instr_size.rules[type(instr)]
 instr_size.rules = {instr: 1 for instr in no_operand_instr_ids}  # default all instructions to 1
 instr_size.rules.update((instr, 2) for instr in wide_instr_ids)  # wide instructions are 2
+instr_size.rules[JumpTable] = 2
 
 
 def instr_pointer_update(instr):
@@ -270,7 +259,6 @@ def evaluate(cpu, mem, os=None):
 
     while not isinstance(instr, Halt):
         instr = mem[cpu.instr_pointer]
-        # print loc(instr), cpu.instr_pointer, instr
         evaluate.rules[type(instr)](instr, cpu, mem, os)
         cpu.instr_pointer += instr_pointer_update(instr)
 evaluate.rules = {
@@ -288,9 +276,14 @@ evaluate.rules = {
     LoadStackPointer: load_stack_pointer,
     SetStackPointer: set_stack_pointer,
 
+    LoadInstructionPointer: load_instr_pointer,
+
     Allocate: _allocate,
     Dup: _dup,
     Swap: _swap,
+
+    PushFrame: _push_frame,
+    PopFrame: _pop_frame,
 
     Load: _load,
     Set: _set,
@@ -315,6 +308,7 @@ class CPU(object):
         self.instr_pointer = 0
         self.zero_flag, self.carry_borrow_flag, self.most_significant_bit_flag = 0, 0, 0
         self._stack_pointer, self.base_pointer = -1, -1
+        self.frames = []
 
     @property
     def stack_pointer(self):
@@ -323,8 +317,6 @@ class CPU(object):
     @stack_pointer.setter
     def stack_pointer(self, value):
         self._stack_pointer = value
-        if self._stack_pointer > 0:
-            raise ValueError('stack pointer cannot be positive got {g}'.format(g=self._stack_pointer))
 
 
 class VirtualMemory(defaultdict):

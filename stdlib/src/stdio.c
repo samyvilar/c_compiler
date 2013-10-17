@@ -205,7 +205,7 @@ int printf(const char *format, ...)
     char temp[128];
     char *str;
     int base = 10;
-    unsigned long long total = 0;
+    unsigned long long int total = 0;
 
     #define NUMERIC_CASES(default_type, func) \
         case 'i': case 'd': total += _puts(func(va_arg(args, default_type), temp, 10)); break ; \
@@ -215,7 +215,7 @@ int printf(const char *format, ...)
         case 'u': total += _puts(func(va_arg(args, unsigned default_type) , temp, -10)); break ; \
         default: _error_unknown_specifier(*format); return total;
 
-    #define _error_unknown_specifier(format) printf("Unknown Specifier found: %c", format);
+    #define _error_unknown_specifier(format) printf("Unknown Specifier found!"), exit(-1);
     #define _puts(values) fputs(values, &stdout)
     while (*format)
     {
@@ -241,9 +241,14 @@ int printf(const char *format, ...)
                 // default specifiers no length ...
                 case '%': putchar(*format); ++total; break ;
                 case 'c': putchar(va_arg(args, int)); ++total; break ;
-                case 's': total += _puts(va_arg(args, char *)); break ;
+                case 's':
+                    total += _puts(va_arg(args, char *)); break ;
+
                 case 'p': total += _puts("0x"); total += _puts(lltoa(va_arg(args, void *), temp, 16)); break ;
-                case 'F': case 'f': total += _puts(float_to_string(va_arg(args, double), temp)); break ;
+
+                case 'F':
+                case 'f':
+                    total += _puts(float_to_string(va_arg(args, double), temp)); break ;
 
                 NUMERIC_CASES(int, itoa)
             }
@@ -254,6 +259,7 @@ int printf(const char *format, ...)
         }
         else
             putchar(*format), ++total;
+
         ++format;
     }
 

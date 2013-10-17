@@ -7,9 +7,10 @@ from front_end.loader.locations import loc
 from front_end.parser.symbol_table import push, pop
 from front_end.parser.ast.expressions import exp
 from front_end.parser.ast.statements import IfStatement, SwitchStatement, CaseStatement, DefaultStatement
+from front_end.parser.types import CharType, ShortType, IntegerType, LongType, c_type
 
 from back_end.emitter.expressions.expression import expression
-from back_end.virtual_machine.instructions.architecture import Pass, JumpFalse, Address, JumpTable, RelativeJump
+from back_end.virtual_machine.instructions.architecture import Pass, JumpFalse, Address, RelativeJump, jump_table
 from back_end.virtual_machine.instructions.architecture import Integer
 
 from back_end.emitter.statements.jump import update_stack
@@ -52,11 +53,10 @@ def switch_statement(stmnt, symbol_table, stack, statement_func):
         symbol_table['__ break __'] = (end_switch, stack.stack_pointer)
         symbol_table['__ switch __'] = True
 
-        jump_table = Pass(loc(stmnt))
-        yield RelativeJump(loc(stmnt), Address(jump_table, loc(stmnt)))
-
-        allocation_table = []
+        allocation_table = []  # create an allocation table to update stack before jump in case of nested definitions
+        switch_body_instrs = []
         cases = {'default': Address(end_switch, loc(stmnt))}
+
         for instr in statement_func(stmnt.statement, symbol_table, stack):
             if isinstance(getattr(instr, 'case', None), CaseStatement):
                 start = Pass(loc(instr))
@@ -72,11 +72,23 @@ def switch_statement(stmnt, symbol_table, stack, statement_func):
                     or Integer(exp(exp(instr.case)), loc(instr))
                 ] = Address(start, loc(instr))
                 del instr.case
-            yield instr
+            switch_body_instrs.append(instr)
 
-        yield jump_table
-        yield JumpTable(loc(stmnt), cases)
-        for instr in chain.from_iterable(allocation_table):
+        if isinstance(c_type(exp(stmnt)), CharType):
+            max_switch_value = 2**8 - 1
+        elif isinstance(c_type(exp(stmnt)), ShortType):
+            max_switch_value = 2**16 - 1
+        elif isinstance(c_type(exp(stmnt)), IntegerType):
+            max_switch_value = 2**32 - 1
+        elif isinstance(c_type(exp(stmnt)), LongType):
+            max_switch_value = 2**64 - 1
+        else:
+            raise ValueError('{l} Expected an integral type got {g}'.format(g=c_type(exp(stmnt)), l=loc(stmnt)))
+
+        # yield JumpTable(loc(stmnt), cases)
+        # for instr in chain.from_iterable(allocation_table):
+        #     yield instr
+        for instr in jump_table(loc(stmnt), cases, allocation_table, max_switch_value, switch_body_instrs):
             yield instr
         _ = pop(symbol_table)
 

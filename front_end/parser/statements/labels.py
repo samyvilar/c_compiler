@@ -33,11 +33,16 @@ def case(tokens, symbol_table, statement_func):
     location = loc(loc(consume(tokens)))
     expr = constant_expression(tokens, symbol_table)
     _, _ = error_if_not_value(tokens, TOKENS.COLON), error_if_not_type(c_type(expr), IntegralType)
-    switch = symbol_table['__ SWITCH STATEMENT __']
-    if exp(expr) in switch:
+    switch_cases = symbol_table['__ SWITCH STATEMENT __']
+    switch_exp = symbol_table['__ SWITCH EXPRESSION __']
+    if exp(expr) in switch_cases:
         raise ValueError('{l} duplicate case statement previous at {p}'.format(l=location, p=loc(switch[exp(expr)])))
-    switch[exp(expr)] = CaseStatement(expr, statement_func(tokens, symbol_table, statement_func), location)
-    yield switch[exp(expr)]
+    if c_type(expr) != c_type(switch_exp):
+        raise ValueError('{l} case exp type {g} differs from switch exp type {e}'.format(
+            l=location, g=c_type(expr), e=c_type(switch_exp)
+        ))
+    switch_cases[exp(expr)] = CaseStatement(expr, statement_func(tokens, symbol_table, statement_func), location)
+    yield switch_cases[exp(expr)]
 
 
 def default(tokens, symbol_table, statement_func):

@@ -25,20 +25,20 @@
     return temp;    \
 }
 
-NEW(new_virtual_memory, virtual_memory_type, NUMBER_OF_SHELVES)
+NEW(new_virtual_memory, struct virtual_memory_type, NUMBER_OF_SHELVES)
 NEW(new_shelf, shelf_type, NUMBER_OF_SHELVES)
 NEW(new_book, book_type, NUMBER_OF_PAGES)
 #define new_page() malloc(NUMBER_OF_WORDS * sizeof(word_type))
 
 
-INLINE void _set_word_(virtual_memory_type *mem, word_type address, word_type value) {
+INLINE void _set_word_(struct virtual_memory_type *mem, word_type address, word_type value) {
     set_word(mem, address, value);
 }
-INLINE word_type _get_word_(virtual_memory_type *mem, word_type address) {
+INLINE word_type _get_word_(struct virtual_memory_type *mem, word_type address) {
     return get_word(mem, address);
 }
 
-void initialize_virtual_memory(virtual_memory_type *mem, word_type *address, word_type *values, word_type amount)
+void initialize_virtual_memory(struct virtual_memory_type *mem, word_type *address, word_type *values, word_type amount)
 {
     while (amount--)
         set_word(mem, *address, *values), ++address, ++values;
@@ -46,7 +46,7 @@ void initialize_virtual_memory(virtual_memory_type *mem, word_type *address, wor
 
 
 #ifndef translate_address
-INLINE word_type *translate_address(virtual_memory_type *vm, word_type addr)
+INLINE word_type *translate_address(struct virtual_memory_type *vm, word_type addr)
 {
     register word_type
         _shelf_id = shelf_id(addr),

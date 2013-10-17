@@ -33,7 +33,6 @@ class TestPrintf(TestStdLib):
             char *temp_1 = "World";
             printf("%s", temp);
             printf("%s%s", temp_1, "!");
-
             return 0;
         }
         """

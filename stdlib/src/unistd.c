@@ -14,7 +14,6 @@ int brk(void *addr)
 void *sbrk(int size)
 {
     void *prev_ptr = __heap_ptr__;
-    if (size > 0)
-        __heap_ptr__ += size;
+    __heap_ptr__ += size;
     return prev_ptr;
 }

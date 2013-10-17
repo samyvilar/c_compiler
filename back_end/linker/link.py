@@ -16,9 +16,8 @@ from back_end.emitter.c_types import size
 
 from front_end.parser.types import void_pointer_type
 
-from back_end.virtual_machine.instructions.architecture import Push, Halt, Set, Instruction, Integer
-from back_end.virtual_machine.instructions.architecture import Address, operns, Byte, allocate, RelativeJump
-
+from back_end.virtual_machine.instructions.architecture import Push, Halt, Set, Instruction, Integer, Byte, Add
+from back_end.virtual_machine.instructions.architecture import Address, operns, Operand, allocate, RelativeJump
 
 from back_end.emitter.declarations.declaration import declaration
 from back_end.emitter.statements.statement import statement
@@ -114,19 +113,17 @@ def executable(
         entry_point=Declaration('main', FunctionType(IntegerType())),
         library_dirs=(),
         libraries=(),
-        linker=static):
+        linker=static
+):
     symbol_table = SymbolTable() if symbol_table is None else symbol_table
     location = '__SOP__'  # Start of Program
-    heap_ptr = Byte(0, location)
+    heap_ptr = Address(0, location)
 
     libs = tuple(
         Library(lib_file)
         for lib_file in ifilter(os.path.isfile, starmap(os.path.join, product(library_dirs, libraries)))
     )
-    symbols = chain(
-        symbols,
-        (Data('__heap_ptr__', (Address(0, location),), size(void_pointer_type), None, location),)
-    )
+    symbols = chain(symbols, (Data('__heap_ptr__', (heap_ptr,), size(void_pointer_type), None, location),))
 
     def declarations(symbol_table):
         for v in chain.from_iterable(imap(set_binaries, ifilterfalse(lambda s: s.binaries, symbol_table.itervalues()))):
@@ -137,7 +134,10 @@ def executable(
     instr_seq = chain(
         (   # Initialize heap pointer ...
             Push(location, Address(heap_ptr, location)),
+            Push(location, Address(size(void_pointer_type), location)),
+            Add(location),
             Push(location, Address(Reference('__heap_ptr__'), location)),
+
             Set(location, size(void_pointer_type)),
         ),
         allocate(Address(-1 * size(void_pointer_type), location)),
@@ -152,7 +152,7 @@ def executable(
         ),
         (Halt(location),),  # Halt machine on return, exit() will emit Halt ...
         chain.from_iterable(starmap(binaries, izip(symbols, repeat(symbol_table))))
-    )                     # link all foreign symbols and emit binaries for declarations ...
+    )            # link all foreign symbols and emit binaries for declarations ...
     return chain(linker(instr_seq, symbol_table, libs), declarations(symbol_table), (heap_ptr,))
 
 
@@ -177,7 +177,7 @@ def set_addresses(instrs, addresses=None):  # assign addresses ...
         previous_address = 0
         _ = (yield)
         while True:
-            _ = (yield previous_address)  # TODO: calculate address based on size of previous instr
+            _ = (yield previous_address)  # TODO: calculate address based on size of previous instr (for now all 1)
             previous_address += 1
 
     addresses = addresses or default_address_gen()
@@ -185,6 +185,7 @@ def set_addresses(instrs, addresses=None):  # assign addresses ...
     instr_references = []
     symbol_references = []
     label_references = []
+
     for instr in instrs:
         instr.address = addresses.send(instr)  # calculate next address based on current value ...
         yield instr
@@ -195,17 +196,20 @@ def set_addresses(instrs, addresses=None):  # assign addresses ...
                     symbol_references.append((instr, o, operand_index))
                 elif isinstance(o.obj, NoneType):  # referencing an unseen label ...
                     label_references.append((instr, o, operand_index))
-                elif isinstance(o.obj, (Instruction, Byte)):  # referencing an instr or Byte..
+                elif isinstance(o.obj, (Instruction, Operand)):  # referencing an instr or Operand..
                     instr_references.append((instr, o, operand_index))
                 elif not isinstance(o.obj, (Integer, int, long)):
                     raise ValueError('Bad operand type {t} for Address object ...'.format(t=type(o.obj)))
             yield o
 
     # At this point all address have being generated and resolve() should have checked or set first_element on Refs ...
-    # update addresses replace Address(obj=instr) by Address(obj=address or offset)
+    # so update addresses replace Address(obj=instr) by Address(obj=address or offset)
     for instr, operand, operand_index in chain(instr_references, symbol_references, label_references):
         operand.obj = Integer(
-            operand.obj.address - (instr.address if isinstance(instr, RelativeJump) else 0), loc(operand)
+            operand.obj.address - (
+                (instr.address + 2) if isinstance(instr, RelativeJump) else 0
+            ),
+            loc(operand)
         )
         # Update instruction operand ...
         instr[operand_index] = Address(operand.obj, loc(operand))

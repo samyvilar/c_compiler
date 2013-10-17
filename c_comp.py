@@ -167,6 +167,7 @@ def main():
             ovm.start(instructions)
         else:
             instructions = tuple(instructions)
+
             file_output = args.output and args.output[0] or 'a.out.p'
             with open(file_output, 'wb') as file_obj:
                 pickle.dump(instructions, file_obj)

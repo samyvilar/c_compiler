@@ -75,7 +75,11 @@ def bit_xor(l_instrs, r_instrs, location, operand_types):
 
 
 def compare_numbers(l_instrs, r_instrs, location, operand_types):
-    return chain(subtract(l_instrs, r_instrs, location, operand_types), (Pop(location),))
+    return chain(
+        subtract(l_instrs, r_instrs, location, operand_types),
+        allocate(Address(-size(operand_types), location))
+    )
+    # return chain(subtract(l_instrs, r_instrs, location, operand_types), (Pop(location),))
 compare_numbers.rules = {
     True: LoadCarryBorrowFlag,  # For unsigned numbers.
     False: LoadMostSignificantBit,  # For signed numbers.
@@ -251,17 +255,19 @@ def patch_comp_assignment(instrs, expr_type, location):
         # (Allocate(location, Integer(size(void_pointer_type) - size(expr_type), location)),),  # Align values
         allocate(Address(size(void_pointer_type) - size(expr_type), location)),
         swap(Integer(size(void_pointer_type), location)),
-        # remove any added elements for alignment
-        dup(Integer(size(void_pointer_type), location)),  # create a buffer
         (
-            # calculate location right after value ...
-            LoadStackPointer(location),
-            Push(location,
-                 Address(1 + size(void_pointer_type) + (size(void_pointer_type) - size(expr_type)), location)),
-            Add(location),
-            Set(location, size(void_pointer_type)),
-        ),
-        allocate(Integer(-(size(void_pointer_type) + (size(void_pointer_type) - size(expr_type))), location)),  # rm buf
+            # remove any added elements for alignment
+            dup(Integer(size(void_pointer_type), location)),  # create a buffer
+            (
+                # calculate location right after value ...
+                LoadStackPointer(location),
+                Push(location,
+                     Address(1 + size(void_pointer_type) + (size(void_pointer_type) - size(expr_type)), location)),
+                Add(location),
+                Set(location, size(void_pointer_type)),
+            ),
+            allocate(Integer(-(size(void_pointer_type) + (size(void_pointer_type) - size(expr_type))), location)),  # rm buf
+        ) if (size(expr_type) != size(void_pointer_type)) else (),
         (Set(location, size(expr_type)),)
     )
 

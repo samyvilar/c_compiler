@@ -3,7 +3,7 @@ __author__ = 'samyvilar'
 from types import NoneType
 from front_end.loader.locations import loc
 from back_end.emitter.object_file import Reference
-from back_end.virtual_machine.instructions.architecture import Address, Instruction, Integer, Byte
+from back_end.virtual_machine.instructions.architecture import Address, Instruction, Integer, Operand
 
 
 def load(elem_seq, mem):
@@ -12,7 +12,7 @@ def load(elem_seq, mem):
         mem[element.address] = element
         # Keep track of references, they have yet to be updated with the correct value ...
         if isinstance(element, Address):  # Data, Symbol, Instruction or Goto ...
-            if isinstance(element.obj, (Byte, Reference, Instruction, NoneType)):
+            if isinstance(element.obj, (Operand, Reference, Instruction, NoneType)):
                 address.append(element)
 
     for addr in address:

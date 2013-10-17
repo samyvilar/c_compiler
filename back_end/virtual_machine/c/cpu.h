@@ -3,7 +3,7 @@
 #ifndef _CPU_H_
 #define _CPU_H_
 
-#include "virtual_memory.h"
+#include "word_type.h"
 
 #define HALT 255 // -1
 
@@ -52,6 +52,9 @@
 #define JUMP_TABLE 22
 #define RELATIVE_JUMP 33
 
+#define PUSH_FRAME 28
+#define POP_FRAME 231
+
 #define LOAD_ZERO_FLAG 30
 #define LOAD_CARRY_BORROW_FLAG 31
 #define LOAD_MOST_SIGNIFICANT_BIT_FLAG 32
@@ -60,16 +63,29 @@
 #define SYSTEM_CALL 128
 
 
-typedef struct cpu_type {
+typedef struct frame_type {
+    struct frame_type *next;
+    word_type base_pointer, stack_pointer;
+} frame_type;
+#define next_frame(frame) (*((frame_type **)(frame)))
+#define set_next_frame(frame, value) (next_frame(frame) = (value))
+#define frames_stack_pointer(frame) ((frame)->stack_pointer)
+#define set_frames_stack_pointer(frame, value) (frames_stack_pointer(frame) = (value))
+#define frames_base_pointer(frame) ((frame)->base_pointer)
+#define set_frames_base_pointer(frame, value) (frames_base_pointer(frame) = (value))
+
+
+struct cpu_type {
     word_type
-    // Since the stack pointer will be the most heavily accessed register better have it as the first one
+    // Since the stack pointer will be the most heavily accessed value better have it as the first one
             stack_pointer,
             base_pointer,
             instr_pointer,
             zero_flag,
             carry_borrow_flag,
             most_significant_bit_flag;
-} cpu_type;
+    frame_type *frames;
+};
 // C guarantees that the address of the first member and the struct itself are the same (no need for member calcs)
 #define stack_pointer(cpu) (*(word_type *)(cpu))
 #define set_stack_pointer(cpu, st_ptr) (stack_pointer(cpu) = (st_ptr))
@@ -86,6 +102,10 @@ typedef struct cpu_type {
 #define most_significant_bit_flag(cpu) ((cpu)->most_significant_bit_flag)
 #define set_most_significant_bit_flag(cpu, flag) (most_significant_bit_flag(cpu) = (flag))
 
+#define frames(cpu) ((cpu)->frames)
+#define set_frames(cpu, value) (frames(cpu) = (value))
+
+
 #define INSTRUCTION_SIZE 1
 #define WIDE_INSTRUCTION_SIZE (2*INSTRUCTION_SIZE)
 #define INSTRUCTION_SIZES \
@@ -98,12 +118,14 @@ typedef struct cpu_type {
     [RELATIVE_JUMP] = WIDE_INSTRUCTION_SIZE, \
     [ALLOCATE] = WIDE_INSTRUCTION_SIZE, \
     [DUP] = WIDE_INSTRUCTION_SIZE, \
-    [SWAP] = WIDE_INSTRUCTION_SIZE
+    [SWAP] = WIDE_INSTRUCTION_SIZE,  \
+    [JUMP_TABLE] = WIDE_INSTRUCTION_SIZE
 
 #define operand(cpu, mem, operand_index) get_word(mem, (instr_pointer(cpu) + INSTR_SIZE(PASS)) + operand_index)
 
 struct kernel_type;
-#define FUNC_SIGNATURE(func_name) void func_name(cpu_type *cpu, virtual_memory_type *mem, struct kernel_type *os)
+struct virtual_memory_type;
+#define FUNC_SIGNATURE(func_name) void func_name(struct cpu_type *cpu, struct virtual_memory_type *mem, struct kernel_type *os)
 
 #define INLINE_FUNC_SIGNATURE(func_name) INLINE FUNC_SIGNATURE(func_name)
 
@@ -126,6 +148,9 @@ extern const word_type _instr_sizes_[256];
 #define SET_BASE_STACK_POINTER_INSTR(value) PUSH_INSTR(value), SET_BASE_STACK_POINTER
 #define LOAD_STACK_POINTER_INSTR() NO_OPERAND_INSTR(LOAD_STACK_POINTER)
 #define SET_STACK_POINTER_INSTR(value) PUSH_INSTR(value), SET_STACK_POINTER
+
+#define SWAP_INSTR(operand) SINGLE_OPERAND_INSTR(SWAP, operand)
+#define DUP_INSTR(operand) SINGLE_OPERAND_INSTR(DUP, operand)
 
 #define BINARY_INTEGRAL_INSTR(oper_1, oper_2, instr) PUSH_INSTR(oper_1), PUSH_INSTR(oper_2), NO_OPERAND_INSTR(instr)
 #define ADD_INSTR(oper_1, oper_2) BINARY_INTEGRAL_INSTR(oper_1, oper_2, ADD)
@@ -153,7 +178,7 @@ extern const word_type _instr_sizes_[256];
 
 #define ABSOLUTE_JUMP_INSTR(addr) PUSH_INSTR(addr), ABSOLUTE_JUMP
 
-#define ADDRESS_OFFSET(instr, offset) ((offset) + INSTR_SIZE(instr))
+#define ADDRESS_OFFSET(instr, offset) (offset)
 #define RELATIVE_JUMP_INSTR(offset) SINGLE_OPERAND_INSTR(RELATIVE_JUMP, ADDRESS_OFFSET(RELATIVE_JUMP, offset))
 #define JUMP_TRUE_INSTR(offset) PUSH_INSTR(1), SINGLE_OPERAND_INSTR(JUMP_TRUE, ADDRESS_OFFSET(JUMP_TRUE, offset))
 #define JUMP_FALSE_INSTR(offset) PUSH_INSTR(0), SINGLE_OPERAND_INSTR(JUMP_FALSE, ADDRESS_OFFSET(JUMP_FALSE, offset))
@@ -187,5 +212,6 @@ INLINE_FUNC_SIGNATURE(evaluate);
 //}
 #define pop_word(cpu, mem, os) (update_stack_pointer(cpu, WORD_SIZE), get_word(mem, stack_pointer(cpu)))
 
+#define MSB(value) (value  >> (word_type)((8*sizeof(word_type)) - 1))
 
 #endif

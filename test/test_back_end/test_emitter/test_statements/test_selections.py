@@ -68,7 +68,6 @@ class TestSelectionStatements(TestStatements):
                 default:
                     sum += 1;
             }
-
         }
         """
         self.evaluate(source)
@@ -80,20 +79,20 @@ class TestSelectionStatements(TestStatements):
             int sum = 0, stack_frag = 0;
             void *stack_ptr = &stack_ptr - 1;
             int temp;
-            switch (0)
+            switch ((char)0)
             {
                 int a;
-                case 0:
+                case (char)0:
                     a = 10;
                     sum += 1;
                     int b = 10;
-                case 20:
+                case (char)20:
                     sum += a;
                     int c = 24;
-                case 4:
+                case (char)4:
                     {
                         int _ter[10] = {[0 ... 9] = -1};
-                        case 10:
+                        case (char)10:
                             sum += b + c;
                             int d = 49;
                             void *curr = &curr - 1;
@@ -118,4 +117,29 @@ class TestSelectionStatements(TestStatements):
         """
         self.evaluate(code)
         self.assertEqual(self.mem[self.cpu.stack_pointer], 45)
+
+    def test_nested_switch_statement(self):
+        code = """
+        {
+            int value = 0;
+            switch (0) {
+                case 0:
+                    switch (11) {
+                        case 11:
+                            value = 10;
+                            break ;
+                    }
+                    value--;
+                    break ;
+
+                case 10:
+                    switch (10) {
+                        case 10:
+                            value = 1;
+                    }
+            }
+        }
+        """
+        self.evaluate(code)
+        self.assertEqual(self.mem[self.cpu.stack_pointer], 9)
 

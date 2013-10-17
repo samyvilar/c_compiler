@@ -18,14 +18,13 @@ from back_end.virtual_machine.instructions.architecture import Push, Address, Lo
 from back_end.virtual_machine.instructions.architecture import Integer, Multiply, Add, Pass
 from back_end.virtual_machine.instructions.architecture import LoadStackPointer
 from back_end.virtual_machine.instructions.architecture import SetBaseStackPointer, allocate
-from back_end.virtual_machine.instructions.architecture import AbsoluteJump, dup, push_frame, pop_frame
+from back_end.virtual_machine.instructions.architecture import AbsoluteJump, dup, push_frame, pop_frame, swap
+from back_end.virtual_machine.instructions.architecture import manually_push_frame, manually_pop_frame
 from back_end.emitter.c_types import size, struct_member_offset
 
 
 def inc_dec(expr, symbol_table, expression_func):
-    instrs = chain(  # allocate space for value ...
-        allocate(Address(size(c_type(expr)), loc(expr))), expression_func(exp(expr), symbol_table, expression_func)
-    )
+    instrs = expression_func(exp(expr), symbol_table, expression_func)
     temp = next(instrs)
     for instr in instrs:
         yield temp
@@ -33,36 +32,57 @@ def inc_dec(expr, symbol_table, expression_func):
 
     if not isinstance(temp, Load):
         raise ValueError('{l} Expected load instr got {g}'.format(l=loc(temp), g=temp))
-    assert size(c_type(expr)) <= size(void_pointer_type)
+    assert size(c_type(expr)) == size(void_pointer_type)
+
     # At this point the address is on the stack and the size of the value is either equal or greater than an address ...
     value = Integer((isinstance(expr, PostfixIncrementExpression) and 1) or -1, loc(expr))
     if isinstance(c_type(expr), PointerType) and not isinstance(c_type(c_type(expr)), VoidType):
         value = Integer(value * size(c_type(c_type(expr))), loc(value))
 
-    # make a copy of the address ...
-    for i in chain(dup(Integer(size(void_pointer_type), loc(expr)))):
-        yield i
-    yield temp  # load the value of the expression ...
+    instrs = chain(
+        dup(Integer(size(void_pointer_type), loc(expr))),   # duplicate address
+        (temp,),  # load value
+        swap(Integer(size(void_pointer_type), loc(expr))),  # swap value and duplicate address,
+                                                            # value remains for previous expression, addr used to update
 
-    # copy/move the value to the previously allocated memory block ...
-    yield LoadStackPointer(loc(expr))
-    yield Push(loc(expr), Address(1 + size(void_pointer_type) + size(c_type(expr)), loc(expr)))  # skip prev mem & curr
-    yield Add(loc(expr))
-    yield Set(loc(expr), size(c_type(expr)))
-
-    # Increment or Decrement the value
-    assert size(c_type(expr)) == size(value)
-    yield Push(loc(expr), value)  # Push either -1 or 1
-    yield Add(loc(expr))
-
-    yield LoadStackPointer(loc(expr))  # copy pointer to the bottom of the stack
-    yield Push(loc(expr), Address(1 + size(c_type(expr)), loc(expr)))
-    yield Add(loc(expr))
-    yield Load(loc(expr), Integer(size(void_pointer_type)))
-    yield Set(loc(expr), Integer(size(c_type(expr))))
-    # deallocate copied address and incremented value ....
-    for instr in allocate(Address(-(size(void_pointer_type) + size(c_type(expr))), loc(expr))):
+        dup(Integer(size(void_pointer_type), loc(expr))),   # duplicate address again for loading/setting
+        (
+            Load(loc(expr), Integer(size(void_pointer_type), loc(expr))),
+            Push(loc(expr), value),
+            Add(loc(expr))
+        ),     # load the value increment/decrement
+        swap(Integer(size(void_pointer_type), loc(expr))),  # swap incremented and duplicated address
+        (Set(loc(expr), Integer(size(void_pointer_type))),),
+        allocate(Integer(-size(void_pointer_type), loc(expr)))  # remove incremented/decremented value ...
+    )
+    for instr in instrs:
         yield instr
+
+    # yield Dup(Integer(size(void_pointer_type), loc(expr))) # duplicate address
+    # # make a copy of the address ...
+    # for i in chain(dup(Integer(size(void_pointer_type), loc(expr)))):
+    #     yield i
+    # yield temp  # load the value of the expression ...
+    #
+    # # copy/move the value to the previously allocated memory block ...
+    # yield LoadStackPointer(loc(expr))
+    # yield Push(loc(expr), Address(1 + size(void_pointer_type) + size(c_type(expr)), loc(expr)))  # skip prev mem & curr
+    # yield Add(loc(expr))
+    # yield Set(loc(expr), size(c_type(expr)))
+    #
+    # # Increment or Decrement the value
+    # assert size(c_type(expr)) == size(value)
+    # yield Push(loc(expr), value)  # Push either -1 or 1
+    # yield Add(loc(expr))
+    #
+    # yield LoadStackPointer(loc(expr))  # copy pointer to the bottom of the stack
+    # yield Push(loc(expr), Address(1 + size(c_type(expr)), loc(expr)))
+    # yield Add(loc(expr))
+    # yield Load(loc(expr), Integer(size(void_pointer_type)))
+    # yield Set(loc(expr), Integer(size(c_type(expr))))
+    # # deallocate copied address and incremented value ....
+    # for instr in allocate(Address(-(size(void_pointer_type) + size(c_type(expr))), loc(expr))):
+    #     yield instr
 
 
 def func_type(expr):
@@ -76,8 +96,6 @@ def func_type(expr):
         ))
 
 
-# Bug when pushing the new frame, the base pointer is reset losing scope to previous values that may be copied
-# over to the next frame!!!!
 def function_call(expr, symbol_table, expression_func):
     l = loc(expr)
     return_instr = Pass(l)  # once the function returns remove created frame
@@ -96,15 +114,14 @@ def function_call(expr, symbol_table, expression_func):
     return chain(
         # Allocate space for return value, save frame.
         allocate(Address(_size(c_type(expr)), l)),
-        push_frame(l),
-        # Push arguments in reverse order (right to left) ...
-        chain.from_iterable(reverse(expression_func(arg, symbol_table, expression_func) for arg in right_exp(expr))),
-        (
-            LoadStackPointer(l),  # Pointer to location where to store return values ...
-            Push(l, Address(total_size_of_arguments + 1 + 2 * _size(void_pointer_type), l)),  # skip prev stack, base pt
-            Add(l),
-            Push(l, Address(return_instr, l)),  # make callee aware of were to return to.
+        push_frame(
+            # Push arguments in reverse order (right to left) ...
+            chain.from_iterable(reverse(expression_func(a, symbol_table, expression_func) for a in right_exp(expr))),
+            location=l,
+            total_size_of_arguments=total_size_of_arguments,
+            address_size=_size(void_pointer_type),
         ),
+        (Push(l, Address(return_instr, l)),),  # make callee aware of were to return to.)
         expression_func(left_exp(expr), symbol_table, expression_func),   # load callee address
         (   # calculate new base stack pointer excluding the callees address ...
             LoadStackPointer(l),
@@ -123,19 +140,17 @@ def array_subscript(expr, symbol_table, expression_func):
     return chain(
         expression_func(left_exp(expr), symbol_table, expression_func),
         expression_func(right_exp(expr), symbol_table, expression_func),
-        (
-            # Calculate Offset.
-            Push(loc(expr), size(c_type(expr))),
-            Multiply(loc(expr)),
-            Add(loc(expr)),
-        ),
+        # Calculate Offset if not equal to one....
+        (Push(loc(expr), size(c_type(expr))), Multiply(loc(expr)),) if size(c_type(expr)) != 1 else (),
+        (Add(loc(expr)),),
         () if isinstance(c_type(expr), ArrayType) else (Load(loc(expr), size(c_type(right_exp(expr)))),)
     )
 
 
 def element_instrs(struct_obj, member_name, location):
-    yield Push(location, Integer(struct_member_offset(struct_obj, member_name), location))
-    yield Add(location)
+    if struct_member_offset(struct_obj, member_name) != 0:
+        yield Push(location, Integer(struct_member_offset(struct_obj, member_name), location))
+        yield Add(location)
     if not isinstance(c_type(struct_obj.members[member_name]), ArrayType):
         yield Load(location, size(c_type(struct_obj.members[member_name])))
 
@@ -160,7 +175,7 @@ def element_selection(expr, symbol_table, expression_func):
         # calculate member offset address, assuming the base_address is at stack_ptr + 1
         yield Push(loc(expr), Address(struct_member_offset(c_type(left_exp(expr)), right_exp(expr)) + 1, loc(expr)))
         yield Add(loc(expr))  # calculate starting/base address of structure
-        if not isinstance(c_type(expr), ArrayType):  # Load the value if its not an array, otherwise just lease the addr
+        if not isinstance(c_type(expr), ArrayType):  # Load the value if its not an array, otherwise just leave the addr
             yield Load(loc(expr), member_size)
 
         # move/cpy the value to the top bypassing itself and the struct ...

@@ -53,6 +53,7 @@ def switch(tokens, symbol_table, statement):
     exp, _ = expression(tokens, symbol_table), error_if_not_value(tokens, TOKENS.RIGHT_PARENTHESIS)
     symbol_table = push(symbol_table)
     symbol_table['__ SWITCH STATEMENT __'] = {}  # Add dict to track cases, emit error on duplicates.
+    symbol_table['__ SWITCH EXPRESSION __'] = exp
     yield SwitchStatement(
         exp,
         chain(statement(tokens, symbol_table, statement), _pop_symbol_table(symbol_table)),

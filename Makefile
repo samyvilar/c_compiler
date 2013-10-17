@@ -1,23 +1,14 @@
 
-all: build
+all: stdlib
 
-build:
-		gcc -Wall -O3 -c -fPIC cpu.c virtual_memory.c kernel.c
-		gcc -shared -o libvm.so cpu.o virtual_memory.o kernel.o
-clean:
-		rm *.o
-		rm libvm.so
+stdlib:
+		./c_comp.py -a stdlib/src/unistd.c stdlib/src/stdlib.c stdlib/src/string.c stdlib/src/stdio.c -o stdlib/libs/libc.p
 
-test: test_cpu test_virtual_memory
-
-test_cpu:
-		gcc -O3 test_cpu.c -L. -lvm -o test_cpu
+test:
+		nosetests
 		./test_cpu
 		rm test_cpu
 
-test_virtual_memory:
-		gcc -O3 test_virtual_memory.c -L. -lvm -o test_vm
-		./test_vm
-		rm test_vm
-
+clean:
+		rm stdlib/libs/libc.p
 

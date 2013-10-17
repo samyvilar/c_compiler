@@ -6,22 +6,10 @@
 #include <unistd.h>
 #include <string.h>
 
+#include "word_type.h"
 #include "bit_hash.h"
 
 // define functions inline or not, gcc will take this as a suggestion (BUT clang WILL FAIL TO LINK)
-
-#ifdef __clang__
-    #define INLINE
-#else
-    #define INLINE inline
-#endif
-
-#define _type_ long long int
-#define float_type double
-#define WORD_PRINTF_FORMAT "%llu"
-
-#define word_type unsigned _type_
-#define signed_word_type signed _type_
 
 #define page_type word_type
 
@@ -56,10 +44,10 @@ typedef struct shelf_type {
 #define book(shelf, shelf_id) (*(books(shelf) + shelf_id))
 #define set_book(shelf, shelf_id, value) (book(shelf, shelf_id) = (value))
 
-typedef struct virtual_memory_type {
+struct virtual_memory_type {
     shelf_type *shelves[NUMBER_OF_SHELVES];
     bit_hash_type faults[NUMBER_ELEMENTS(NUMBER_OF_SHELVES)];
-} virtual_memory_type;
+};
 #define shelves(vm) ((shelf_type **)vm)
 #define shelf(vm, shelf_id) (*(shelves(vm) + shelf_id))
 #define set_shelf(vm, shelf_id, value) (shelf(vm, shelf_id) = (value))
@@ -86,18 +74,18 @@ typedef struct virtual_memory_type {
 #define shelf_id(addr) (((addr) & shelf_id_mask) >> (WORD_INDEX_BIT_SIZE + PAGE_INDEX_BIT_SIZE + BOOK_INDEX_BIT_SIZE))
 
 
-INLINE virtual_memory_type *new_virtual_memory();
-INLINE void initialiaze_virtual_memory(virtual_memory_type *, word_type *, word_type *, word_type);
+INLINE struct virtual_memory_type *new_virtual_memory();
+INLINE void initialiaze_virtual_memory(struct virtual_memory_type *, word_type *, word_type *, word_type);
 
 //word_type __addr;
 //#define translate_address(vm, addr) (page(book(shelf((vm), (addr)), (addr)), (addr)) + word_id((addr)))
 //#define translate_address(vm, addr) ((__addr = (addr)), (page(book(shelf((vm), (__addr)), (__addr)), (__addr)) + word_id((__addr))))
-INLINE word_type *translate_address(virtual_memory_type *vm, word_type addr);
+INLINE word_type *translate_address(struct virtual_memory_type *vm, word_type addr);
 #define get_word(vm, addr) (*translate_address(vm, addr))
 #define set_word(vm, addr, value) ((get_word(vm, addr)) = (value))
 
 // TODO: implement.
-void dealloc_virtual_memory(virtual_memory_type *);
+void dealloc_virtual_memory(struct virtual_memory_type *);
 void dealloc_shelf(shelf_type *);
 void dealloc_book(book_type *);
 void dealloc_page(page_type *);

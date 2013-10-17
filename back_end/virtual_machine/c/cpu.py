@@ -16,18 +16,25 @@ float_type, float_format = c_double, 'd'
 libvm = CDLL(os.path.join(os.path.dirname(__file__), 'libvm.so'))
 
 
+class frame_type(Structure):
+    pass
+frame_type.__fields__ = [('next', POINTER(frame_type)), ('base_pointer', word_type), ('stack_pointer', word_type)]
+
+
 class CPU(Structure):
     _fields_ = [('stack_pointer', word_type),
                 ('base_pointer', word_type),
                 ('instr_pointer', word_type),
                 ('zero_flag', word_type),
                 ('carry_borrow_flag', word_type),
-                ('most_significant_bit_flag', word_type)]
+                ('most_significant_bit_flag', word_type),
+                ('frames', POINTER(frame_type))]
 
     def __init__(self):
         super(CPU, self).__init__()
         self.stack_pointer = word_type(-1)
         self.base_pointer = word_type(-1)
+        self.frames = None
 
 
 virtual_memory_type = None
@@ -107,7 +114,7 @@ libvm._get_word_.restype = word_type
 class VirtualMemory(object):
     def __init__(self, factory_type=None, c_virtual_memory_pointer=None):
         self.factory_type = factory_type or word_type
-        self.c_vm_p = c_virtual_memory_pointer or libvm.new_virtual_memory(word_type(2 ** 16 - 1))
+        self.c_vm_p = c_virtual_memory_pointer or libvm.new_virtual_memory()
         self.code = {}
 
     def __setitem__(self, key, value):

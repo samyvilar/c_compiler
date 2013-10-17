@@ -35,8 +35,9 @@ class Stack(object):
 def bind_instructions(obj, offset):
     def load_address(self, location):
         yield LoadBaseStackPointer(location)
-        yield Push(location, Integer(self.offset, location))
-        yield Add(location)
+        if self.offset:  # If offset is zero then no need to calculate address ...
+            yield Push(location, Integer(self.offset, location))
+            yield Add(location)
 
     obj.offset = offset
     obj.load_address = bind_load_address_func(load_address, obj)
