@@ -54,7 +54,7 @@
 */
 
 #define page_type word_type
-#define PAGE_POOL_SIZE 1000000
+#define PAGE_POOL_SIZE 10000 // (10000 * 4096)/1000000.0 == 40.96 megabytes.
 extern page_type (*page_pool)[PAGE_POOL_SIZE][NUMBER_OF_WORDS];
 extern word_type available_pages;
 
@@ -72,10 +72,11 @@ typedef struct block_type {
 #define page_fault(block, page_id) bit_value(faults(block), page_id)
 #define clear_page_fault(block, page_id) clear_bit_value(faults(block), page_id)
 
-#define BLOCK_POOL_SIZE 1000
+#define BLOCK_POOL_SIZE 10000 // ((1 << 7)*8) + ((1 << 7)/8) == 1040 bytes,  (10000 * 1040)/1000000.0 == 10.4 megabytes
 extern block_type *block_pool;
 extern word_type available_blocks;
 
+// ((1 << 16) * 8) + ((1 << 16) / 8) + (2 * (1 << 12) * 8) == 598016, 598016/1000000.0 == .59 megabytes
 #define CACHE_SIZE ((word_type)(1 << 12))
 struct virtual_memory_type {
     block_type *blocks[NUMBER_OF_BLOCKS];
