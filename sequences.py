@@ -35,6 +35,7 @@ def consume(seq, default=__required__):
 
 def takewhile(func, value_stream):
     value_stream = iter(value_stream)
+    func = func or (lambda _: True)
     while func(peek(value_stream)):
         yield consume(value_stream)
 
@@ -63,3 +64,17 @@ def permute_case(s, index=0):
             fillvalue=''
         )
     )) or (s and (s, s.upper())) or (s,)
+
+
+default_last_object = object()
+
+
+def all_but_last(values, assert_last=default_last_object, location=''):
+    temp = next(values)
+    for v in values:
+        yield temp
+        temp = v
+
+    if assert_last is not default_last_object and not isinstance(temp, assert_last):
+        raise ValueError('{l}Expected but got {g}'.format(l=location + ' ', g=temp))
+

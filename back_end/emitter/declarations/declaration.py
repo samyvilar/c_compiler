@@ -17,7 +17,7 @@ from back_end.emitter.object_file import Data, Code, Reference
 from back_end.emitter.c_types import binaries, size
 from back_end.emitter.stack_state import Stack, bind_instructions
 
-from back_end.virtual_machine.instructions.architecture import Address, Push
+from back_end.virtual_machine.instructions.architecture import Address, push as push_instr
 
 from back_end.emitter.c_types import bind_load_address_func
 
@@ -38,7 +38,7 @@ def get_directives():
 
 def bind_load_instructions(obj):
     def load_address(self, location):
-        yield Push(location, Address(Reference(self.symbol.name), location))
+        return push_instr(Address(Reference(self.symbol.name), location), location)
 
     obj.load_address = bind_load_address_func(load_address, obj)
     return obj

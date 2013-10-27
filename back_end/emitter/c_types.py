@@ -43,13 +43,15 @@ machine_types.rules = {
 }
 
 
-def size(ctype):
+def size(ctype, overrides=()):
+    if type(ctype) in overrides:
+        return overrides[type(ctype)]
     return size.rules[type(ctype)](ctype)
 size.rules = {                                                     # all non-composite types are 1 word, 64 bits.
     StructType: struct_size,
     ArrayType: array_size,
     StringType: array_size,
-    VAListType: lambda _: Integer(0, loc(_))
+    VAListType: lambda _: 0
 }
 size.rules.update(chain(
     izip(numeric_type.rules, repeat(numeric_type)),
@@ -66,18 +68,23 @@ def numeric_const(const_exp):
 
 
 def array_const(const_exp):
-    if isinstance(exp(const_exp), Iterable):
+    if isinstance(getattr(const_exp, 'exp', None), Iterable):
         bins = (binaries(value) for value in exp(const_exp))
+    elif isinstance(const_exp, EmptyExpression):
+        assert isinstance(c_type(const_exp), ArrayType)
+        bins = (binaries(c_type(c_type(const_exp))) for _ in xrange(len(c_type(const_exp))))
     else:
-        bins = (binaries(c_type(const_exp)) for _ in xrange(len(c_type(const_exp))))
+        assert isinstance(const_exp, ArrayType)
+        bins = (binaries(c_type(const_exp)) for _ in xrange(len(const_exp)))
     return chain.from_iterable(bins)
 
 
 def struct_const(const_exp):
-    if isinstance(exp(const_exp), Iterable):
+    if isinstance(getattr(const_exp, 'exp', None), Iterable):
         bins = (binaries(value) for value in exp(const_exp))
     else:
-        bins = (binaries(c_type(member)) for member in c_type(const_exp).itervalues())
+        assert isinstance(const_exp, StructType)
+        bins = imap(binaries, imap(c_type, const_exp.members.itervalues()))
     return chain.from_iterable(bins)
 
 
@@ -90,7 +97,9 @@ def def_binaries(definition):
 
 
 def const_exp_binaries(const_exp):
-    assert isinstance(const_exp, ConstantExpression)
+    if type(const_exp) in const_exp_binaries.rules:
+        return const_exp_binaries.rules[type(const_exp)](const_exp)
+
     return const_exp_binaries.rules[type(c_type(const_exp))](const_exp)
 const_exp_binaries.rules = {
     CharType: integral_const,

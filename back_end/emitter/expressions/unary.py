@@ -9,10 +9,10 @@ from front_end.parser.ast.expressions import SizeOfExpression, UnaryExpression, 
 from front_end.parser.ast.expressions import PrefixIncrementExpression, PrefixDecrementExpression, ConstantExpression
 from front_end.parser.ast.expressions import BinaryExpression, DereferenceExpression, AddressOfExpression
 
-from front_end.parser.types import c_type, base_c_type, IntegerType, IntegralType, NumericType, unsigned, CType
+from front_end.parser.types import c_type, IntegerType, IntegralType, NumericType, unsigned, CType
 
 from back_end.emitter.c_types import size
-from back_end.virtual_machine.instructions.architecture import Push, Not, Load, Integer, LoadZeroFlag, Double
+from back_end.virtual_machine.instructions.architecture import not_bitwise, load_instr, load_zero_flag, push, Load
 from back_end.emitter.expressions.binary import compare_numbers
 
 
@@ -32,7 +32,8 @@ def inc_dec(value, expr, symbol_table, expression_func):
 
 
 def size_of(expr, *_):
-    yield Push(loc(expr), Integer(size((isinstance(exp(expr), CType) and exp(expr)) or c_type(exp(expr))), loc(expr)))
+    return push(size((isinstance(exp(expr), CType) and exp(expr)) or c_type(exp(expr))), loc(expr))
+    # yield Push(loc(expr), Integer(size((isinstance(exp(expr), CType) and exp(expr)) or c_type(exp(expr))), loc(expr)))
 
 
 def address_of(expr, symbol_table, expression_func):
@@ -46,9 +47,7 @@ def address_of(expr, symbol_table, expression_func):
 
 
 def dereference(expr, symbol_table, expression_func):
-    return chain(
-        expression_func(exp(expr), symbol_table, expression_func), (Load(loc(expr), size(c_type(expr))),)
-    )
+    return load_instr(expression_func(exp(expr), symbol_table, expression_func), size(c_type(expr)), loc(expr))
 
 
 # Convert numeric operator to Binary multiplication operation +expr is 1*expr, -expr is -1*expr
@@ -67,23 +66,29 @@ def numeric_operator(value, expr, symbol_table, expression_func):
 
 
 def exclamation_operator(expr, symbol_table, expression_func):
-    return chain(
-        compare_numbers(
-            expression_func(exp(expr), symbol_table, expression_func),
-            (Push(loc(expr), exclamation_operator.rules[base_c_type(c_type(exp(expr)))](0, loc(expr))),),
-            loc(expr),
-            c_type(expr),
-        ),
-        (LoadZeroFlag(loc(expr)),)
+    if isinstance(c_type(exp(expr)), IntegralType):
+        comp_expr = ConstantExpression(0, c_type(exp(expr))(loc(expr)), loc(expr),)
+    elif isinstance(c_type(exp(expr)), NumericType):
+        comp_expr = ConstantExpression(0.0, c_type(exp(expr))(loc(expr)), loc(expr),)
+    else:
+        raise ValueError('{l} exclamation operator only supports numeric types got {g}'.format(
+            l=loc(expr), g=c_type(exp(expr))
+        ))
+    return compare_numbers(
+        expression_func(exp(expr), symbol_table, expression_func),
+        expression_func(comp_expr, symbol_table, expression_func),
+        loc(expr),
+        (c_type(expr), c_type(expr), c_type(expr)),
+        (load_zero_flag(loc(expr)),)
     )
 exclamation_operator.rules = {
-    IntegralType: lambda value, location: Integer(int(value), location),
-    NumericType: lambda value, location: Double(float(value), location),
+    IntegralType: lambda value, location: int(value),
+    NumericType: lambda value, location: float(value),
 }
 
 
 def tilde_operator(expr, symbol_table, expression_func):
-    return chain(expression_func(exp(expr), symbol_table, expression_func), (Not(loc(oper(expr))),))
+    return not_bitwise(expression_func(exp(expr), symbol_table, expression_func), loc(oper(expr)))
 
 
 def unary_operator(expr, symbol_table, expression_func):

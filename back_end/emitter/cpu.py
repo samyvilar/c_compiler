@@ -18,8 +18,8 @@ from back_end.virtual_machine.instructions.architecture import AbsoluteJump, Loa
 from back_end.virtual_machine.instructions.architecture import RelativeJump, JumpTrue, JumpFalse, JumpTable
 from back_end.virtual_machine.instructions.architecture import LoadBaseStackPointer, LoadStackPointer, Load, Set
 from back_end.virtual_machine.instructions.architecture import SetBaseStackPointer, SetStackPointer, SystemCall, operns
-from back_end.virtual_machine.instructions.architecture import Allocate, Dup, Swap, PushFrame, PopFrame
-
+from back_end.virtual_machine.instructions.architecture import Allocate, Dup, Swap, PushFrame, PopFrame, LoadNonZeroFlag
+from back_end.virtual_machine.instructions.architecture import Integer, Double, PostfixUpdate, Compare, CompareFloat
 
 logger = logging.getLogger('virtual_machine')
 
@@ -30,6 +30,10 @@ def pop(cpu, mem):
 
 
 def push(value, cpu, mem):
+    if isinstance(value, Integer):
+        value = int(value)
+    elif isinstance(value, Double):
+        value = float(value)
     assert isinstance(value, (int, float, long))
     mem[cpu.stack_pointer] = value
     cpu.stack_pointer -= 1
@@ -94,9 +98,9 @@ def bin_arithmetic(instr, cpu, mem):
     #         isinstance(oper1, float) and isinstance(oper2, float)):
     #     raise ValueError('Bad operands!')
     result = bin_arithmetic.rules[type(instr)](oper1, oper2)
-    if isinstance(instr, (Add, AddFloat, Subtract, SubtractFloat, Multiply, MultiplyFloat, Divide, DivideFloat)):
-        cpu.most_significant_bit_flag = cpu.carry_borrow_flag = int(result < 0)
-        cpu.zero_flag = int(not result)
+    # if isinstance(instr, (Add, AddFloat, Subtract, SubtractFloat, Multiply, MultiplyFloat, Divide, DivideFloat)):
+    #     cpu.most_significant_bit_flag = cpu.carry_borrow_flag = int(result < 0)
+    #     cpu.zero_flag = int(not result)
     return result
 bin_arithmetic.rules = {
     Add: add,
@@ -140,19 +144,19 @@ def abs_jump(instr, cpu, mem):
 
 
 def rel_jump(instr, cpu, mem):
-    _jump(cpu.instr_pointer + operns(instr)[0] + instr_size(instr), cpu, mem)
+    _jump(cpu.instr_pointer + int(operns(instr)[0]) + instr_size(instr), cpu, mem)
 
 
 def jump_if_true(instr, cpu, mem):
-    _jump(cpu.instr_pointer + ((operns(instr)[0] + instr_size(instr)) if pop(cpu, mem) else instr_size(instr)), cpu, mem)
+    _jump(cpu.instr_pointer + ((int(operns(instr)[0]) + instr_size(instr)) if pop(cpu, mem) else instr_size(instr)), cpu, mem)
 
 
 def jump_if_false(instr, cpu, mem):
-    _jump(cpu.instr_pointer + ((operns(instr)[0] + instr_size(instr)) if not pop(cpu, mem) else instr_size(instr)), cpu, mem)
+    _jump(cpu.instr_pointer + ((int(operns(instr)[0]) + instr_size(instr)) if not pop(cpu, mem) else instr_size(instr)), cpu, mem)
 
 
 def jump_table(instr, cpu, mem):
-    _jump(cpu.instr_pointer + instr.cases.get(pop(cpu, mem), instr.cases['default']) + 2, cpu, mem)
+    _jump(cpu.instr_pointer + int(instr.cases.get(pop(cpu, mem), int(instr.cases['default'].obj))) + 2, cpu, mem)
 
 
 def jump(instr, cpu, mem, _):
@@ -191,30 +195,30 @@ def load_instr_pointer(instr, cpu, mem, _):
 
 
 def _allocate(instr, cpu, mem, _):
-    cpu.stack_pointer += operns(instr)[0]
+    cpu.stack_pointer += int(operns(instr)[0])
 
 
 def _dup(instr, cpu, mem, _):
-    for addr in xrange(cpu.stack_pointer + operns(instr)[0], cpu.stack_pointer, -1):
+    for addr in xrange(cpu.stack_pointer + int(operns(instr)[0]), cpu.stack_pointer, -1):
         push(mem[addr], cpu, mem)
 
 
 def _swap(instr, cpu, mem, _):
-    amount = operns(instr)[0]
-    for addr in xrange(cpu.stack_pointer + operns(instr)[0], cpu.stack_pointer, -1):
+    amount = int(operns(instr)[0])
+    for addr in xrange(cpu.stack_pointer + int(operns(instr)[0]), cpu.stack_pointer, -1):
         temp = mem[addr]
         mem[addr] = mem[addr + amount]
         mem[addr + amount] = temp
 
 
 def _load(instr, cpu, mem, _):
-    addr, quantity = pop(cpu, mem), operns(instr)[0]
+    addr, quantity = pop(cpu, mem), int(operns(instr)[0])
     for index in reversed(xrange(addr, addr + quantity)):
         push(mem[index], cpu, mem)
 
 
 def _set(instr, cpu, mem, os):
-    addr, quantity, stack_pointer = _pop(instr, cpu, mem, os), operns(instr)[0], cpu.stack_pointer + 1
+    addr, quantity, stack_pointer = _pop(instr, cpu, mem, os), int(operns(instr)[0]), cpu.stack_pointer + 1
     for addr, stack_addr in izip(xrange(addr, addr + quantity), xrange(stack_pointer, stack_pointer + quantity)):
         mem[addr] = mem[stack_addr]
 
@@ -246,11 +250,34 @@ instr_size.rules.update((instr, 2) for instr in wide_instr_ids)  # wide instruct
 instr_size.rules[JumpTable] = 2
 
 
+def compare(instr, cpu, mem, _):
+    operand_1 = long(pop(cpu, mem))
+    operand_0 = long(pop(cpu, mem))
+    result = operand_0 - operand_1
+    cpu.zero_flag = result == 0
+    cpu.non_zero_flag = result != 0
+    cpu.most_significant_bit_flag = cpu.carry_borrow_flag = int(result < 0)
+
+
+def compare_float(instr, cpu, mem, _):
+    operand_1 = float(pop(cpu, mem))
+    operand_0 = float(pop(cpu, mem))
+    result = operand_0 - operand_1
+    cpu.zero_flag = result == 0
+    cpu.most_significant_bit_flag = cpu.carry_borrow_flag = long(result < 0)
+
+
 def instr_pointer_update(instr):
     return instr_pointer_update.rules[type(instr)]
 instr_pointer_update.rules = {JumpTable: 0}  # JumpTable is a variable length instruction ...
 for instr in instr_size.rules:  # Make sure not to update the instruction pointer on Jump instructions ...
     instr_pointer_update.rules[instr] = 0 if issubclass(instr, Jump) else instr_size.rules[instr]
+
+
+def postfix_update(instr, cpu, mem, _):
+    dest = pop(cpu, mem)
+    push(mem[dest], cpu, mem)
+    mem[dest] = long(mem[dest]) + long(operns(instr)[0])
 
 
 def evaluate(cpu, mem, os=None):
@@ -267,6 +294,7 @@ evaluate.rules = {
     Push: _push,
     Pop: _pop,
 
+    LoadNonZeroFlag: lambda instr, cpu, mem, _: push(cpu.non_zero_flag, cpu, mem),
     LoadZeroFlag: lambda instr, cpu, mem, _: push(cpu.zero_flag, cpu, mem),
     LoadCarryBorrowFlag: lambda instr, cpu, mem, _: push(cpu.carry_borrow_flag, cpu, mem),
     LoadMostSignificantBit: lambda instr, cpu, mem, _: push(cpu.most_significant_bit_flag, cpu, mem),
@@ -275,6 +303,7 @@ evaluate.rules = {
     SetBaseStackPointer: set_base_pointer,
     LoadStackPointer: load_stack_pointer,
     SetStackPointer: set_stack_pointer,
+    PostfixUpdate: postfix_update,
 
     LoadInstructionPointer: load_instr_pointer,
 
@@ -282,6 +311,8 @@ evaluate.rules = {
     Dup: _dup,
     Swap: _swap,
 
+    Compare: compare,
+    CompareFloat: compare_float,
     PushFrame: _push_frame,
     PopFrame: _pop_frame,
 
@@ -306,9 +337,42 @@ class Kernel(object):
 class CPU(object):
     def __init__(self):
         self.instr_pointer = 0
-        self.zero_flag, self.carry_borrow_flag, self.most_significant_bit_flag = 0, 0, 0
+        self.flags = {'zero_flag': 0, 'non_zero_flag': 0, 'carry_borrow_flag': 0, 'most_significant_bit_flag': 0}
         self._stack_pointer, self.base_pointer = -1, -1
         self.frames = []
+
+    @property
+    def zero_flag(self):
+        return self.flags['zero_flag']
+
+    @zero_flag.setter
+    def zero_flag(self, value):
+        self.flags['zero_flag'] = value
+
+
+    @property
+    def non_zero_flag(self):
+        return self.flags['non_zero_flag']
+
+    @non_zero_flag.setter
+    def non_zero_flag(self, value):
+        self.flags['non_zero_flag'] = value
+
+    @property
+    def carry_borrow_flag(self):
+        return self.flags['carry_borrow_flag']
+
+    @carry_borrow_flag.setter
+    def carry_borrow_flag(self, value):
+        self.flags['carry_borrow_flag'] = value
+
+    @property
+    def most_significant_bit_flag(self):
+        return self.flags['most_significant_bit_flag']
+
+    @most_significant_bit_flag.setter
+    def most_significant_bit_flag(self, value):
+        self.flags['most_significant_bit_flag'] = value
 
     @property
     def stack_pointer(self):

@@ -1,11 +1,12 @@
 __author__ = 'samyvilar'
 
+from sequences import peek, takewhile
 from itertools import chain
 
 from sequences import reverse, flatten
 
 from front_end.loader.locations import loc
-from back_end.emitter.c_types import binaries, size
+from back_end.emitter.c_types import binaries
 
 
 from front_end.parser.ast.expressions import exp
@@ -13,29 +14,33 @@ from front_end.parser.ast.expressions import exp
 from front_end.parser.types import CharType, ShortType, IntegerType, LongType, FloatType, DoubleType, PointerType
 from front_end.parser.types import StringType, c_type, StructType, ArrayType
 
-from back_end.virtual_machine.instructions.architecture import Push, Integer, Double, Address, Pass, Add, RelativeJump
+from back_end.virtual_machine.instructions.architecture import push, Double, Address, Byte, relative_jump
 
 
 def const_string_expr(expr):
-    start_of_data, end_of_data = Pass(loc(expr)), Pass(loc(expr))
+    data = binaries(expr)
+    try:
+        _initial_data = peek(data)
+    except StopIteration:
+        _initial_data = Byte(loc(expr))
+        data = (_initial_data,)
+
+    _push = push(Address(_initial_data, loc(expr)), loc(expr))
+    _push_addr_ = peek(_push, loc(expr))
+
     return chain(
-        (RelativeJump(loc(expr), Address(end_of_data, loc(expr))), start_of_data,),
-        binaries(expr),
-        (end_of_data,),
-        (
-            Push(loc(expr), Address(start_of_data, loc(expr))),
-            Push(loc(expr), Integer(size(start_of_data), loc(expr))),
-            Add(loc(expr))
-        )
+        relative_jump(Address(_push_addr_, loc(expr)), loc(expr)),
+        takewhile(None, data),
+        takewhile(None, _push)
     )
 
 
 def const_integral_expr(expr):
-    yield Push(loc(expr), Integer(exp(expr), loc(expr)))
+    return push(exp(expr), loc(expr))
 
 
 def const_float_expr(expr):
-    yield Push(loc(expr), Double(exp(expr), loc(expr)))
+    return push(Double(exp(expr), loc(expr)), loc(expr))
 
 
 def const_struct_expr(expr):

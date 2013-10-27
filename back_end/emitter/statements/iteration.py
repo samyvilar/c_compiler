@@ -8,7 +8,7 @@ from front_end.parser.ast.expressions import exp
 from front_end.parser.ast.statements import ForStatement, WhileStatement, DoWhileStatement
 
 from back_end.emitter.expressions.expression import expression
-from back_end.virtual_machine.instructions.architecture import Address, Pass, JumpFalse, JumpTrue, RelativeJump
+from back_end.virtual_machine.instructions.architecture import Address, Pass, jump_false, jump_true, relative_jump
 
 
 def loop_body(body, symbol_table, stack, statement_func, continue_instr, break_instr):
@@ -26,14 +26,16 @@ def for_statement(stmnt, symbol_table, stack, statement_func):
     return chain(
         statement_func(stmnt.init_exp, symbol_table, stack),  # loop initialization.
         (start_of_loop,),  # start of conditional
-        expression(exp(stmnt), symbol_table),  # loop invariant.
-        (JumpFalse(loc(end_of_loop), Address(end_of_loop, loc(end_of_loop))),),
+
+        # loop invariant.
+        jump_false(expression(exp(stmnt), symbol_table), Address(end_of_loop, loc(end_of_loop)), loc(stmnt)),
 
         loop_body(stmnt.statement, symbol_table, stack, statement_func, upd_expression, end_of_loop),
 
         (upd_expression,),
         statement_func(stmnt.upd_exp, symbol_table, stack),  # loop update.
-        (RelativeJump(loc(stmnt), Address(start_of_loop, loc(start_of_loop))), end_of_loop)
+        relative_jump(Address(start_of_loop, loc(start_of_loop)), loc(stmnt)),
+        (end_of_loop,)
     )
 
 
@@ -41,25 +43,26 @@ def while_statement(stmnt, symbol_table, stack, statement_func):
     start_of_loop, end_of_loop = Pass(loc(stmnt)), Pass(loc(stmnt))
     return chain(
         (start_of_loop,),
-        expression(exp(stmnt), symbol_table),
-        (JumpFalse(loc(exp(stmnt)), Address(end_of_loop, loc(end_of_loop))),),
+        jump_false(expression(exp(stmnt), symbol_table), Address(end_of_loop, loc(end_of_loop)), loc(end_of_loop)),
         loop_body(stmnt.statement, symbol_table, stack, statement_func, start_of_loop, end_of_loop),
-        (RelativeJump(loc(stmnt), Address(start_of_loop, loc(start_of_loop))), end_of_loop)
+        relative_jump(Address(start_of_loop, loc(start_of_loop)), loc(end_of_loop)),
+        (end_of_loop,)
     )
 
 
 def do_while_statement(stmnt, symbol_table, stack, statement_func):
     start_of_loop, end_of_loop = Pass(loc(stmnt)), Pass(loc(stmnt))
 
-    def lazy(stmnt, symbol_table):  # TODO: find alternative ...
-        yield expression(exp(stmnt), symbol_table)
-
-    return chain(
-        (start_of_loop,),
-        loop_body(stmnt.statement, symbol_table, stack, statement_func, start_of_loop, end_of_loop),
-        chain.from_iterable(lazy(stmnt, symbol_table)),
-        (JumpTrue(loc(start_of_loop), Address(start_of_loop, loc(start_of_loop))), end_of_loop),
-    )
+    yield start_of_loop
+    for instr in loop_body(stmnt.statement, symbol_table, stack, statement_func, start_of_loop, end_of_loop):
+        yield instr
+    for instr in jump_true(
+            expression(exp(stmnt), symbol_table),
+            Address(start_of_loop, loc(start_of_loop)),
+            loc(start_of_loop)
+    ):
+        yield instr
+    yield end_of_loop
 
 
 def iteration_statement(stmnt, symbol_table, stack, statement_func):

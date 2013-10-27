@@ -459,7 +459,6 @@ two_d_segment_tree_node_type *create_balanced_tree(rectlist *data, int dimension
     current.number               = number_of_items;      /* it will hold all our leaves. */
 
     stack[stack_index++] = current; /* push the root unto the stack */
-
     while (stack_index)             /* while the stack is not empty */
     {
         current = stack[--stack_index]; /* pop an item */
@@ -984,7 +983,7 @@ int main()
     printf("Made %d rectangles\n", i);
 
     s = create_2dstree(start);
-
+    
     for(i = 0; i < 5; i++)
     { for ( j= 0; j< 1000; j++)
     {  if((start=query_2dstree(s,10*i+3, 10*j+7)) != NULL )

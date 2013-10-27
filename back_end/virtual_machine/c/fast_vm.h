@@ -68,9 +68,21 @@ typedef struct block_type {
 #define page(block, page_id) (pages(block)[page_id])
 #define set_page(block, page_id, value) (page(block, page_id) = (value))
 
+// normally malloc will return all zeros from the OS (for security reasons) but since the vm is being called from python
+// it will use de-allocated blocks from the compilers code, which aren't zerod so we need to initilize the blocks ... :(
 #define faults(block) ((block)->faults)
 #define page_fault(block, page_id) bit_value(faults(block), page_id)
 #define clear_page_fault(block, page_id) clear_bit_value(faults(block), page_id)
+#define FAULT_ID ((bit_hash_type)-1)
+#define initialize_faults(faults, size) set_all_bits(faults, size)
+#define initilize_vm_cache(vm) (memset(cache(vm), 0, sizeof(cache(vm))), cache(vm)[0][0] = 1)
+#define _new_block_inline(dest)                                          \
+    if (available_blocks)                                                \
+        dest = block_pool + --available_blocks;                          \
+    else                                                                 \
+        initialize_faults(faults((block_type *)(dest = malloc(sizeof(block_type)))), NUMBER_OF_PAGES)
+//#define _new_block_inline(dest) (dest = (available_blocks ? (block_pool + --available_blocks) : malloc(sizeof(block_type))))
+
 
 #define BLOCK_POOL_SIZE 10000 // ((1 << 7)*8) + ((1 << 7)/8) == 1040 bytes,  (10000 * 1040)/1000000.0 == 10.4 megabytes
 extern block_type *block_pool;
@@ -97,6 +109,7 @@ struct virtual_memory_type {
 )
 
 #define block_fault page_fault
+#define block_allocated page_allocated
 #define clear_block_fault clear_page_fault
 
 INLINE struct virtual_memory_type *new_virtual_memory();
@@ -104,15 +117,6 @@ INLINE block_type *new_block();
 
 #define new_page()   malloc(NUMBER_OF_WORDS * sizeof(word_type))
 #define _new_page_inline() ((available_pages) ? (((*page_pool)[--available_pages])) : (new_page()))
-
-#define _new_block_inline(dest)                                         \
-    if (available_blocks)                                               \
-        dest = block_pool + --available_blocks;                         \
-    else                                                                \
-    {                                                                   \
-        dest = malloc(sizeof(block_type));                              \
-        set_all_bits(faults((block_type *)dest), NUMBER_OF_PAGES);      \
-    }
 
 
 #define get_word(vm, addr) (*translate_address(vm, addr))
@@ -128,8 +132,8 @@ INLINE block_type *new_block();
     hash_var = hash(addr_var);                                              \
     if (is_address_cached(mem_var, addr_var, hash_var))                     \
         dest_var = (word_type)cached_address(mem_var, hash_var);            \
-    else \
-    {                                                                  \
+    else                                                                    \
+    {                                                                       \
         dest_var = block_id(addr_var);                                      \
         if (block_fault(mem_var, dest_var))                                 \
         {                                                                   \
@@ -138,16 +142,18 @@ INLINE block_type *new_block();
             clear_block_fault(mem_var, dest_var);                           \
         }                                                                   \
         else                                                                \
-            temp_var = block(mem_var, dest_var);                                    \
-        dest_var = page_id(addr_var);                                               \
-        if (page_fault((block_type *)temp_var, dest_var))                           \
-        {                                                                           \
-            clear_page_fault((block_type *)temp_var, dest_var);                     \
+            temp_var = block(mem_var, dest_var);                            \
+                                                                                            \
+        dest_var = page_id(addr_var);                                                       \
+        if (page_fault((block_type *)temp_var, dest_var))                                   \
+        {                                                                                   \
+            clear_page_fault((block_type *)temp_var, dest_var);                             \
             temp_var = set_page((block_type *)temp_var, dest_var, _new_page_inline());      \
-        }                                                                           \
-        else                                                                        \
-            temp_var = page((block_type *)temp_var, dest_var);                      \
-        dest_var = word_id(addr_var);                                               \
+        }                                                                                   \
+        else                                                                                \
+            temp_var = page((block_type *)temp_var, dest_var);                              \
+                                                                                            \
+        dest_var = word_id(addr_var);                                                       \
         dest_var = (word_type)set_cached_address(mem_var, addr_var, hash_var, word(temp_var, dest_var)); \
     }   \
 }

@@ -9,9 +9,9 @@ from front_end.parser.ast.statements import BreakStatement, ContinueStatement, R
 from front_end.parser.ast.statements import LabelStatement
 from front_end.parser.types import c_type, void_pointer_type, VoidType
 
-from back_end.virtual_machine.instructions.architecture import Push, Address, AbsoluteJump, Pass, RelativeJump, allocate
-from back_end.virtual_machine.instructions.architecture import manually_allocate
-from back_end.virtual_machine.instructions.architecture import LoadBaseStackPointer, Integer, Set, Load, Add, Subtract
+from back_end.virtual_machine.instructions.architecture import Pass, relative_jump, allocate, load_instr
+from back_end.virtual_machine.instructions.architecture import Address, load_base_stack_pointer, add, push, set_instr
+from back_end.virtual_machine.instructions.architecture import Integer, absolute_jump, Allocate, RelativeJump
 from back_end.emitter.c_types import size
 
 from back_end.emitter.expressions.expression import expression
@@ -27,7 +27,7 @@ def break_statement(stmnt, symbol_table, stack, *_):
         ))
     return chain(
         update_stack(stack.stack_pointer, stack_pointer, loc(stmnt)),
-        (RelativeJump(loc(stmnt), Address(instr, loc(stmnt))),)
+        relative_jump(Address(instr, loc(stmnt)), loc(stmnt))
     )
 
 
@@ -40,40 +40,44 @@ def continue_statement(stmnt, symbol_table, stack, *_):
         ))
     return chain(
         update_stack(stack.stack_pointer, stack_pointer, loc(stmnt)),
-        (RelativeJump(loc(stmnt), Address(instr, loc(stmnt))),)
+        relative_jump(Address(instr, loc(stmnt)), loc(stmnt))
     )
 
 
 def return_instrs(location):
-    yield LoadBaseStackPointer(location)
-    yield Push(location, Address(1, location))
-    yield Add(location)
-    yield Load(location, size(void_pointer_type))  # Push return Address.
-    yield AbsoluteJump(location)  # Jump back, caller is responsible for clean up as well as set up.
+    return absolute_jump(
+        load_instr(
+            add(load_base_stack_pointer(location), push(1, location), location),
+            size(void_pointer_type),
+            location
+        ),
+        location
+    )  # Jump back, caller is responsible for clean up as well as set up.
 
 
 def return_statement(stmnt, symbol_table, *_):
+    # TODO: check if we can omit the setting the return value if if it is immediately removed ...
     return_type = c_type(c_type(symbol_table['__ CURRENT FUNCTION __']))
     if isinstance(return_type, VoidType):
         return return_instrs(loc(stmnt))
     return chain(
         cast(expression(exp(stmnt), symbol_table), c_type(exp(stmnt)), return_type, loc(stmnt)),
-        (  # Copy return value onto stack
-            LoadBaseStackPointer(loc(stmnt)),
-            # move to previous frame, skipping return address ...
-            Push(loc(stmnt), Address(1 + size(void_pointer_type), loc(stmnt))),
-            Add(loc(stmnt)),
-            Load(loc(stmnt), size(void_pointer_type)),
-            # copy return value to previous Frame.
-            Set(loc(stmnt), size(return_type)),
+        set_instr(
+            load_instr(
+                add(load_base_stack_pointer(loc(stmnt)), push(1 + size(void_pointer_type), loc(stmnt)), loc(stmnt)),
+                size(void_pointer_type),
+                loc(stmnt)
+            ),
+            size(return_type),
+            loc(stmnt)
         ),
-        allocate(Integer(-size(return_type), loc(stmnt))),  # Set leaves the value on the stack
+        allocate(-size(return_type), loc(stmnt)),  # Set leaves the value on the stack TODO: see if we can remove instr.
         return_instrs(loc(stmnt))
     )
 
 
 def update_stack(source_stack_pointer, target_stack_pointer, location):
-    return allocate(Address(source_stack_pointer - target_stack_pointer, location))
+    return allocate(source_stack_pointer - target_stack_pointer, location)
 
 
 # goto is really trouble some, specially on stack based machines, since it can bypass definitions, corrupting offsets.
@@ -89,21 +93,16 @@ def goto_statement(stmnt, symbol_table, stack, *_):
             (RelativeJump(loc(stmnt), Address(instr, loc(stmnt))),)
         )
     else:  # Label has yet to be defined ...
-        _load_sp, _push, _add, _set_st = manually_allocate(Address(None, loc(stmnt)))
+        # _load_sp, _push, _add, _set_st = manually_allocate(Address(None, loc(stmnt)))
         # Allocate negates the amount since it calls add
         # TODO, update allocate so it doesn't negate but calls slightly slower sub
 
         # Basically we need to update the relative jump and the amount to which we need to update the stack ...
-        alloc_operand_addr = Address(None, loc(stmnt))
-        jump_operand_addr = Address(None, loc(stmnt))
-        gotos[stmnt.label].append((alloc_operand_addr, jump_operand_addr, stack.stack_pointer))
-        instrs = (
-            _load_sp,
-            Push(loc(stmnt), alloc_operand_addr),
-            Subtract(loc(stmnt)),
-            _set_st,
-            RelativeJump(loc(stmnt), jump_operand_addr)
-        )
+        alloc_instr = Allocate(loc(stmnt), Address(Integer(0), loc(stmnt)))
+        jump_instr = RelativeJump(loc(stmnt), Address(Integer(0), loc(stmnt)))
+
+        gotos[stmnt.label].append((alloc_instr, jump_instr, stack.stack_pointer))
+        instrs = (alloc_instr, jump_instr)
 
     return instrs
 
@@ -115,11 +114,11 @@ def label_statement(stmnt, symbol_table, stack, statement_func):
     labels[name(stmnt)] = (instr, stack.stack_pointer)
 
     # update all previous gotos referring to this lbl
-    for alloc_operand_addr, rel_jump_addr, goto_stack_pointer in gotos[name(stmnt)]:
-        # we invert since allocate negates the amount
-        alloc_operand_addr.obj = Integer(goto_stack_pointer - stack.stack_pointer, loc(alloc_operand_addr))
-        alloc_operand_addr.obj.address = alloc_operand_addr.obj  # TODO: bug! set_address uses obj.address.
-        rel_jump_addr.obj = instr
+    for alloc_instr, rel_jump_instr, goto_stack_pointer in gotos[name(stmnt)]:
+        # TODO: bug! set_address uses obj.address.
+        alloc_instr[0].obj.address = stack.stack_pointer - goto_stack_pointer
+        rel_jump_instr[0].obj = instr
+        # rel_jump_instr[0].obj.address = rel_jump_instr[0].obj
     del gotos[name(stmnt)][:]
 
     return chain((instr,), statement_func(stmnt.statement, symbol_table, stack))

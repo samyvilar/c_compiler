@@ -19,7 +19,7 @@ from back_end.emitter.expressions.ternary import ternary_expression
 
 from back_end.emitter.c_types import size
 
-from back_end.virtual_machine.instructions.architecture import Load, allocate, Address
+from back_end.virtual_machine.instructions.architecture import load_instr, allocate, Address
 
 
 def identifier_expression(expr, symbol_table, expression_func):
@@ -27,7 +27,7 @@ def identifier_expression(expr, symbol_table, expression_func):
     dec = symbol_table[name(expr)]
     if isinstance(c_type(dec), (FunctionType, ArrayType)):  # Function/Array Types are nothing more than addresses.
         return dec.load_address(loc(expr))
-    return chain(dec.load_address(loc(expr)), (Load(loc(expr), size(c_type(expr))),),)
+    return load_instr(dec.load_address(loc(expr)), size(c_type(expr)), loc(expr))
 
 
 def comma_expression(expr, symbol_table, expression_func):
@@ -35,7 +35,7 @@ def comma_expression(expr, symbol_table, expression_func):
         chain.from_iterable(
             chain(
                 expression_func(e, symbol_table, expression_func),
-                not isinstance(c_type(e), VoidType) and allocate(Address(-1 * size(c_type(e)), loc(e))) or ()
+                not isinstance(c_type(e), VoidType) and allocate(-1 * size(c_type(e)), loc(e)) or ()
             )
             for e in exp(expr)[:-1]
         ),

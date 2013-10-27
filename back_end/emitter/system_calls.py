@@ -248,11 +248,11 @@ def __exit__(
     instrs = (
         # Set the return status on top of the stack
         Push(SysCallLocation, value),
-        Push(SysCallLocation, Address(-size(IntegerType()))),
+        Push(SysCallLocation, -size(IntegerType())),
         Set(SysCallLocation, size(IntegerType())),
         # reset stack ...
-        Push(SysCallLocation, Address(-1, SysCallLocation)),
-        Push(SysCallLocation, Address(-1, SysCallLocation)),
+        Push(SysCallLocation, -1),
+        Push(SysCallLocation, -1),
         SetBaseStackPointer(SysCallLocation),
         SetStackPointer(SysCallLocation),
     )

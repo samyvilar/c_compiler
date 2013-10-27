@@ -113,7 +113,7 @@ class TestInitializer(TestDeclarations):
             struct {int a; char b; int c[10]; struct {int a; double c;} foo[10];}
                 foo = {.a=10, .c[1] = -1, .foo[0 ... 2] = {-1, -1} };
 
-            return foo.a == 10 && foo.c[1] == -1 && foo.foo[0].a == -1 && foo.foo[1].c == -1 && foo.foo[3].c == 0.0;
+            return foo.a == 10 && foo.c[1] == -1 && foo.foo[0].a == -1 && foo.foo[1].c == -1.0 && foo.foo[3].c == 0.0;
         }
         """
         self.evaluate(code)

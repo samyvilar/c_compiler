@@ -75,7 +75,7 @@ class FunctionMacro(ObjectMacro):
 
 
 def expand(token, tokens, macros, expanded_macros=None):
-    _iter = lambda seq: takewhile(lambda _: True, iter(seq))
+    _iter = lambda seq: takewhile(None, iter(seq))
     expanded_macros = expanded_macros or {}
 
     if token in macros and id(token) not in expanded_macros:

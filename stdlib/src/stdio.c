@@ -148,6 +148,7 @@ char *number_to_string(long long value, int base, char *dest, unsigned long long
         base = 10;
 
     #define digit_ch(__numb__) ((__numb__) + (((__numb__) < 10) ? '0' : ('a' - 10)))
+
     while (current >= base)
     {
         *destination++ = digit_ch(current % base);

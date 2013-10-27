@@ -4,6 +4,7 @@ __author__ = 'samyvilar'
 import argparse
 import os
 import inspect
+
 try:
     import cPickle as pickle
 except ImportError as e:
@@ -21,8 +22,13 @@ import front_end.parser.parse as parser
 from front_end.parser.symbol_table import SymbolTable
 import back_end.emitter.emit as emitter
 import back_end.linker.link as linker
+from back_end.loader.load import load as load_binaries
 
 import back_end.emitter.system_calls as system_calls
+
+from back_end.virtual_machine.instructions.architecture import Instruction
+
+from back_end.emitter.optimizer.optimize import optimize, zero_level_optimizations, first_level_optimizations
 
 import ovm
 
@@ -66,15 +72,17 @@ def preprocess(files, include_dirs):
     return output
 
 
-def symbols(file_name, include_dirs=()):
+def symbols(file_name, include_dirs=(), optimizer=lambda _: _):
     if isinstance(file_name, str) and os.path.splitext(file_name)[1] == '.o.p':
         with open(file_name) as file_obj:
             symbol_table = pickle.load(file_obj)
         symbol_seq = symbol_table.itervalues()
     else:
-        symbol_seq = emitter.emit(
-            parser.parse(
-                preprocessor.preprocess(tokenizer.tokenize(loader.load(file_name)), include_dirs=include_dirs)
+        symbol_seq = optimizer(
+            emitter.emit(
+                parser.parse(
+                    preprocessor.preprocess(tokenizer.tokenize(loader.load(file_name)), include_dirs=include_dirs)
+                )
             )
         )
     return symbol_seq
@@ -88,17 +96,19 @@ std_libraries = ['libc.p']
 std_symbols = system_calls.SYMBOLS
 
 
-def instrs(files, include_dirs=(), library_dirs=(), libraries=()):
+def instrs(files, include_dirs=(), library_dirs=(), libraries=(), optimizer=lambda _: _):
     symbol_table = SymbolTable()
-    return linker.resolve(
-        linker.executable(
-            chain(std_symbols.itervalues(), chain.from_iterable(starmap(symbols, izip(files, repeat(include_dirs))))),
-            symbol_table=symbol_table,
-            libraries=libraries,
-            library_dirs=library_dirs,
-            linker=linker.static,
-        ),
-        symbol_table
+    return optimizer(
+        linker.resolve(
+            linker.executable(
+                chain(std_symbols.itervalues(), chain.from_iterable(starmap(symbols, izip(files, repeat(include_dirs))))),
+                symbol_table=symbol_table,
+                libraries=libraries,
+                library_dirs=library_dirs,
+                linker=linker.static,
+            ),
+            symbol_table
+        )
     )
 
 
@@ -106,7 +116,10 @@ def main():
     cli = argparse.ArgumentParser(description='C Compiler ...')
 
     cli.add_argument('files', nargs='+')
+    cli.add_argument('-O', '--optimize', default=0, nargs=1, help='Optimization Level')
     cli.add_argument('-E', '--preprocess', action='store_true', default=False, help='Output preprocessor and stop.')
+    cli.add_argument('-S', '--assembly', action='store_true', default=False,
+                     help='Output instructions (assembly) as readable text')
     cli.add_argument('-c', '--compile', action='store_true', default=False, help='Compile, but not link.')
     cli.add_argument('-static', '--static', action='store_true', default=True, help='Static Linking (default).')
     cli.add_argument('-shared', '--shared', action='store_true', default=False, help='Shared Linking.')
@@ -130,8 +143,24 @@ def main():
     args.Libraries += std_libraries_dirs
     args.libraries += std_libraries
 
+    if args.optimize and args.optimize[0] == '1':
+        optimizer = lambda instrs: optimize(instrs, first_level_optimizations)
+    else:
+        optimizer = lambda instrs: optimize(instrs, zero_level_optimizations)
+
     if args.preprocess:
         print(preprocess(args.files, args.Include))
+    elif args.assembly:
+        mem = {}
+        load_binaries(
+            linker.set_addresses(
+                instrs(args.files, args.Include, args.Libraries, args.libraries, optimizer)
+            ),
+            mem
+        )
+        for addr, elem in mem.iteritems():
+            if isinstance(elem, Instruction):
+                print '{l}:{addr}: {elem}'.format(l=loc(elem), addr=addr, elem=elem)
     elif args.compile:
         if args.output:
             if len(args.output) != len(args.files):
@@ -143,13 +172,13 @@ def main():
             output_files = (os.path.splitext(file_name)[0] + '.o.p' for file_name in args.files)
 
         for input_file, output_file in izip(args.files, output_files):
-            symbol_table = linker.library(symbols(input_file, args.Include))
+            symbol_table = linker.library(symbols(input_file, args.Include, optimizer))
             with open(output_file, 'wb') as file_obj:
                 pickle.dump(symbol_table, file_obj)
     elif args.archive:
         symbol_table = SymbolTable()
         for input_file in args.files:
-            symbol_table = linker.library(symbols(input_file, args.Include), symbol_table)
+            symbol_table = linker.library(symbols(input_file, args.Include, optimizer), symbol_table)
         if len(args.output) != 1:
             raise ValueError('Need exactly one output archive name got {g}'.format(g=len(args.output)))
         with open(args.output[0], 'wb') as file_obj:
@@ -157,7 +186,7 @@ def main():
     elif args.shared:
         raise NotImplementedError
     else:  # static linking ...
-        instructions = instrs(args.files, args.Include, args.Libraries, args.libraries)
+        instructions = instrs(args.files, args.Include, args.Libraries, args.libraries, optimizer)
 
         if len(args.output) > 1:
             raise ValueError('Cannot specify more than 1 output for binary got {g}'.format(

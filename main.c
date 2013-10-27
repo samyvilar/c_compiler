@@ -141,10 +141,7 @@ ordered_set_tree_node_type * create_order()
 ordered_set_tree_node_type *find_node(ordered_set_tree_node_type *key_order, key_type key)
 {
     while (IS_TREE(key_order)) /* while we are not in a leaf. */
-        if (key < KEY(key_order))
-            key_order = LEFT_NODE(key_order);
-        else
-            key_order = RIGHT_NODE(key_order);
+        key_order = (key < KEY(key_order)) ?  LEFT_NODE(key_order) : RIGHT_NODE(key_order);
     
     return key_order;
 }
@@ -629,7 +626,10 @@ long int p(long int q)
 }
 
 int main()
-{  long i; o_t *o;
+{
+    long i;
+    o_t *o;
+    
     printf("starting \n");
     o = create_order();
     printf("done creating order \n");
@@ -659,6 +659,8 @@ int main()
     }
     }
     printf("finished. no problem found.\n");
+    
+    return 0;
 }
 
 

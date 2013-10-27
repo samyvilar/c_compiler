@@ -45,6 +45,21 @@ word_type available_file_nodes = NUMBER_OF_FILE_NODES_PER_BLOCK;
 
 const word_type _instr_sizes_[256] = {INSTRUCTION_SIZES};
 
+
+const char mask_possibilities[2][2][2] = {  // theres only three possibilities, since zero and non_zero are dependent on each other ...
+    [0][0][0] = 2, // (little endian) 0100, clearing zero flag, causes the non-zero flag to be set.
+    [1][0][0] = 1, // 1000, clearing the non-zero flag causes the non-zero flag to be set.
+    
+    [0][1][0] = 6, // 0110 clearing the zero flag (setting non-zero), setting the carry_borrow flag.
+    [1][1][0] = 5, // 1010 setting the zero flag (clearing non-zero), setting the carry_borrow flag.
+    
+    [0][0][1] = 10, // 0101 clearing zero (setting non-zero), (clearing carry_borrow) setting msb
+    [1][0][1] = 9, // 1001, setting zero (clearing non-zero) (clearing carry_borrow) setting msb
+    [0][1][1] = 14, // 0111 clearing zero (setting non-zero), setting carry_borrow, setting msb
+    [1][1][1] = 13, // 1011 setting zero (clearing non-zero), setting carry_borrow, setting msb
+};
+
+
 INLINE_FUNC_SIGNATURE(evaluate) {
     /* x86 has 8 (so call) general purpose registers, x86_64 doubles that to 16 ...*/
     /* x86 (RAX, RBX, RCX, RDX) index (RSI (source), RDI (destination), RBP (base pointer), RSP (stack pointer)) */
@@ -54,10 +69,9 @@ INLINE_FUNC_SIGNATURE(evaluate) {
     register word_type
         _stack_pointer asm("r14") = stack_pointer(cpu),
         _instr_pointer asm("r15") = instr_pointer(cpu),
-        _base_pointer = base_pointer(cpu),
-        _zero_flag = zero_flag(cpu),
-        _msb_flag = most_significant_bit_flag(cpu),
-        _carry_borrow_flag = carry_borrow_flag(cpu);
+        _base_pointer = base_pointer(cpu);
+
+    register word_type _flags = flags(cpu);
     
     /* Frames ... */
     register frame_type
@@ -94,7 +108,7 @@ INLINE_FUNC_SIGNATURE(evaluate) {
     register word_type __addr, __hash;
     register void *__temp;
 
-    #define _translate_address_unsafe(mem, addr, dest) \
+    #define _translate_address_unsafe(mem, addr, dest)  \
         TRANSLATE_ADDRESS_INLINE(mem, addr, dest, __hash, __temp)
     
     #define _get_word_inline_unsafe(mem, addr, dest) _translate_address_unsafe(mem, addr, dest); dest = *(word_type *)dest
@@ -122,18 +136,14 @@ INLINE_FUNC_SIGNATURE(evaluate) {
         
     #define UPDATE_INSTR_POINTER(_ip) ++_ip
     #define UPDATE_INSTR_POINTER_WIDE(_ip) _ip += 2
-        
-        
+    
+    
     #define _BINARY_OPERATION(_o_, oper_0, oper_1, result, msb_func)    \
-        _pop_word_inline_unsafe(mem, _stack_pointer, oper_1);           \
-            result = _stack_pointer + 1;                                \
-          _translate_address_unsafe(mem, result, operand_2);            \
-        oper_0 = *(word_type *)operand_2;                               \
-        result = oper_0 _o_ oper_1;                                     \
-        *(word_type *)operand_2 = result;                               \
-        _zero_flag = !result;                                           \
-        _msb_flag = msb_func(result);
-        
+        result = INCREMENT_POINTER(_stack_pointer) + 1;                                  \
+        _translate_address_unsafe(mem, result, oper_0);                 \
+        _translate_address_unsafe(mem, _stack_pointer, oper_1);         \
+        *(word_type *)oper_0 _o_##= *(word_type *)oper_1;
+    
     #define BINARY_OPERATION(_o_)  _BINARY_OPERATION(_o_, operand_0, operand_1, temp, MSB)
         
     #define LESS_THAN_ZERO(value) ((value) < 0.0)
@@ -144,28 +154,15 @@ INLINE_FUNC_SIGNATURE(evaluate) {
             _translate_address_unsafe(mem, temp, operand_2);      \
         float_operand_0 = word_as_float(*(word_type *)operand_2);   \
         float_temp = float_operand_0 _o_ float_operand_1;           \
-        *(word_type *)operand_2 = float_as_word(float_temp);        \
-        _zero_flag = !float_temp;                                   \
-        _msb_flag = float_temp < 0.0;
-
+        *(word_type *)operand_2 = float_as_word(float_temp);        
+    
     #define update_cpu(cpu)                             \
         set_base_pointer(cpu, _base_pointer);           \
         set_stack_pointer(cpu, _stack_pointer);         \
         set_instr_pointer(cpu, _instr_pointer);         \
-        set_zero_flag(cpu, _zero_flag);                 \
-        set_carry_borrow_flag(cpu, _carry_borrow_flag); \
-        set_most_significant_bit_flag(cpu, _msb_flag);  \
-        set_frames(cpu, _frames);
-        
-    #define cache_cpu(cpu)                              \
-        _base_pointer = base_pointer(cpu);              \
-        _stack_pointer = stack_pointer(cpu);            \
-        _instr_pointer = instr_pointer(cpu);            \
-        _zero_flag = zero_flag(cpu);                    \
-        _carry_borrow_flag = carry_borrow_flag(cpu);    \
-        _msb_flag = most_significant_bit_flag(cpu);     \
-        _frames = frames(cpu);
-        
+        set_flags(cpu, _flags);                         \
+        set_frames(cpu, _frames)
+    
     #define _consume_instruction_operand_inline(mem, ip, destination)   \
         UPDATE_INSTR_POINTER(ip);                                       \
         _get_word_inline_unsafe(mem, ip, destination);                  \
@@ -174,7 +171,7 @@ INLINE_FUNC_SIGNATURE(evaluate) {
         
     #define calculate_offset_address(initial_label, label) (&&label - &&initial_label)
     #define get_label(instr) _ ## instr ## _ ## IMPLEMENTATION
-    const word_type offsets[] = {
+    static const word_type offsets[] = {
         [0 ... 255] = calculate_offset_address(_evaluate_instr, get_label(INVALID)),
         
         [PASS] = calculate_offset_address(_evaluate_instr, get_label(PASS)),
@@ -220,6 +217,7 @@ INLINE_FUNC_SIGNATURE(evaluate) {
         [JUMP_TABLE] = calculate_offset_address(_evaluate_instr, get_label(JUMP_TABLE)),
         
         [LOAD_ZERO_FLAG] = calculate_offset_address(_evaluate_instr, get_label(LOAD_ZERO_FLAG)),
+        [LOAD_NON_ZERO_FLAG] = calculate_offset_address(_evaluate_instr, get_label(LOAD_NON_ZERO_FLAG)),
         [LOAD_CARRY_BORROW_FLAG] = calculate_offset_address(_evaluate_instr, get_label(LOAD_CARRY_BORROW_FLAG)),
         [LOAD_MOST_SIGNIFICANT_BIT_FLAG] = calculate_offset_address(_evaluate_instr, get_label(LOAD_MOST_SIGNIFICANT_BIT_FLAG)),
         
@@ -228,7 +226,13 @@ INLINE_FUNC_SIGNATURE(evaluate) {
         
         [SYSTEM_CALL] = calculate_offset_address(_evaluate_instr, get_label(SYSTEM_CALL)),
         
-        [HALT] = calculate_offset_address(_evaluate_instr, get_label(HALT))
+        [HALT] = calculate_offset_address(_evaluate_instr, get_label(HALT)),
+        
+        [POSTFIX_UPDATE] = calculate_offset_address(_evaluate_instr, get_label(POSTFIX_UPDATE)),
+        
+        [COMPARE] = calculate_offset_address(_evaluate_instr, get_label(COMPARE)),
+        [COMPARE_FLOAT] = calculate_offset_address(_evaluate_instr, get_label(COMPARE_FLOAT))
+        
     };
     
     #define done() goto execute_instruction
@@ -283,6 +287,17 @@ INLINE_FUNC_SIGNATURE(evaluate) {
                     INCREMENT_POINTER(dest_address);
                 }
                 done();
+    
+            get_label(POSTFIX_UPDATE):
+                _consume_instruction_operand_inline(mem, _instr_pointer, number_of_elements);
+                INCREMENT_POINTER(_stack_pointer);
+                _translate_address_unsafe(mem, _stack_pointer, dest_address); // translate dest_address ...
+                _translate_address_unsafe(mem, *(word_type *)dest_address, src_address); // translate source address ...
+                *(word_type *)dest_address = (*(word_type *)src_address); // push value...
+                *(word_type *)src_address += number_of_elements; // update and set value ...
+                DECREMENT_POINTER(_stack_pointer);
+                done();
+    
     
             get_label(DUP):
                 _consume_instruction_operand_inline(mem, _instr_pointer, number_of_elements);
@@ -340,16 +355,82 @@ INLINE_FUNC_SIGNATURE(evaluate) {
                 _consume_instruction_operand_inline(mem, _instr_pointer, temp);
                 _stack_pointer += temp;
                 done();
-                
+    
+            get_label(LOAD_ZERO_FLAG):
+                LOAD_REGISTER(flag_from_value(_flags, ZERO_FLAG_INDEX));
+                UPDATE_INSTR_POINTER(_instr_pointer);
+                done();
+            
+            get_label(LOAD_NON_ZERO_FLAG):
+                LOAD_REGISTER(flag_from_value(_flags, NON_ZERO_FLAG_INDEX));
+                UPDATE_INSTR_POINTER(_instr_pointer);
+                done();
+            
+            get_label(LOAD_CARRY_BORROW_FLAG):
+                LOAD_REGISTER(flag_from_value(_flags, CARRY_BORROW_FLAG_INDEX));
+                UPDATE_INSTR_POINTER(_instr_pointer);
+                done();
+            
+            get_label(LOAD_MOST_SIGNIFICANT_BIT_FLAG):
+                LOAD_REGISTER(flag_from_value(_flags, MOST_SIGNIFICANT_BIT_FLAG_INDEX));
+                UPDATE_INSTR_POINTER(_instr_pointer);
+                done();
+    
+            get_label(COMPARE):
+                _pop_word_inline_unsafe(mem, _stack_pointer, operand_1);
+                _pop_word_inline_unsafe(mem, _stack_pointer, operand_0);
+                _flags = ((temp = operand_0 - operand_1) ? 2 : 1);
+                _flags |= ((operand_1 > operand_0) << 2) |
+                    (
+                        (temp & ((word_type)1 << ((BYTE_BIT_SIZE * sizeof(word_type)) - 1))) >>
+                            ((BYTE_BIT_SIZE * sizeof(word_type)) - (1 + MOST_SIGNIFICANT_BIT_FLAG_INDEX))
+                     );
+//                _flags |= ((operand_1 > operand_0) << 2);
+//                _flags = mask_possibilities
+//                    [(temp == 0)] // zero flag, non-zero flag ...
+//                    [(operand_1 > operand_0)] // load, carry
+//                    [MSB(temp)] // most significant bit ...
+//                ;
+//                set_flag_from_value(
+//                    _flags,
+//                    ZERO_FLAG_INDEX,
+//                    (((temp = operand_0 - operand_1)) ? (word_type)0 : (word_type)1)
+//                );
+//                _zero_flag = (((temp = operand_0 - operand_1)) ? (word_type)0 : (word_type)1);
+//                _zero_flag = (((temp = operand_0 - operand_1)) == 0);
+//                _carry_borrow_flag = (word_type)(operand_1 > operand_0);
+//                _msb_flag = MSB(temp);
+    
+                UPDATE_INSTR_POINTER(_instr_pointer);
+                done();
+    
+            get_label(COMPARE_FLOAT):
+                _pop_word_inline_unsafe(mem, _stack_pointer, operand_1);
+                _pop_word_inline_unsafe(mem, _stack_pointer, operand_0);
+//                float_temp = word_as_float(operand_0) - word_as_float(operand_1);
+                _flags = ((float_temp = word_as_float(operand_0) - word_as_float(operand_1)) ? 2 : 1);
+                // assuming double precision format has the same bit in the same location as word ...
+                _flags |= (float_as_word(float_temp) & ((word_type)1 << ((BYTE_BIT_SIZE * sizeof(word_type)) - 1))) >>
+                            ((BYTE_BIT_SIZE * sizeof(word_type)) - (1 + MOST_SIGNIFICANT_BIT_FLAG_INDEX))
+                        ;
+    
+//                _flags = mask_possibilities
+//                    [(float_temp == 0.0)]
+//                    [0]
+//                    [(float_temp < 0.0)];
+//                _zero_flag = (((float_temp = float_operand_0 - float_operand_1)) ? (word_type)0 : (word_type)1);
+//                _zero_flag = (((float_temp = float_operand_0 - float_operand_1)) == 0.0); //? (word_type)0 : (word_type)1);
+//                _msb_flag = float_temp < 0.0;
+                UPDATE_INSTR_POINTER(_instr_pointer);
+                done();
+    
             get_label(ADD):
                 BINARY_OPERATION(+)
-                _carry_borrow_flag = (word_type)((temp < operand_0) & (temp < operand_1));
                 UPDATE_INSTR_POINTER(_instr_pointer);
                 done();
                 
             get_label(SUBTRACT):
                 BINARY_OPERATION(-)
-                _carry_borrow_flag = (word_type)((temp > operand_0) & (temp > operand_1));
                 UPDATE_INSTR_POINTER(_instr_pointer);
                 done();
                 
@@ -501,22 +582,7 @@ INLINE_FUNC_SIGNATURE(evaluate) {
                 #undef number_of_values
                 #undef value
                 #undef median_value
-                
-            get_label(LOAD_ZERO_FLAG):
-                LOAD_REGISTER(_zero_flag);
-                UPDATE_INSTR_POINTER(_instr_pointer);
-                done();
-                
-            get_label(LOAD_CARRY_BORROW_FLAG):
-                LOAD_REGISTER(_carry_borrow_flag);
-                UPDATE_INSTR_POINTER(_instr_pointer);
-                done();
-                
-            get_label(LOAD_MOST_SIGNIFICANT_BIT_FLAG):
-                LOAD_REGISTER(_msb_flag);
-                UPDATE_INSTR_POINTER(_instr_pointer);
-                done();
-                
+    
             get_label(PUSH_FRAME):
                 _new_frame(_temp_frame);
                 set_frames_base_pointer(_temp_frame, _base_pointer);

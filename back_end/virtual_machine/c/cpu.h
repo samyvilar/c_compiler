@@ -62,6 +62,13 @@
 #define PASS 50
 #define SYSTEM_CALL 128
 
+#define POSTFIX_UPDATE 4
+
+#define COMPARE 10
+#define COMPARE_FLOAT 243
+
+#define LOAD_NON_ZERO_FLAG 226
+
 
 typedef struct frame_type {
     struct frame_type *next;
@@ -81,9 +88,7 @@ struct cpu_type {
             stack_pointer,
             base_pointer,
             instr_pointer,
-            zero_flag,
-            carry_borrow_flag,
-            most_significant_bit_flag;
+            flags;
     frame_type *frames;
 };
 // C guarantees that the address of the first member and the struct itself are the same (no need for member calcs)
@@ -95,12 +100,34 @@ struct cpu_type {
 #define instr_pointer(cpu) ((cpu)->instr_pointer)
 #define set_instr_pointer(cpu, ptr) (instr_pointer(cpu) = (ptr))
 #define update_instr_pointer(cpu, amount) (instr_pointer(cpu) += (amount))
-#define zero_flag(cpu) ((cpu)->zero_flag)
-#define set_zero_flag(cpu,  flag) (zero_flag(cpu) = (flag))
-#define carry_borrow_flag(cpu) ((cpu)->carry_borrow_flag)
-#define set_carry_borrow_flag(cpu, flag) (carry_borrow_flag(cpu) = (flag))
-#define most_significant_bit_flag(cpu) ((cpu)->most_significant_bit_flag)
-#define set_most_significant_bit_flag(cpu, flag) (most_significant_bit_flag(cpu) = (flag))
+
+#define ZERO_FLAG_INDEX 0
+#define NON_ZERO_FLAG_INDEX 1
+#define CARRY_BORROW_FLAG_INDEX 2
+#define MOST_SIGNIFICANT_BIT_FLAG_INDEX 3
+
+// There are 4 flags, each with 2 possible values (0 or 1), so 2**4 or 16 possible values
+// instead of checking each lets just build a table with all the possible values and their mask
+
+#define MASK(index) (1 << index)
+
+#define flags(cpu) ((cpu)->flags)
+#define set_flags(cpu, value) (flags(cpu) = (value))
+
+#define flag_from_value(value, flag_index)  ((value & MASK(flag_index)) >> flag_index)
+#define get_flag(cpu, flag) flag_from_value(flags(cpu), flag)
+
+#define zero_flag(cpu) get_flag(cpu, ZERO_FLAG_INDEX)
+//#define set_zero_flag(cpu, value) (zero_flag(cpu) = (value))
+
+#define non_zero_flag(cpu) get_flag(cpu, NON_ZERO_FLAG_INDEX)
+//#define set_non_zero_flag(cpu, value) (non_zero_flag(cpu) = (value))
+
+#define carry_borrow_flag(cpu) get_flag(cpu, CARRY_BORROW_FLAG_INDEX)
+//#define set_carry_borrow_flag(cpu, value) (carry_borrow_flag(cpu) = (value))
+
+#define most_significant_bit_flag(cpu) get_flag(cpu, MOST_SIGNIFICANT_BIT_FLAG_INDEX)
+//#define set_most_significant_bit_flag(cpu, flag) (most_significant_bit_flag(cpu) = (flag))
 
 #define frames(cpu) ((cpu)->frames)
 #define set_frames(cpu, value) (frames(cpu) = (value))
@@ -119,7 +146,8 @@ struct cpu_type {
     [ALLOCATE] = WIDE_INSTRUCTION_SIZE, \
     [DUP] = WIDE_INSTRUCTION_SIZE, \
     [SWAP] = WIDE_INSTRUCTION_SIZE,  \
-    [JUMP_TABLE] = WIDE_INSTRUCTION_SIZE
+    [JUMP_TABLE] = WIDE_INSTRUCTION_SIZE, \
+    [POSTFIX_UPDATE] = WIDE_INSTRUCTION_SIZE
 
 #define operand(cpu, mem, operand_index) get_word(mem, (instr_pointer(cpu) + INSTR_SIZE(PASS)) + operand_index)
 
@@ -164,6 +192,9 @@ extern const word_type _instr_sizes_[256];
 #define AND_INSTR(oper_1, oper_2) BINARY_INTEGRAL_INSTR(oper_1, oper_2, AND)
 #define XOR_INSTR(oper_1, oper_2) BINARY_INTEGRAL_INSTR(oper_1, oper_2, XOR)
 #define NOT_INSTR(value) PUSH_INSTR(value), NOT
+
+#define COMPARE_INSTR(oper_1, oper_2) BINARY_INTEGRAL_INSTR(oper_1, oper_2, COMPARE)
+#define COMPARE_FLOAT_INSTR BINARY_INTEGRAL_INSTR(oper_1, oper_2, COMPARE_FLOAT)
 
 //PUSH_INSTR(float_as_word(oper_1)), PUSH_INSTR(float_as_word(oper_2)), NO_OPERAND_INSTR(instr)
 #define BINARY_FLOAT_INSTR(oper_1, oper_2, instr) BINARY_INTEGRAL_INSTR(float_as_word(oper_1), float_as_word(oper_2), instr)
@@ -212,6 +243,6 @@ INLINE_FUNC_SIGNATURE(evaluate);
 //}
 #define pop_word(cpu, mem, os) (update_stack_pointer(cpu, WORD_SIZE), get_word(mem, stack_pointer(cpu)))
 
-#define MSB(value) (value  >> (word_type)((8*sizeof(word_type)) - 1))
+#define MSB(value) (value >> (word_type)((BYTE_BIT_SIZE * sizeof(word_type)) - 1))
 
 #endif

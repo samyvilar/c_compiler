@@ -10,8 +10,7 @@ from front_end.parser.ast.statements import IfStatement, SwitchStatement, CaseSt
 from front_end.parser.types import CharType, ShortType, IntegerType, LongType, c_type
 
 from back_end.emitter.expressions.expression import expression
-from back_end.virtual_machine.instructions.architecture import Pass, JumpFalse, Address, RelativeJump, jump_table
-from back_end.virtual_machine.instructions.architecture import Integer
+from back_end.virtual_machine.instructions.architecture import Pass, jump_false, Address, relative_jump, jump_table
 
 from back_end.emitter.statements.jump import update_stack
 
@@ -24,11 +23,12 @@ def if_statement(stmnt, symbol_table, stack, statement_func):
             yield instr
 
     return chain(
-        expression(exp(stmnt), symbol_table),
-        (JumpFalse(loc(exp(stmnt)), Address(end_of_if, loc(end_of_if))),),
+        jump_false(expression(exp(stmnt), symbol_table), Address(end_of_if, loc(end_of_if)), loc(end_of_if)),
         statement_func(stmnt.statement, symbol_table, stack),
-        (RelativeJump(loc(stmnt), Address(end_of_else, loc(end_of_else))), end_of_if),
-        else_statement(stmnt, symbol_table, stack, statement_func), (end_of_else,),
+        relative_jump(Address(end_of_else, loc(end_of_else)), loc(stmnt)),
+        (end_of_if,),
+        else_statement(stmnt, symbol_table, stack, statement_func),
+        (end_of_else,),
     )
 
 
@@ -64,12 +64,11 @@ def switch_statement(stmnt, symbol_table, stack, statement_func):
                     chain(
                         (start,),
                         update_stack(stmnt.stack.stack_pointer, instr.case.stack.stack_pointer, loc(instr)),
-                        (RelativeJump(loc(stmnt), Address(instr, loc(instr))),)
+                        relative_jump(Address(instr, loc(instr)), loc(instr)),
                     )
                 )
                 cases[
-                    (isinstance(instr.case, DefaultStatement) and 'default')
-                    or Integer(exp(exp(instr.case)), loc(instr))
+                    (isinstance(instr.case, DefaultStatement) and 'default') or exp(exp(instr.case))
                 ] = Address(start, loc(instr))
                 del instr.case
             switch_body_instrs.append(instr)

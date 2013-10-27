@@ -192,18 +192,16 @@ class WidthType(ChainedType, IntegralType):
 
 class LongType(WidthType):
     rank = 4
-    pass
 
 
 class ShortType(WidthType):
     rank = 2
-    pass
 
 
 class PointerType(ChainedType, IntegralType):
     rank = 4
     supported_operations = LOGICAL_OPERATIONS | {
-        TOKENS.PLUS,  TOKENS.MINUS, TOKENS.PLUS_EQUAL, TOKENS.MINUS_EQUAL, SUBSCRIPT_OPERATOR
+        TOKENS.PLUS, TOKENS.MINUS, TOKENS.PLUS_EQUAL, TOKENS.MINUS_EQUAL, SUBSCRIPT_OPERATOR
     }
 
     def __call__(self, location):
@@ -221,6 +219,8 @@ class PointerType(ChainedType, IntegralType):
 
 
 class ArrayType(PointerType):
+    supported_operations = PointerType.supported_operations - COMPOUND_OPERATIONS
+
     def __init__(self, __c_type, length, location=LocationNotSet):
         self.length = length
         super(ArrayType, self).__init__(__c_type, location)

@@ -5,18 +5,21 @@ from itertools import chain
 from front_end.loader.locations import loc
 from front_end.parser.ast.expressions import TernaryExpression, exp, left_exp, right_exp
 
-from back_end.virtual_machine.instructions.architecture import JumpFalse, Pass, Address, RelativeJump
+from back_end.virtual_machine.instructions.architecture import jump_false, Pass, Address, relative_jump
 
 
 def ternary_expression(expr, symbol_table, expr_func):
-    if_false_instr, end_of_cond_instr = Pass(loc(expr)), Pass(loc(expr))
+    if_false_instr, end_of_conditional_instr = Pass(loc(expr)), Pass(loc(expr))
     return chain(
-        expr_func(exp(expr), symbol_table, expr_func),
-        (JumpFalse(loc(expr), Address(if_false_instr, loc(expr))),),
+        jump_false(
+            expr_func(exp(expr), symbol_table, expr_func),
+            Address(if_false_instr, loc(expr)),
+            loc(expr)
+        ),
         expr_func(left_exp(expr), symbol_table, expr_func),
-        (RelativeJump(loc(expr), Address(end_of_cond_instr, loc(end_of_cond_instr))),),
+        relative_jump(Address(end_of_conditional_instr, loc(end_of_conditional_instr)), loc(expr)),
         (if_false_instr,),
         expr_func(right_exp(expr), symbol_table, expr_func),
-        (end_of_cond_instr,),
+        (end_of_conditional_instr,),
     )
 ternary_expression.rules = {TernaryExpression}

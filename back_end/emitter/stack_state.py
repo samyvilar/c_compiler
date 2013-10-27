@@ -1,12 +1,12 @@
 __author__ = 'samyvilar'
 
-
+from itertools import chain
 from front_end.parser.types import CType, c_type
 
 from front_end.parser.ast.declarations import Declaration, Declarator
 
 from back_end.emitter.c_types import size
-from back_end.virtual_machine.instructions.architecture import LoadBaseStackPointer, Integer, Add, Push
+from back_end.virtual_machine.instructions.architecture import load_base_stack_pointer, add, push
 
 from back_end.emitter.c_types import bind_load_address_func
 
@@ -34,10 +34,7 @@ class Stack(object):
 
 def bind_instructions(obj, offset):
     def load_address(self, location):
-        yield LoadBaseStackPointer(location)
-        if self.offset:  # If offset is zero then no need to calculate address ...
-            yield Push(location, Integer(self.offset, location))
-            yield Add(location)
+        return add(load_base_stack_pointer(location), push(self.offset, location), location)
 
     obj.offset = offset
     obj.load_address = bind_load_address_func(load_address, obj)

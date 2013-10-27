@@ -5,9 +5,10 @@
 #include "fast_vm.h"
 
 #include "emmintrin.h"
+
 // each block is 1040 bytes assuming (1 << 7) pages
 block_type *block_pool = (block_type []){
-    [0 ... (BLOCK_POOL_SIZE - 1)].faults[0 ... (NUMBER_ELEMENTS(NUMBER_OF_PAGES) - 1)] = (word_type)-1
+    [0 ... (BLOCK_POOL_SIZE - 1)].faults[0 ... (NUMBER_ELEMENTS(NUMBER_OF_PAGES) - 1)] = FAULT_ID
 };
 word_type available_blocks = BLOCK_POOL_SIZE;
 
@@ -18,11 +19,8 @@ word_type available_pages = PAGE_POOL_SIZE;
 INLINE struct virtual_memory_type *new_virtual_memory()
 {
     struct virtual_memory_type *vm = malloc(sizeof(struct virtual_memory_type));
-    set_all_bits(faults(vm), NUMBER_OF_BLOCKS);
-
-    // initialize cache so initial state doesn't create any false positives.
-    memset(cache(vm), 0, sizeof(cache(vm)));
-    cache(vm)[0][0] = 1;
+    initialize_faults(faults(vm), NUMBER_OF_BLOCKS);
+    initilize_vm_cache(vm);
     return vm;
 }
 
@@ -32,7 +30,7 @@ INLINE block_type *new_block()
         return block_pool + --available_blocks;
     
     block_type *block = malloc(sizeof(block_type));
-    set_all_bits(faults(block), NUMBER_OF_PAGES);
+    initialize_faults(faults(block), NUMBER_OF_PAGES);
     return block;
 }
 

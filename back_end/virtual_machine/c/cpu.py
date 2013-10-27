@@ -1,12 +1,14 @@
 __author__ = 'samyvilar'
 
-# raise ImportError
+#raise ImportError
 import os
 import sys
 from ctypes import c_ulonglong, c_uint, Structure, POINTER, CDLL, CFUNCTYPE, byref, c_int, c_char_p, c_void_p
 from ctypes import c_float, c_double
 from ctypes import pythonapi, py_object
 from struct import pack, unpack
+
+from back_end.virtual_machine.instructions.architecture import Double
 
 from logging_config import logging
 
@@ -33,9 +35,7 @@ class CPU(Structure):
     _fields_ = [('stack_pointer', word_type),
                 ('base_pointer', word_type),
                 ('instr_pointer', word_type),
-                ('zero_flag', word_type),
-                ('carry_borrow_flag', word_type),
-                ('most_significant_bit_flag', word_type),
+                ('flags', word_type),
                 ('frames', POINTER(frame_type))]
 
     def __init__(self):
@@ -127,8 +127,8 @@ class VirtualMemory(object):
 
     def __setitem__(self, key, value):
         self.code[key] = value
-        if isinstance(value, float):
-            value = unpack(word_format, pack(float_format, value))[0]
+        if isinstance(value, Double):
+            value = unpack(word_format, pack(float_format, float(value)))[0]
         libvm._set_word_(self.c_vm_p, self.factory_type(key), self.factory_type(value))
 
     def __getitem__(self, item):

@@ -6,8 +6,8 @@ from front_end.parser.types import c_type, IntegralType, VAListType, FloatType
 from front_end.parser.types import DoubleType, unsigned
 from front_end.parser.ast.expressions import exp
 
-from back_end.virtual_machine.instructions.architecture import ConvertToFloat, ConvertToFloatFromUnsigned
-from back_end.virtual_machine.instructions.architecture import ConvertToInteger
+from back_end.virtual_machine.instructions.architecture import convert_to_float, convert_to_float_from_unsigned
+from back_end.virtual_machine.instructions.architecture import convert_to_int
 
 
 def cast_expression(expr, symbol_table, expression_func):
@@ -25,12 +25,12 @@ def cast(instrs, from_type, to_type, location):
         return instrs
 
     if isinstance(to_type, FloatType) and unsigned(from_type):
-        return chain(instrs, (ConvertToFloatFromUnsigned(location),))
+        return convert_to_float_from_unsigned(instrs, location)
 
     if isinstance(from_type, FloatType) and isinstance(to_type, IntegralType):
-        return chain(instrs, (ConvertToInteger(location),))
+        return convert_to_int(instrs, location)
 
     if isinstance(from_type, IntegralType) and isinstance(to_type, DoubleType):
-        return chain(instrs, (ConvertToFloat(location),))
+        return convert_to_float(instrs, location)
 
     raise ValueError('{l} Unable to cast from {f} to {t}'.format(l=location, f=from_type, t=to_type))

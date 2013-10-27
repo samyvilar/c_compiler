@@ -7,7 +7,7 @@ from front_end.tokenizer.tokens import TOKENS
 
 from front_end.parser.ast.general import Node, EmptyNode
 from front_end.parser.types import CType, IntegerType, IntegralType, c_type, safe_type_coercion, unsigned
-from front_end.parser.types import ArrayType, StructType, NumericType
+from front_end.parser.types import ArrayType, StructType, NumericType, PointerType
 
 
 from front_end.errors import error_if_not_type
