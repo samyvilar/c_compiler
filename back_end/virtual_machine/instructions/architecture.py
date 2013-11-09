@@ -244,14 +244,6 @@ class JumpTrue(RelativeJump):
     pass
 
 
-class PushFrame(Instruction):
-    pass
-
-
-class PopFrame(Instruction):
-    pass
-
-
 class VariableLengthInstruction(WideInstruction):  # Instructions with more than one operand, mainly used for JumpTable
     def __len__(self):
         return 1 + len(self.operands)
@@ -528,9 +520,6 @@ ids.update({
     ConvertToFloatFromUnsigned: 24,
     ConvertToInteger: 233,
 
-    PushFrame: 28,
-    PopFrame: 231,
-
     LoadZeroFlag: 30,   # ==
 
     LoadCarryBorrowFlag: 31,  # <, unsigned
@@ -594,13 +583,6 @@ def dup(amount, location):
         yield Dup(location, amount)
 
 
-# def manually_dup(amount):
-#     yield LoadStackPointer(loc(amount))
-#     yield Push(loc(amount), Address(1, loc(amount)))
-#     yield Add(loc(amount))
-#     yield Load(loc(amount), amount)
-
-
 def swap(amount, location):
     # extremely expensive instruction
     # requiring at a minimum 4 address translations (instr, operand, stack, stack - operand)
@@ -609,79 +591,13 @@ def swap(amount, location):
         yield Swap(location, amount)
 
 
-# def manually_swap(amount):
-#     for i in dup(amount):
-#         yield i
-#     yield LoadStackPointer(loc(amount))
-#     address_offset = Address(1 + 2 * amount, loc(amount))
-#     yield Push(loc(amount), address_offset)  # skip the two values.
-#     yield Add(loc(amount))
-#     yield Load(loc(amount), amount)
-#
-#     yield LoadStackPointer(loc(amount))  # calculate destination address ...
-#     yield Push(loc(amount), address_offset)
-#     yield Add(loc(amount))
-#
-#     yield Set(loc(amount), Integer(2 * amount, loc(amount)))
-#     for i in allocate(Integer(-1 * 2 * amount, loc(amount))):
-#         yield i
-
-
-def push_frame_instr(location):
-    yield PushFrame(location)
-
-
-# def manually_push_frame(
-#         arguments_instrs=(),
-#         location=LocationNotSet,
-#         address_size=1,
-#         total_size_of_arguments=0
-# ):
-#     return chain(
-#         (LoadBaseStackPointer(location), LoadStackPointer(location)),
-#         arguments_instrs,
-#         (
-#             LoadStackPointer(location),  # Pointer to location where to store return values ...
-#             # skip prev stack, base pt
-#             Push(location, Address(total_size_of_arguments + 1 + 2 * address_size, location)),
-#             Add(location),
-#         )
-#     )
-
-
-def pop_frame(location):
-    yield PopFrame(location)
-
-
-# def manually_pop_frame(argument_len, address_size):
-#     l = loc(argument_len)
-#     yield LoadBaseStackPointer(l)  # skip arguments, return address, pointer to return value
-#     yield Push(l, Address(argument_len + 1 + 2*address_size, l))
-#     yield Add(l)
-#     yield Load(l, address_size)
-#     yield SetStackPointer(l)
-#     # At this point the stack pointer should just have the previous base pointer on the stack ...
-#     yield SetBaseStackPointer(l)
-
-
 def allocate(amount, location):
     if amount:
         yield Allocate(location, -amount)
 
 
-# def manually_allocate(amount):
-#     l = loc(amount)
-#     yield LoadStackPointer(l)
-#     yield Push(l, Address(-amount, l))
-#     yield Add(l)
-#     yield SetStackPointer(l)
-
-
 def jump_table(location, addresses, allocations, switch_max_value, switch_body_instrs):
     return chain((JumpTable(location, addresses),), chain.from_iterable(allocations), switch_body_instrs)
-    # yield JumpTable(location, addresses)
-    # for instr in chain(chain.from_iterable(allocations), switch_body_instrs):
-    #     yield instr
 
 
 def push_constant(value, location):

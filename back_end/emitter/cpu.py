@@ -18,7 +18,7 @@ from back_end.virtual_machine.instructions.architecture import AbsoluteJump, Loa
 from back_end.virtual_machine.instructions.architecture import RelativeJump, JumpTrue, JumpFalse, JumpTable
 from back_end.virtual_machine.instructions.architecture import LoadBaseStackPointer, LoadStackPointer, Load, Set
 from back_end.virtual_machine.instructions.architecture import SetBaseStackPointer, SetStackPointer, SystemCall, operns
-from back_end.virtual_machine.instructions.architecture import Allocate, Dup, Swap, PushFrame, PopFrame, LoadNonZeroFlag
+from back_end.virtual_machine.instructions.architecture import Allocate, Dup, Swap, LoadNonZeroFlag
 from back_end.virtual_machine.instructions.architecture import Integer, Double, PostfixUpdate, Compare, CompareFloat
 from back_end.virtual_machine.instructions.architecture import LoadNonCarryBorrowFlag, LoadNonMostSignificantBitFlag
 from back_end.virtual_machine.instructions.architecture import LoadNonZeroNonCarryBorrowFlag, LoadZeroCarryBorrowFlag
@@ -235,14 +235,6 @@ def _pop(instr, cpu, mem, _):
     return pop(cpu, mem)
 
 
-def _push_frame(instr, cpu, mem, _):
-    cpu.frames.append((cpu.base_pointer, cpu.stack_pointer))
-
-
-def _pop_frame(instr, cpu, mem, _):
-    cpu.base_pointer, cpu.stack_pointer = cpu.frames.pop()
-
-
 def system_call(instr, cpu, mem, os):
     os.calls[pop(cpu, mem)](cpu, mem, os)
 
@@ -341,8 +333,6 @@ evaluate.rules = {
 
     Compare: compare,
     CompareFloat: compare_float,
-    PushFrame: _push_frame,
-    PopFrame: _pop_frame,
 
     Load: _load,
     Set: _set,
@@ -376,7 +366,6 @@ class CPU(object):
             setattr(self, flag_name, self.flags[flag_name])
 
         self._stack_pointer, self.base_pointer = -1, -1
-        self.frames = []
 
     @property
     def stack_pointer(self):

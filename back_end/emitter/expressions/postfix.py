@@ -17,9 +17,9 @@ from front_end.parser.types import c_type, ArrayType, FunctionType, PointerType,
 from back_end.virtual_machine.instructions.architecture import Address, add, set_instr, load_instr, load_stack_pointer
 from back_end.virtual_machine.instructions.architecture import Pass, multiply, is_load, Load, Offset
 from back_end.virtual_machine.instructions.architecture import set_base_stack_pointer, allocate, relative_jump
-from back_end.virtual_machine.instructions.architecture import absolute_jump, push_frame_instr, push
+from back_end.virtual_machine.instructions.architecture import absolute_jump, push
 from back_end.virtual_machine.instructions.architecture import set_base_stack_pointer, set_stack_pointer
-from back_end.virtual_machine.instructions.architecture import pop_frame as pop_frame_instr, load_base_stack_pointer
+from back_end.virtual_machine.instructions.architecture import load_base_stack_pointer
 from back_end.emitter.c_types import size, size_extended, struct_member_offset, function_operand_type_sizes
 
 from back_end.virtual_machine.instructions.architecture import postfix_update
@@ -76,7 +76,6 @@ def push_frame(
         omit_pointer_for_return_value=False,
 ):
     return chain(
-        # push_frame_instr(location),
         load_base_stack_pointer(location),
 
         arguments_instrs,
@@ -96,6 +95,7 @@ def pop_frame(location=LocationNotSet, total_size_of_arguments=0, omit_pointer_f
     # return pop_frame_instr(location)  # method 1 requires special instruction that has to manage blocks
 
     # method 2 (5 instructions LoadBaseStackPtr, Push, Add, SetStackPtr, SetBaseStackPtr)
+    # method 2 seems to be faster even though it has an extra instruction compare to method 3, not really sure why ...
     return set_base_stack_pointer(
         set_stack_pointer(
             add(

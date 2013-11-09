@@ -32,10 +32,6 @@ except OSError as er:
     raise ImportError
 
 
-# class frame_type(Structure):
-#     pass
-# frame_type.__fields__ = [('next', POINTER(frame_type)), ('base_pointer', word_type), ('stack_pointer', word_type)]
-
 vm_number_of_addressable_words = word_type.in_dll(libvm, 'vm_number_of_addressable_words').value
 
 

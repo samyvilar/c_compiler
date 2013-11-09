@@ -246,7 +246,7 @@ def __exit__(
     # void exit(int return_value);
     value, = args(func_signature, cpu, mem)
     # Flush and close all opened files except stdio
-    for file_id in ifilter(lambda file_id: file_id not in std_files, kernel.opened_files):
+    for file_id in ifilter(lambda file_id: file_id not in dict(std_files), kernel.opened_files):
         kernel.opened_files[file_id].flush()
         kernel.opened_files[file_id].close()
     instrs = (
