@@ -1,53 +1,16 @@
+/*
+ DEPRECATED DEPRECATED DEPRECATED DEPRECATED DEPRECATED DEPRECATED DEPRECATED DEPRECATED DEPRECATED DEPRECATED
+ DEPRECATED DEPRECATED DEPRECATED DEPRECATED DEPRECATED DEPRECATED DEPRECATED DEPRECATED DEPRECATED DEPRECATED
+ DEPRECATED DEPRECATED DEPRECATED DEPRECATED DEPRECATED DEPRECATED DEPRECATED DEPRECATED DEPRECATED DEPRECATED
+ DEPRECATED DEPRECATED DEPRECATED DEPRECATED DEPRECATED DEPRECATED DEPRECATED DEPRECATED DEPRECATED DEPRECATED
+ */
+
+
 #include <stdio.h>
 
 #include "fast_vm.h"
 #include "cpu.h"
 #include "kernel.h"
-
-//const char *_instr_names_[] = {
-//        [0 ... 255] = "INVALID INSTRUCTION",
-//        [HALT] = "HALT",
-//        [PASS] = "PASS",
-//        [PUSH] = "PUSH",
-//        [POP] = "POP",
-//        [LOAD] = "LOAD",
-//        [SET] = "SET",
-//        [LOAD_BASE_STACK_POINTER] = "LOAD_BASE_STACK_POINTER",
-//        [SET_BASE_STACK_POINTER] = "SET_BASE_STAC_POINTER",
-//        [LOAD_STACK_POINTER] = "LOAD_STACK_POINTER",
-//        [SET_STACK_POINTER] = "SET_STACK_POINTER",
-//        [ALLOCATE] = "ALLOCATE",
-//        [DUP] = "DUP",
-//        [SWAP] = "SWAP",
-//        [ADD] = "ADD",
-//        [SUBTRACT] = "SUBTRACT",
-//        [MULTIPLY] = "MULTIPLY",
-//        [DIVIDE] = "DIVIDE",
-//        [MOD] = "MOD",
-//        [SHIFT_LEFT] = "SHIFT_LEFT",
-//        [SHIFT_RIGHT] = "SHIFT_RIGHT",
-//        [OR] = "OR",
-//        [AND] = "AND",
-//        [NOT] = "NOT",
-//        [ADD_FLOAT] = "ADD_FLOAT",
-//        [SUBTRACT_FLOAT] = "SUBTRACT_FLOAT",
-//        [MULTIPLY_FLOAT] = "MULTIPLY_FLOAT",
-//        [DIVIDE_FLOAT] = "DIVIDE_FLOAT",
-//        [CONVERT_TO_FLOAT] = "CONVERT_TO_FLOAT",
-//        [CONVERT_TO_INTEGER] = "CONVERT_TO_INTEGER",
-//        [ABSOLUTE_JUMP] = "ABSOLUTE_JUMP",
-//        [JUMP_FALSE] = "JUMP_FALSE",
-//        [JUMP_TRUE] = "JUMP_TRUE",
-//        [JUMP_TABLE] = "JUMP_TABLE",
-//        [RELATIVE_JUMP] = "RELATIVE_JUMP",
-//        [PUSH_FRAME] = "PUSH_FRAME",
-//        [POP_FRAME] = "POP_FRAME",
-//        [LOAD_ZERO_FLAG] = "LOAD_ZERO_FLAG",
-//        [LOAD_CARRY_BORROW_FLAG] = "LOAD_CARRY_BORROW_FLAG",
-//        [LOAD_MOST_SIGNIFICANT_BIT_FLAG] = "LOAD_MOST_SIGNIFICANT_BIT_FLAG",
-//        [SYSTEM_CALL] = "SYSTEM_CALL"
-//};
-
 
 const word_type _instr_sizes_[256] = {INSTRUCTION_SIZES};
 
@@ -100,7 +63,7 @@ INLINE_FUNC_SIGNATURE(evaluate) {
     /* x86 has 8 (so call) general purpose registers, x86_64 doubles that to 16 ...*/
     /* x86 (RAX, RBX, RCX, RDX) index (RSI (source), RDI (destination), RBP (base pointer), RSP (stack pointer)) */
     /* x86_64 (R8-R15) and SSE (XMM0 - XMM15) 128 bit registers (should be quite common today) */
-    /* CPU State ... */
+    /* CPU State ... */    
 
     register word_type
         _stack_pointer = stack_pointer(cpu),

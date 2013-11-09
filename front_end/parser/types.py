@@ -351,6 +351,21 @@ def safe_type_coercion(from_type, to_type):
     return from_type == to_type
 
 
+unsigned_char_type = CharType(unsigned=True)
+char_type = CharType()
+unsigned_short = ShortType(unsigned=True)
+short_type = ShortType()
+integer_type = IntegerType()
+unsigned_integer_type = IntegerType(unsigned=True)
+unsigned_long_type = LongType(unsigned=True)
+long_type = LongType()
+float_type = FloatType()
+double_type = DoubleType()
+
+void_pointer_type = PointerType(VoidType(LocationNotSet), LocationNotSet)
+char_array_type = ArrayType(CharType(LocationNotSet), None, LocationNotSet)
+
+
 __required__ = object()
 
 
@@ -389,17 +404,3 @@ def set_core_type(base_type, fundamental_type):
 
 def supported_operators(ctype):
     return ctype.supported_operations
-
-unsigned_char_type = CharType(unsigned=True)
-char_type = CharType()
-unsigned_short = ShortType(unsigned=True)
-short_type = ShortType()
-integer_type = IntegerType()
-unsigned_integer_type = IntegerType(unsigned=True)
-unsigned_long_type = LongType(unsigned=True)
-long_type = LongType()
-float_type = FloatType()
-double_type = DoubleType()
-
-void_pointer_type = PointerType(VoidType(LocationNotSet), LocationNotSet)
-char_array_type = ArrayType(CharType(LocationNotSet), None, LocationNotSet)

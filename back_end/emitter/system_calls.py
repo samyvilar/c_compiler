@@ -13,11 +13,12 @@ from front_end.parser.ast.statements import ReturnStatement
 from front_end.parser.ast.expressions import ConstantExpression
 
 from back_end.emitter.c_types import size
-from back_end.virtual_machine.instructions.architecture import Integer, Byte, Set, Address, Push
+from back_end.virtual_machine.instructions.architecture import Integer, Byte, Set, Push
 from back_end.virtual_machine.instructions.architecture import SetStackPointer, SetBaseStackPointer
 from back_end.virtual_machine.instructions.architecture import SystemCall as SysCallInstruction
 
 from back_end.emitter.cpu import evaluate, std_files, logger, Halt
+from back_end.emitter.c_types import function_operand_type_sizes
 
 __str__ = lambda ptr, mem, max_l=512: ''.join(imap(chr, takewhile(lambda byte: byte, __buffer__(ptr, max_l, mem))))
 __buffer__ = lambda ptr, count, mem: (mem[ptr] for ptr in xrange(ptr, ptr + count))
@@ -34,7 +35,9 @@ def __return__(value, cpu, mem, os, func_signature=FunctionType(IntegerType(SysC
 
 
 def argument_address(func_type, cpu, mem):
-    index = 1 + 2 * size(void_pointer_type)
+    index = 1 + size(void_pointer_type) + (
+        size(void_pointer_type) if function_operand_type_sizes(c_type(c_type(func_type))) else 0
+    )
     for ctype in imap(c_type, func_type):
         yield cpu.base_pointer + index
         index += size(ctype)
@@ -239,6 +242,7 @@ def __exit__(
             (AbstractDeclarator(IntegerType(SysCallLocation), SysCallLocation),),
             SysCallLocation
         )):
+
     # void exit(int return_value);
     value, = args(func_signature, cpu, mem)
     # Flush and close all opened files except stdio
@@ -254,7 +258,7 @@ def __exit__(
         Push(SysCallLocation, -1),
         Push(SysCallLocation, -1),
         SetBaseStackPointer(SysCallLocation),
-        SetStackPointer(SysCallLocation),
+        SetStackPointer(SysCallLocation)
     )
     for instr in instrs:
         evaluate.rules[type(instr)](instr, cpu, mem, kernel)

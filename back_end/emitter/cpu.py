@@ -13,13 +13,17 @@ from back_end.virtual_machine.instructions.architecture import Add, Subtract, Mu
 from back_end.virtual_machine.instructions.architecture import AddFloat, SubtractFloat, MultiplyFloat, DivideFloat
 from back_end.virtual_machine.instructions.architecture import And, Or, Xor, Not, ShiftLeft, ShiftRight
 from back_end.virtual_machine.instructions.architecture import ConvertToInteger, ConvertToFloat
-from back_end.virtual_machine.instructions.architecture import LoadZeroFlag, LoadMostSignificantBit, LoadCarryBorrowFlag
-from back_end.virtual_machine.instructions.architecture import AbsoluteJump, LoadInstructionPointer
+from back_end.virtual_machine.instructions.architecture import LoadZeroFlag, LoadMostSignificantBitFlag
+from back_end.virtual_machine.instructions.architecture import AbsoluteJump, LoadInstructionPointer, LoadCarryBorrowFlag
 from back_end.virtual_machine.instructions.architecture import RelativeJump, JumpTrue, JumpFalse, JumpTable
 from back_end.virtual_machine.instructions.architecture import LoadBaseStackPointer, LoadStackPointer, Load, Set
 from back_end.virtual_machine.instructions.architecture import SetBaseStackPointer, SetStackPointer, SystemCall, operns
 from back_end.virtual_machine.instructions.architecture import Allocate, Dup, Swap, PushFrame, PopFrame, LoadNonZeroFlag
 from back_end.virtual_machine.instructions.architecture import Integer, Double, PostfixUpdate, Compare, CompareFloat
+from back_end.virtual_machine.instructions.architecture import LoadNonCarryBorrowFlag, LoadNonMostSignificantBitFlag
+from back_end.virtual_machine.instructions.architecture import LoadNonZeroNonCarryBorrowFlag, LoadZeroCarryBorrowFlag
+from back_end.virtual_machine.instructions.architecture import LoadNonZeroNonMostSignificantBitFlag
+from back_end.virtual_machine.instructions.architecture import LoadZeroMostSignificantBitFlag
 
 logger = logging.getLogger('virtual_machine')
 
@@ -72,7 +76,7 @@ def mod(oper1, oper2):
 
 
 def _shift_left(oper1, oper2):
-    return oper1 << (oper2 & 0b111111)
+    return oper1 << (oper2 & 0b111111)  # safe guard against large numbers, python has indefinitely large integers ...
 
 
 def _shift_right(oper1, oper2):
@@ -148,11 +152,11 @@ def rel_jump(instr, cpu, mem):
 
 
 def jump_if_true(instr, cpu, mem):
-    _jump(cpu.instr_pointer + ((int(operns(instr)[0]) + instr_size(instr)) if pop(cpu, mem) else instr_size(instr)), cpu, mem)
+    _jump(cpu.instr_pointer + (int(operns(instr)[0]) * bool(pop(cpu, mem))) + instr_size(instr), cpu, mem)
 
 
 def jump_if_false(instr, cpu, mem):
-    _jump(cpu.instr_pointer + ((int(operns(instr)[0]) + instr_size(instr)) if not pop(cpu, mem) else instr_size(instr)), cpu, mem)
+    _jump(cpu.instr_pointer + (int(operns(instr)[0]) * (not pop(cpu, mem))) + instr_size(instr), cpu, mem)
 
 
 def jump_table(instr, cpu, mem):
@@ -254,17 +258,28 @@ def compare(instr, cpu, mem, _):
     operand_1 = long(pop(cpu, mem))
     operand_0 = long(pop(cpu, mem))
     result = operand_0 - operand_1
+
     cpu.zero_flag = result == 0
     cpu.non_zero_flag = result != 0
-    cpu.most_significant_bit_flag = cpu.carry_borrow_flag = int(result < 0)
+
+    cpu.most_significant_bit_flag = cpu.carry_borrow_flag = result < 0
+    cpu.non_most_significant_bit_flag = cpu.non_carry_borrow_flag = result >= 0
+    cpu.zero_most_significant_bit_flag = cpu.zero_carry_borrow_flag = result <= 0
+    cpu.non_zero_non_most_significant_bit_flag = cpu.non_zero_non_carry_borrow_flag = result > 0
 
 
 def compare_float(instr, cpu, mem, _):
     operand_1 = float(pop(cpu, mem))
     operand_0 = float(pop(cpu, mem))
     result = operand_0 - operand_1
+
     cpu.zero_flag = result == 0
-    cpu.most_significant_bit_flag = cpu.carry_borrow_flag = long(result < 0)
+    cpu.non_zero_flag = result != 0
+
+    cpu.most_significant_bit_flag = cpu.carry_borrow_flag = result < 0
+    cpu.non_most_significant_bit_flag = cpu.non_carry_borrow_flag = result >= 0
+    cpu.zero_most_significant_bit_flag = cpu.zero_carry_borrow_flag = result <= 0
+    cpu.non_zero_non_most_significant_bit_flag = cpu.non_zero_non_carry_borrow_flag = result > 0
 
 
 def instr_pointer_update(instr):
@@ -296,8 +311,21 @@ evaluate.rules = {
 
     LoadNonZeroFlag: lambda instr, cpu, mem, _: push(cpu.non_zero_flag, cpu, mem),
     LoadZeroFlag: lambda instr, cpu, mem, _: push(cpu.zero_flag, cpu, mem),
+
     LoadCarryBorrowFlag: lambda instr, cpu, mem, _: push(cpu.carry_borrow_flag, cpu, mem),
-    LoadMostSignificantBit: lambda instr, cpu, mem, _: push(cpu.most_significant_bit_flag, cpu, mem),
+    LoadMostSignificantBitFlag: lambda instr, cpu, mem, _: push(cpu.most_significant_bit_flag, cpu, mem),
+
+    LoadNonCarryBorrowFlag: lambda instr, cpu, mem, _: push(cpu.non_carry_borrow_flag, cpu, mem),
+    LoadNonMostSignificantBitFlag: lambda instr, cpu, mem, _: push(cpu.non_most_significant_bit_flag, cpu, mem),
+
+    LoadNonZeroNonCarryBorrowFlag: lambda instr, cpu, mem, _: push(cpu.non_zero_non_carry_borrow_flag, cpu, mem),
+    LoadNonZeroNonMostSignificantBitFlag: lambda instr, cpu, mem, _: push(
+        cpu.non_zero_non_most_significant_bit_flag, cpu, mem
+    ),
+
+    LoadZeroCarryBorrowFlag: lambda instr, cpu, mem, _: push(cpu.zero_carry_borrow_flag, cpu, mem),
+    LoadZeroMostSignificantBitFlag: lambda instr, cpu, mem, _: push(cpu.zero_most_significant_bit_flag, cpu, mem),
+
 
     LoadBaseStackPointer: load_base_pointer,
     SetBaseStackPointer: set_base_pointer,
@@ -325,54 +353,30 @@ evaluate.rules.update(chain(izip(expr.rules, repeat(expr)), izip(jump.rules, rep
 stdin_file_no = getattr(sys.stdin, 'fileno', lambda: 0)()
 stdout_file_no = getattr(sys.stdout, 'fileno', lambda: 1)()
 stderr_file_no = getattr(sys.stderr, 'fileno', lambda: 2)()
-std_files = {stdin_file_no: sys.stdin, stdout_file_no: sys.stdout, stderr_file_no: sys.stderr}
+std_files = ((stdin_file_no, sys.stdin), (stdout_file_no, sys.stdout), (stderr_file_no, sys.stderr))
 
 
 class Kernel(object):
-    def __init__(self, calls=None):
-        self.opened_files = std_files
+    def __init__(self, calls=None, open_files=std_files):
         self.calls = calls or {}
+        self.opened_files = dict(open_files)
 
 
 class CPU(object):
     def __init__(self):
         self.instr_pointer = 0
-        self.flags = {'zero_flag': 0, 'non_zero_flag': 0, 'carry_borrow_flag': 0, 'most_significant_bit_flag': 0}
+        self.flags = {
+            'zero_flag': 0, 'non_zero_flag': 0, 'carry_borrow_flag': 0, 'most_significant_bit_flag': 0,
+            'non_carry_borrow_flag': 0, 'non_most_significant_bit_flag': 0,
+            'non_zero_non_carry_borrow_flag': 0, 'non_zero_non_most_significant_bit_flag': 0,
+            'zero_carry_borrow_flag': 0, 'zero_most_significant_bit_flag': 0
+        }
+
+        for flag_name in self.flags:
+            setattr(self, flag_name, self.flags[flag_name])
+
         self._stack_pointer, self.base_pointer = -1, -1
         self.frames = []
-
-    @property
-    def zero_flag(self):
-        return self.flags['zero_flag']
-
-    @zero_flag.setter
-    def zero_flag(self, value):
-        self.flags['zero_flag'] = value
-
-
-    @property
-    def non_zero_flag(self):
-        return self.flags['non_zero_flag']
-
-    @non_zero_flag.setter
-    def non_zero_flag(self, value):
-        self.flags['non_zero_flag'] = value
-
-    @property
-    def carry_borrow_flag(self):
-        return self.flags['carry_borrow_flag']
-
-    @carry_borrow_flag.setter
-    def carry_borrow_flag(self, value):
-        self.flags['carry_borrow_flag'] = value
-
-    @property
-    def most_significant_bit_flag(self):
-        return self.flags['most_significant_bit_flag']
-
-    @most_significant_bit_flag.setter
-    def most_significant_bit_flag(self, value):
-        self.flags['most_significant_bit_flag'] = value
 
     @property
     def stack_pointer(self):
@@ -387,7 +391,10 @@ class VirtualMemory(defaultdict):
     def __init__(self, default_factory=long):
         super(VirtualMemory, self).__init__(default_factory)
 
+
+word_size = 1
+
 try:
-    from back_end.virtual_machine.c.cpu import c_evaluate as evaluate, CPU, VirtualMemory, Kernel
+    from back_end.virtual_machine.c.cpu import c_evaluate as evaluate, CPU, VirtualMemory, Kernel, word_size
 except ImportError as er:
     logger.warning('Failed to import C implementations, reverting to Python')

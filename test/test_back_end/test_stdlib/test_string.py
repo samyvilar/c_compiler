@@ -4,7 +4,7 @@ from test.test_back_end.test_stdlib.base import TestStdLib
 
 
 class TestString(TestStdLib):
-    test_size = 36
+    test_size = 10
 
     def test_memcpy(self):
         code = """
@@ -63,15 +63,15 @@ class TestString(TestStdLib):
     def test_memmove_overlap(self):
         code = """
         #include <string.h>
-        #define TEST_SIZE {test_size}
+        #define TEST_SIZE 20
 
         int main()
         {{
             int guard_0 = 0;
-            int src[TEST_SIZE] = {{[0 ... TEST_SIZE/2] = -1, [TEST_SIZE/2 + 1 ... TEST_SIZE - 1] = 1}};
+            int src[TEST_SIZE] = {{[0 ... TEST_SIZE/2] = -1, [(TEST_SIZE/2) + 1 ... TEST_SIZE - 1] = 1}};
             int guard_1 = 0;
 
-            if (memmove(src, &src[TEST_SIZE/2], TEST_SIZE/2) != src)
+            if (memmove(src, &src[TEST_SIZE/2], (TEST_SIZE/2)*sizeof(int)) != src)
                 return -1;
 
             int index = 0;
@@ -175,31 +175,32 @@ class TestString(TestStdLib):
         int main()
         {
             int guard_0 = -1;
-            int prev[20];
+            int prev[10];
             int guard_1 = -1;
-            int curr[60];
+            int curr[20];
             int guard_2 = -1;
-            int next[100];
+            int next[30];
             int guard_3 = -1;
 
-            if (memset(prev, 0, 20) != prev)
+            if (memset(prev, 0, sizeof(prev)) != prev)
                 return -1;
-            if (memset(curr, -1, 60) != curr)
+            if (memset(curr, -1, sizeof(curr)) != curr)
                 return -1;
-            if (memset(next, 1, 100) != next)
+            if (memset(next, 1, sizeof(next)) != next)
                 return -1;
 
             int index = 0;
-            for (index = 0; index < 100; index++)
-            {
-                if (index < 20 && prev[index] != 0)
-                    return -1;
-                if (index < 60 && curr[index] != -1)
-                    return -1;
-                if (next[index] != 1)
-                    return -1;
-            }
+            for (index = 0; index < sizeof(prev)/sizeof(prev[0]); index++)
+                if (prev[index] != 0)
+                    return -2;
 
+            for (index = 0; index < sizeof(curr)/sizeof(curr[0]); index++)
+                if (curr[index] != -1)
+                    return -3;
+
+            for (index = 0; index < sizeof(next)/sizeof(next[0]); index++)
+                if (next[index] != 1)
+                    return -4;
 
             return guard_0 == -1 && guard_1 == -1 && guard_2 == -1 && guard_3 == -1;
         }
@@ -227,7 +228,7 @@ class TestString(TestStdLib):
                 return -1;
 
             size_t index = 0;
-            while (index < sizeof(src))
+            while (index < sizeof(src)/sizeof(src[0]))
                 if (src[index] != dest[index++])
                     return -1;
 
@@ -249,16 +250,24 @@ class TestString(TestStdLib):
             int guard_1 = 0;
 
             strncpy(dest, NULL, 0);
+            strncpy(dest, "test", 0);
+            strncpy(dest, src, 0);
+
             if (dest[0] != 'g')
                 return -1;
 
-            if (strncpy(dest, src, sizeof(src)) != dest)
-                return -1;
+            if (src[0] != 't')
+                return -2;
 
-            size_t index = 0;
-            while (index < sizeof(dest))
-                if (src[index] != dest[index++])
-                    return -1;
+            if (strncpy(dest, src, (sizeof(src)/sizeof(src[0])) - 1) != dest)
+                return -1;
+            if (src[0] != 't')
+                return -2;
+
+            size_t index = -1, length = strlen(dest);
+            while (++index < length)
+                if (src[index] != dest[index])
+                    return dest[index];
 
             return !(guard_0 || guard_1);
         }
@@ -287,7 +296,7 @@ class TestString(TestStdLib):
                 return -1;
 
             size_t index = 0;
-            while (index < sizeof(result))
+            while (index < sizeof(result)/sizeof(result[0]))
                 if (initial[index] != result[index++])
                     return -1;
             return !(guard_0 || guard_1 || guard_2);
@@ -310,14 +319,14 @@ class TestString(TestStdLib):
             if (initial[0] != 'h')
                 return -1;
 
-            if (strncat(initial, " there", sizeof(" there") - 1) != initial)
+            if (strncat(initial, " there", strlen(" there")) != initial)
                 return -1;
 
             char result[12] = "hello there";
             size_t index = 0;
-            while (index < sizeof("hello there"))
+            while (index < strlen("hello there"))
                 if ("hello there"[index] != initial[index++])
-                    return -1;
+                    return -index;
 
             return !(guard_0 || guard_1);
         }
@@ -353,10 +362,10 @@ class TestString(TestStdLib):
         {
             char temp[50] = "this is a test.";
 
-            if (strncmp("a", "c", 0) || strncmp(NULL, NULL, 0) || strncmp("", "", 0), strncmp("ab", "ac", 1))
+            if (strncmp("a", "c", 0) || strncmp(NULL, NULL, 0) || strncmp("", "", 0) || strncmp("ab", "ac", 0))
                 return -1;
 
-            if (strncmp(temp, "this", sizeof("this") - 1) || strncmp(temp, temp, sizeof(temp) * 2))
+            if (strncmp(temp, "this", strlen("this") - 1) || strncmp(temp, temp, (sizeof(temp)/sizeof(char)) * 2))
                 return -1;
 
             return 1;
@@ -396,7 +405,7 @@ class TestString(TestStdLib):
             if (strcspn("", "") || strcspn("asds", "a"))
                 return -1;
 
-            if (strcspn(temp, ".") != sizeof("this is a test") - sizeof(char))
+            if (strcspn(temp, ".") != strlen(temp) - 1)
                 return -1;
 
             return 1;
@@ -416,7 +425,7 @@ class TestString(TestStdLib):
             if (strpbrk("", "") || strpbrk("hello", "")  || strpbrk("", "23423") || strpbrk("12323", "asd"))
                 return -1;
 
-            if (strpbrk(temp, "12af.") != (temp + 8 * sizeof(char)))
+            if (strpbrk(temp, "12af.") != (temp + 8))
                 return -1;
 
             return 1;
@@ -436,8 +445,8 @@ class TestString(TestStdLib):
             if (strrchr(empty, '\0') != empty || strrchr("", 'a'))
                 return -1;
 
-            if (strrchr(temp, '.') != temp + 17 ||
-                strrchr(temp, '\0') != temp + sizeof("this is a test ...") - sizeof(char)
+            if (strrchr(temp, '.') != temp + strlen(temp) - 1 ||
+                strrchr(temp, '\0') != temp + strlen(temp)
             )
                 return -1;
 
@@ -458,12 +467,10 @@ class TestString(TestStdLib):
             if (strspn("asdas", "") || strspn("asdsad", "12123") || strspn("", "asds"))
                 return -1;
 
-            if (strspn(temp, temp) != sizeof("this is a test ...") - sizeof(char) ||
-                strspn(temp, "this") != sizeof("this") - sizeof(char)
-            )
+            if (strspn(temp, temp) != strlen(temp) || strspn(temp, "this") != strlen("this"))
                 return -2;
 
-            if (strspn("hello", "hello") != sizeof("hello") - sizeof(char))
+            if (strspn("hello", "hello") != strlen("hello"))
                 return -1;
 
             return 1;
@@ -485,7 +492,7 @@ class TestString(TestStdLib):
                 )
                 return -1;
 
-            if (strstr(temp, "this") != temp || strstr(temp, "...") != temp + sizeof("this ..is .a test ") - 1)
+            if (strstr(temp, "this") != temp || strstr(temp, "...") != temp + strlen("this ..is .a test "))
                 return -1;
 
             return 1;
@@ -537,9 +544,10 @@ class TestString(TestStdLib):
             char temp[50] = "this is a test ...";
             if (strlen(""))
                 return -1;
-            if (strlen(temp) != sizeof("this is a test ...") - 1)
+
+            if (strlen(temp) != ((sizeof("this is a test ...")/sizeof(char)) - 1)) // subtract to one account for '\0'
                 return -1;
-            if (strlen("a") != sizeof(char))
+           if (strlen("a") != 1)
                 return -1;
             if (strlen("\0asdasd"))
                 return -1;

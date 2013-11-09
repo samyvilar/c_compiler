@@ -14,7 +14,7 @@ from front_end.parser.ast.expressions import exp
 from front_end.parser.types import CharType, ShortType, IntegerType, LongType, FloatType, DoubleType, PointerType
 from front_end.parser.types import StringType, c_type, StructType, ArrayType
 
-from back_end.virtual_machine.instructions.architecture import push, Double, Address, Byte, relative_jump
+from back_end.virtual_machine.instructions.architecture import push, Double, Address, Byte, relative_jump, Offset
 
 
 def const_string_expr(expr):
@@ -29,7 +29,7 @@ def const_string_expr(expr):
     _push_addr_ = peek(_push, loc(expr))
 
     return chain(
-        relative_jump(Address(_push_addr_, loc(expr)), loc(expr)),
+        relative_jump(Offset(_push_addr_, loc(expr)), loc(expr)),
         takewhile(None, data),
         takewhile(None, _push)
     )

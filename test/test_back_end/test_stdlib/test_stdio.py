@@ -8,12 +8,14 @@ from tempfile import TemporaryFile
 
 class TestPrintf(TestStdLib):
     def evaluate(self, code, cpu=None, mem=None, os=None):
-        self.os = Kernel(CALLS)
-        self.os.opened_files = {
-            stdin_file_no: TemporaryFile('r+'),
-            stdout_file_no: TemporaryFile('w+'),
-            stderr_file_no: TemporaryFile('r+')
-        }
+        self.os = Kernel(
+            calls=CALLS,
+            open_files=(
+                (stdin_file_no, TemporaryFile('r+')),
+                (stdout_file_no, TemporaryFile('w+')),
+                (stderr_file_no, TemporaryFile('r+'))
+            )
+        )
         super(TestPrintf, self).evaluate(code, cpu, mem, os=self.os)
         self.stdout = self.os.opened_files[stdout_file_no]
         self.stdout.flush()

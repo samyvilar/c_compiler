@@ -24,7 +24,7 @@ from back_end.emitter.expressions.expression import expression
 from back_end.emitter.expressions.cast import cast
 
 from back_end.emitter.stack_state import stack_allocation
-from back_end.virtual_machine.instructions.architecture import allocate, Pass, Address, relative_jump, Byte
+from back_end.virtual_machine.instructions.architecture import allocate, Pass, Address, relative_jump, Byte, Offset
 from back_end.virtual_machine.instructions.architecture import push as push_instr
 
 from back_end.emitter.c_types import size, binaries, bind_load_address_func
@@ -68,7 +68,7 @@ def static_definition(stmnt, symbol_table, *_):
             l=loc(stmnt), g=declarations.initialization(stmnt)
         ))
     return chain(
-        relative_jump(Address(stmnt.end_of_data, loc(stmnt)), loc(stmnt)),
+        relative_jump(Offset(stmnt.end_of_data, loc(stmnt)), loc(stmnt)),
         takewhile(None, data),
         (stmnt.end_of_data,)
     )

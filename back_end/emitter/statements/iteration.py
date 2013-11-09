@@ -8,7 +8,7 @@ from front_end.parser.ast.expressions import exp
 from front_end.parser.ast.statements import ForStatement, WhileStatement, DoWhileStatement
 
 from back_end.emitter.expressions.expression import expression
-from back_end.virtual_machine.instructions.architecture import Address, Pass, jump_false, jump_true, relative_jump
+from back_end.virtual_machine.instructions.architecture import Offset, Pass, jump_false, jump_true, relative_jump
 
 
 def loop_body(body, symbol_table, stack, statement_func, continue_instr, break_instr):
@@ -28,13 +28,13 @@ def for_statement(stmnt, symbol_table, stack, statement_func):
         (start_of_loop,),  # start of conditional
 
         # loop invariant.
-        jump_false(expression(exp(stmnt), symbol_table), Address(end_of_loop, loc(end_of_loop)), loc(stmnt)),
+        jump_false(expression(exp(stmnt), symbol_table), Offset(end_of_loop, loc(end_of_loop)), loc(stmnt)),
 
         loop_body(stmnt.statement, symbol_table, stack, statement_func, upd_expression, end_of_loop),
 
         (upd_expression,),
         statement_func(stmnt.upd_exp, symbol_table, stack),  # loop update.
-        relative_jump(Address(start_of_loop, loc(start_of_loop)), loc(stmnt)),
+        relative_jump(Offset(start_of_loop, loc(start_of_loop)), loc(stmnt)),
         (end_of_loop,)
     )
 
@@ -43,9 +43,9 @@ def while_statement(stmnt, symbol_table, stack, statement_func):
     start_of_loop, end_of_loop = Pass(loc(stmnt)), Pass(loc(stmnt))
     return chain(
         (start_of_loop,),
-        jump_false(expression(exp(stmnt), symbol_table), Address(end_of_loop, loc(end_of_loop)), loc(end_of_loop)),
+        jump_false(expression(exp(stmnt), symbol_table), Offset(end_of_loop, loc(end_of_loop)), loc(end_of_loop)),
         loop_body(stmnt.statement, symbol_table, stack, statement_func, start_of_loop, end_of_loop),
-        relative_jump(Address(start_of_loop, loc(start_of_loop)), loc(end_of_loop)),
+        relative_jump(Offset(start_of_loop, loc(start_of_loop)), loc(end_of_loop)),
         (end_of_loop,)
     )
 
@@ -58,7 +58,7 @@ def do_while_statement(stmnt, symbol_table, stack, statement_func):
         yield instr
     for instr in jump_true(
             expression(exp(stmnt), symbol_table),
-            Address(start_of_loop, loc(start_of_loop)),
+            Offset(start_of_loop, loc(start_of_loop)),
             loc(start_of_loop)
     ):
         yield instr

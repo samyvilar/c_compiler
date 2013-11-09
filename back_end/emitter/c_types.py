@@ -8,10 +8,12 @@ from front_end.loader.locations import loc
 from front_end.parser.ast.declarations import Declaration, Definition, initialization
 from front_end.parser.ast.expressions import ConstantExpression, exp, CastExpression, CompoundLiteral, EmptyExpression
 
-from front_end.parser.types import CharType, ShortType, IntegerType, LongType, FloatType, DoubleType
-from front_end.parser.types import StructType, PointerType, ArrayType, c_type, StringType, VAListType
+from front_end.parser.types import CharType, ShortType, IntegerType, LongType, FloatType, DoubleType, VoidType
+from front_end.parser.types import StructType, PointerType, ArrayType, c_type, StringType, VAListType, void_pointer_type
 
 from back_end.virtual_machine.instructions.architecture import Integer, Double, Pass
+
+from back_end.emitter.cpu import word_size
 
 
 def struct_size(ctype):
@@ -25,13 +27,13 @@ def array_size(ctype):
 def numeric_type(ctype):
     return numeric_type.rules[type(ctype)]
 numeric_type.rules = {  # Virtual Machine is word based, all non-composite types are 1 word, 64 bits.
-    CharType: 1,
-    ShortType: 1,
-    IntegerType: 1,
-    LongType: 1,
-    PointerType: 1,
-    FloatType: 1,
-    DoubleType: 1,
+    CharType: word_size,
+    ShortType: word_size,
+    IntegerType: word_size,
+    LongType: word_size,
+    PointerType: word_size,
+    FloatType: word_size,
+    DoubleType: word_size,
 }
 
 
@@ -39,7 +41,7 @@ def machine_types(_type):
     return machine_types.rules[type(_type)]
 machine_types.rules = {
     Integer: numeric_type.rules[IntegerType],
-    Pass: 1
+    Pass: word_size
 }
 
 
@@ -57,6 +59,17 @@ size.rules.update(chain(
     izip(numeric_type.rules, repeat(numeric_type)),
     izip(machine_types.rules, repeat(machine_types)),
 ))
+
+
+def size_extended(ctype):
+    return size(ctype, overrides={VoidType: 1})  # The C standard dictates that Void pointers are incremented by 1...
+
+
+function_operand_type_sizes = lambda ctype: size(ctype, overrides={
+    ArrayType: size(void_pointer_type),
+    StringType: size(void_pointer_type),
+    VoidType: 0
+})
 
 
 def integral_const(const_exp):

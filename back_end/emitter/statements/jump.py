@@ -7,11 +7,11 @@ from front_end.parser.ast.expressions import exp
 from front_end.parser.ast.declarations import name
 from front_end.parser.ast.statements import BreakStatement, ContinueStatement, ReturnStatement, GotoStatement
 from front_end.parser.ast.statements import LabelStatement
-from front_end.parser.types import c_type, void_pointer_type, VoidType
+from front_end.parser.types import c_type, void_pointer_type, VoidType, char_type
 
 from back_end.virtual_machine.instructions.architecture import Pass, relative_jump, allocate, load_instr
-from back_end.virtual_machine.instructions.architecture import Address, load_base_stack_pointer, add, push, set_instr
-from back_end.virtual_machine.instructions.architecture import Integer, absolute_jump, Allocate, RelativeJump
+from back_end.virtual_machine.instructions.architecture import Offset, load_base_stack_pointer, add, push, set_instr
+from back_end.virtual_machine.instructions.architecture import Integer, absolute_jump, Allocate, RelativeJump, Address
 from back_end.emitter.c_types import size
 
 from back_end.emitter.expressions.expression import expression
@@ -27,7 +27,7 @@ def break_statement(stmnt, symbol_table, stack, *_):
         ))
     return chain(
         update_stack(stack.stack_pointer, stack_pointer, loc(stmnt)),
-        relative_jump(Address(instr, loc(stmnt)), loc(stmnt))
+        relative_jump(Offset(instr, loc(stmnt)), loc(stmnt))
     )
 
 
@@ -40,14 +40,14 @@ def continue_statement(stmnt, symbol_table, stack, *_):
         ))
     return chain(
         update_stack(stack.stack_pointer, stack_pointer, loc(stmnt)),
-        relative_jump(Address(instr, loc(stmnt)), loc(stmnt))
+        relative_jump(Offset(instr, loc(stmnt)), loc(stmnt))
     )
 
 
 def return_instrs(location):
     return absolute_jump(
         load_instr(
-            add(load_base_stack_pointer(location), push(1, location), location),
+            add(load_base_stack_pointer(location), push(size(char_type), location), location),
             size(void_pointer_type),
             location
         ),
@@ -58,20 +58,30 @@ def return_instrs(location):
 def return_statement(stmnt, symbol_table, *_):
     # TODO: check if we can omit the setting the return value if if it is immediately removed ...
     return_type = c_type(c_type(symbol_table['__ CURRENT FUNCTION __']))
-    if isinstance(return_type, VoidType):
+
+    if isinstance(return_type, VoidType) or not exp(stmnt):
+     # just return if void type or expr is empty or size of expression is zero.
         return return_instrs(loc(stmnt))
+
     return chain(
         cast(expression(exp(stmnt), symbol_table), c_type(exp(stmnt)), return_type, loc(stmnt)),
         set_instr(
             load_instr(
-                add(load_base_stack_pointer(loc(stmnt)), push(1 + size(void_pointer_type), loc(stmnt)), loc(stmnt)),
+                add(
+                    load_base_stack_pointer(loc(stmnt)), push(
+                        size(void_pointer_type) + size(char_type),
+                        loc(stmnt)
+                    ),
+                    loc(stmnt)
+                ),
                 size(void_pointer_type),
                 loc(stmnt)
             ),
             size(return_type),
             loc(stmnt)
         ),
-        allocate(-size(return_type), loc(stmnt)),  # Set leaves the value on the stack TODO: see if we can remove instr.
+        # TODO: see if we can remove the following instr, since pop_frame will reset the base and stack pointers
+        # allocate(-size(return_type), loc(stmnt)),  # Set leaves the value on the stack
         return_instrs(loc(stmnt))
     )
 
@@ -90,7 +100,7 @@ def goto_statement(stmnt, symbol_table, stack, *_):
         instr, stack_pointer = labels[stmnt.label]
         instrs = chain(
             update_stack(stack_pointer, stack.stack_pointer, loc(stmnt)),
-            (RelativeJump(loc(stmnt), Address(instr, loc(stmnt))),)
+            (RelativeJump(loc(stmnt), Offset(instr, loc(stmnt))),)
         )
     else:  # Label has yet to be defined ...
         # _load_sp, _push, _add, _set_st = manually_allocate(Address(None, loc(stmnt)))
@@ -99,7 +109,7 @@ def goto_statement(stmnt, symbol_table, stack, *_):
 
         # Basically we need to update the relative jump and the amount to which we need to update the stack ...
         alloc_instr = Allocate(loc(stmnt), Address(Integer(0), loc(stmnt)))
-        jump_instr = RelativeJump(loc(stmnt), Address(Integer(0), loc(stmnt)))
+        jump_instr = RelativeJump(loc(stmnt), Offset(Integer(0), loc(stmnt)))
 
         gotos[stmnt.label].append((alloc_instr, jump_instr, stack.stack_pointer))
         instrs = (alloc_instr, jump_instr)

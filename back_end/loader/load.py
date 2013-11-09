@@ -1,7 +1,7 @@
 __author__ = 'samyvilar'
 
 from front_end.loader.locations import loc
-from back_end.virtual_machine.instructions.architecture import Address
+from back_end.virtual_machine.instructions.architecture import Address, Offset
 
 
 def load(elem_seq, mem):
@@ -9,7 +9,7 @@ def load(elem_seq, mem):
     for element in elem_seq:
         mem[element.address] = element
         # Keep track of references, they have yet to be updated with the correct value ...
-        if isinstance(element, Address):  # Data, Symbol, Instruction or Goto ...
+        if isinstance(element, (Address, Offset)):  # Data, Symbol, Instruction or Goto ...
             if not isinstance(element.obj, (int, long)):
                 references.append(element)
 

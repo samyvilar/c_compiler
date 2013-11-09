@@ -52,8 +52,10 @@ size_t fread(void *dest, size_t size_of_element, size_t number_of_elements, FILE
 size_t fwrite(const void *src, size_t size, size_t count, FILE *file)
 {
     size_t total = size * count;
+    unsigned char *source = src;
+    total /= sizeof(unsigned char);
     while (total--)
-        if (fputc(*(char *)(src++), file) == EOF)
+        if (fputc(*source++, file) == EOF)
             return ((size * count) - (total + 1)) / count;
     return count;
 }
@@ -77,7 +79,7 @@ int fgetc(FILE *file)
 
     if (is_file_buffer_full(file))
     {
-        fread(file_buffer(file), sizeof(char), FILE_BUFFER_SIZE, file);
+        fread(file_buffer(file), 1, FILE_BUFFER_SIZE, file);
         set_file_buffer_index(file, 0);
     }
 
@@ -121,6 +123,7 @@ char *upper(char *src)
     while (*++temp)
         if (*temp >= 'a' && *temp <= 'z')
             *temp = 'A' + (*temp - 'a');
+
     return src;
 }
 
@@ -128,6 +131,7 @@ static FILE stdout = {1, FILE_READY_FOR_WRITING};
 
 char *number_to_string(long long value, int base, char *dest, unsigned long long max_size)
 {
+
     if ((base < 2 || base > 36) && base != -10)
         return NULL;
 
@@ -149,6 +153,7 @@ char *number_to_string(long long value, int base, char *dest, unsigned long long
 
     #define digit_ch(__numb__) ((__numb__) + (((__numb__) < 10) ? '0' : ('a' - 10)))
 
+
     while (current >= base)
     {
         *destination++ = digit_ch(current % base);
@@ -167,6 +172,7 @@ char *number_to_string(long long value, int base, char *dest, unsigned long long
     }
 
     return dest;
+
 }
 
 char *float_to_string(double value, char *dest)

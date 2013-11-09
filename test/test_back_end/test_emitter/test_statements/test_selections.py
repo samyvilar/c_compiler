@@ -68,16 +68,16 @@ class TestSelectionStatements(TestStatements):
                 default:
                     sum += 1;
             }
+            a = sum;
         }
         """
         self.evaluate(source)
-        self.assertEqual(self.mem[self.cpu.stack_pointer - 1], 12)
+        self.assertEqual(self.mem[self.cpu.stack_pointer], 12)
 
     def test_switch_statement_declarations(self):
         code = """
         {
-            int sum = 0, stack_frag = 0;
-            void *stack_ptr = &stack_ptr - 1;
+            int sum = 0, a = -10;
             int temp;
             switch ((char)0)
             {
@@ -85,7 +85,7 @@ class TestSelectionStatements(TestStatements):
                 case (char)0:
                     a = 10;
                     sum += 1;
-                    int b = 10;
+                    int b = 11;
                 case (char)20:
                     sum += a;
                     int c = 24;
@@ -94,14 +94,12 @@ class TestSelectionStatements(TestStatements):
                         int _ter[10] = {[0 ... 9] = -1};
                         case (char)10:
                             sum += b + c;
-                            int d = 49;
-                            void *curr = &curr - 1;
-                            if (((void *)stack_ptr - (void *)curr) != 15 * sizeof(int) + sizeof(void *))
+                            int d = 50;
+                            if (a != 10 || b != 11 || d != 50 || sum != 46 ||
+                                _ter[0] != -1 || _ter[1] != -1 || _ter[2] != -1 || _ter[3] != -1 || _ter[4] != -1 ||
+                                _ter[5] != -1 || _ter[6] != -1 || _ter[7] != -1 || _ter[8] != -1 || _ter[9] != -1)
                                 sum = -1;
                     }
-                    void *curr = &curr - 1;
-                    if ((stack_ptr - curr) != 4 * sizeof(int) + sizeof(void *))
-                        sum = (stack_ptr - curr);
                     break ;
                     int u = 124;
                     sum += u + a;
@@ -111,12 +109,13 @@ class TestSelectionStatements(TestStatements):
                     sum = -1;
             }
             int g = -1;
-            if ((stack_ptr - ((void *)&g - 1)) != 2 * sizeof(int))
+
+            if (sum != 46 || a != -10 || g != -1)
                 sum = -1;
         }
         """
         self.evaluate(code)
-        self.assertEqual(self.mem[self.cpu.stack_pointer], 45)
+        self.assertEqual(self.mem[self.cpu.stack_pointer], 46)
 
     def test_nested_switch_statement(self):
         code = """

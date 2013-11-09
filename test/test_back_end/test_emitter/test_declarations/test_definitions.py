@@ -12,6 +12,8 @@ from front_end.parser.symbol_table import SymbolTable
 from back_end.emitter.emit import emit
 from back_end.linker.link import executable, set_addresses, resolve
 from back_end.emitter.cpu import CPU, VirtualMemory, evaluate
+
+
 from back_end.loader.load import load
 
 

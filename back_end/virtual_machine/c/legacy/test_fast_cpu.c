@@ -1,5 +1,5 @@
 //
-//  fast_kernel.c
+//  test_fast_cpu.c
 //  virtual_machine
 //
 //  Created by Samy Vilar on 10/4/13.

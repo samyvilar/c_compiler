@@ -6,9 +6,10 @@ from StringIO import StringIO
 from c_comp import instrs, std_include_dirs, std_libraries_dirs, std_libraries
 
 from back_end.emitter.cpu import evaluate, CPU, VirtualMemory, Kernel
-from back_end.emitter.system_calls import CALLS
 from back_end.linker.link import set_addresses
 from back_end.loader.load import load
+
+from back_end.emitter.system_calls import CALLS
 
 
 class TestStdLib(TestCase):

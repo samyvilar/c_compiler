@@ -2,6 +2,7 @@ __author__ = 'samyvilar'
 
 from collections import defaultdict
 from itertools import izip, chain, ifilter
+from math import log
 
 from front_end.loader.locations import LocationNotSet, loc
 
@@ -61,16 +62,24 @@ class Integer(Operand):
 Byte = Integer
 
 
-class Address(Integer):  # Address is a special operand since it can take other instructions or labels as operands
+class Reference(Integer):
     def __init__(self, obj, location=LocationNotSet):
         if type(obj) in {int, long}:  # If basic integer do nothing.
-            super(Address, self).__init__(obj, location)
+            super(Reference, self).__init__(obj, location)
         else:  # otherwise get the id of the object.
-            super(Address, self).__init__(id(obj), location)
+            super(Reference, self).__init__(id(obj), location)
         self.obj = obj
 
     def __str__(self):
-        return 'Address ' + str(self.obj)
+        return self.__class__.__name__ + ' ' + str(self.obj)
+
+
+class Address(Reference):  # Address is a special operand since it can take other instructions or labels as operands
+    pass
+
+
+class Offset(Reference):  # similar to Address but mainly used for relative jumps ...
+    pass
 
 
 class Double(Operand):
@@ -262,13 +271,13 @@ class VariableLengthInstruction(WideInstruction):  # Instructions with more than
 class JumpTable(RelativeJump, VariableLengthInstruction):
     def __init__(self, location, cases):
         default_addr = cases.pop('default')  # pop default address to properly calculate number of cases ...
-        operands = [Integer(len(cases), location), default_addr]
+        operands = [default_addr, Integer(len(cases), location)]
         _sorted_keys = sorted(cases.iterkeys())
         operands.extend(chain(_sorted_keys, (cases[key] for key in _sorted_keys)))
 
         super(JumpTable, self).__init__(location, operands)
 
-        self.key_indices = {1: 'default'}
+        self.key_indices = {0: 'default'}
         self.key_indices.update(  # indices of operands ...
             (index, addr) for index, addr in enumerate(_sorted_keys, 2 + len(cases))
         )
@@ -291,7 +300,11 @@ class LoadRegister(Instruction):
     pass
 
 
-class LoadBaseStackPointer(LoadRegister):
+class LoadPointer(LoadRegister):
+    pass
+
+
+class LoadBaseStackPointer(LoadPointer):
     # Pushes the current address of the base stack pointer, used to reference auto variables.
     pass
 
@@ -300,7 +313,7 @@ class SetBaseStackPointer(Instruction):
     pass
 
 
-class LoadStackPointer(LoadRegister):
+class LoadStackPointer(LoadPointer):
     pass
 
 
@@ -308,7 +321,7 @@ class SetStackPointer(Instruction):
     pass
 
 
-class LoadInstructionPointer(LoadRegister):
+class LoadInstructionPointer(LoadPointer):
     pass
 
 
@@ -328,19 +341,48 @@ class LoadFlagInstruction(LoadRegister):
     pass
 
 
-class LoadZeroFlag(LoadFlagInstruction):
+class LoadZeroFlag(LoadFlagInstruction):  # numbers equal (sign or unsigned)
     pass
 
 
-class LoadNonZeroFlag(LoadFlagInstruction):
+class LoadNonZeroFlag(LoadFlagInstruction):  # numbers don't equal  (sign or unsigned)
     pass
 
 
-class LoadCarryBorrowFlag(LoadFlagInstruction):
+class LoadCarryBorrowFlag(LoadFlagInstruction):  # unsigned numbers less than
     pass
 
 
-class LoadMostSignificantBit(LoadFlagInstruction):
+class LoadMostSignificantBitFlag(LoadFlagInstruction):  # signed numbers less than
+    pass
+
+
+class LoadNonZeroNonCarryBorrowFlag(LoadFlagInstruction):  # unsigned numbers greater than
+    pass
+
+
+class LoadNonZeroNonMostSignificantBitFlag(LoadFlagInstruction):  # signed numbers greater than
+    pass
+
+
+class LoadZeroCarryBorrowFlag(LoadFlagInstruction):  # unsigned numbers less than or equal
+                                                     # (invert LoadNonZeroNonCarryBorrowFlag)
+    pass
+
+
+class LoadZeroMostSignificantBitFlag(LoadFlagInstruction):  # signed numbers less than or equal
+                                                  # invert LoadNonZeroNonMostSignificantBitFlag
+                                                  # LoadZeroMostSignificantBitFlag
+    pass
+
+
+class LoadNonCarryBorrowFlag(LoadFlagInstruction):  # unsigned numbers greater than or equal
+                                                    # invert LoadCarryBorrowFlag (LoadNonCarryBorrowFlag)
+    pass
+
+
+class LoadNonMostSignificantBitFlag(LoadFlagInstruction):  # signed numbers greater than or equal
+                                                     # invert LoadMostSignificantBitFlag (LoadNonMostSignificantBitFlag)
     pass
 
 
@@ -370,7 +412,7 @@ class Set(WideMoveInstruction):
 
 # Postfix increment and decrement instructions are extremely expensive on stack machines.
 # As such lets create special instructions that implements them ...
-class PostfixUpdate(Set):
+class PostfixUpdate(WideInstruction):
     pass
 
 
@@ -418,6 +460,14 @@ class Pass(Instruction):  # Empty instruction similar to NOP
 
 
 class SystemCall(Instruction):
+    pass
+
+
+class Call(WideInstruction):
+    pass
+
+
+class Return(WideInstruction):
     pass
 
 
@@ -472,7 +522,7 @@ ids.update({
     JumpFalse: 21,
     JumpTrue: 235,
     JumpTable: 22,
-    RelativeJump: 33,
+    RelativeJump: 25,
 
     ConvertToFloat: 23,
     ConvertToFloatFromUnsigned: 24,
@@ -481,14 +531,49 @@ ids.update({
     PushFrame: 28,
     PopFrame: 231,
 
-    LoadZeroFlag: 30,
-    LoadNonZeroFlag: 226,
-    LoadCarryBorrowFlag: 31,
-    LoadMostSignificantBit: 32,
+    LoadZeroFlag: 30,   # ==
+
+    LoadCarryBorrowFlag: 31,  # <, unsigned
+    LoadMostSignificantBitFlag: 32,  # < signed
+    LoadNonZeroNonCarryBorrowFlag: 33,  # > unsigned
+    LoadNonZeroNonMostSignificantBitFlag: 34,  # > signed
+
+
+    LoadZeroMostSignificantBitFlag: 222,  # signed <=
+    LoadZeroCarryBorrowFlag: 223,  # unsigned <=
+
+    LoadNonCarryBorrowFlag: 225,  # unsigned >=
+    LoadNonMostSignificantBitFlag: 224,  # signed >=
+
+    LoadNonZeroFlag: 226,   # !=
 
     Pass: 50,
+
+    Call: 127,
+    Return: 129,
+
     SystemCall: 128,
 })
+
+
+def call(address, location):
+    yield Call(location, address)
+
+
+def ret(return_size, location):
+    yield Return(location, return_size)
+
+
+def load_instruction_pointer(location):
+    yield LoadInstructionPointer(location)
+
+
+def load_non_zero_carry_borrow_flag(location):
+    yield LoadNonZeroNonCarryBorrowFlag(location)
+
+
+def load_non_zero_non_most_significant_bit_flag(location):
+    yield LoadNonZeroNonMostSignificantBitFlag(location)
 
 instr_objs = dict(izip(ids.itervalues(), ids.iterkeys()))
 variable_length_instr_ids = dict(
@@ -516,7 +601,7 @@ def dup(amount, location):
 #     yield Load(loc(amount), amount)
 
 
-def swap(amount, location, operands=()):
+def swap(amount, location):
     # extremely expensive instruction
     # requiring at a minimum 4 address translations (instr, operand, stack, stack - operand)
     # 3 loads and 3 (temp var) sets ...
@@ -544,19 +629,6 @@ def swap(amount, location, operands=()):
 
 def push_frame_instr(location):
     yield PushFrame(location)
-
-
-def push_frame(
-        arguments_instrs=(),
-        location=LocationNotSet,
-        total_size_of_arguments=0
-):
-    return chain(
-        push_frame_instr(location),
-        arguments_instrs,
-        # Pointer to where to store return values ...
-        add(load_stack_pointer(location), push(total_size_of_arguments + 1, location), location)
-    )
 
 
 # def manually_push_frame(
@@ -627,8 +699,8 @@ def push(value, location):
 
 
 def set_instr(stack_instrs, amount, location, addr_instrs=()):
-    if amount == 0:
-        return Pop(location),
+    if amount == 0 and not addr_instrs:
+        return chain(stack_instrs, pop(location))
     return chain(stack_instrs, addr_instrs, (Set(location, amount),))
 
 
@@ -642,8 +714,8 @@ def pop(location):
     yield Pop(location)
 
 
-def load_instr(instrs, amount, location):
-    if amount == 0:
+def load_instr(instrs, amount, location, addr_instrs=()):
+    if amount == 0 and not addr_instrs:
         return pop(location)
     return load(instrs, amount, location)
 
@@ -668,6 +740,8 @@ class instruction(Instruction):
 
 class binary(instruction, Binary):
     def __init__(self, left_operand, right_operand, location):
+        assert self is not left_operand
+        assert self is not right_operand
         self.left_operand = left_operand
         self.right_operand = right_operand
         super(binary, self).__init__(location)
@@ -713,12 +787,13 @@ class associative(binary):
             operand, l = operand_location(next(self.right_operand))
             if is_immediate_push(self.left_operand.left_operand):
                 right_operand, location = operand_location(next(self.left_operand.left_operand))
-                self.left_operand.left_operand = self.__class__(push(operand, location), push(right_operand, l), l)
+                self.left_operand.left_operand = \
+                    iter(self.__class__(push(operand, location), push(right_operand, l), l))
                 return iter(self.left_operand)
 
             if is_immediate_push(self.left_operand.right_operand):
                 right_operand, l = operand_location(next(self.left_operand.right_operand))
-                self.left_operand.right_operand = self.__class__(push(operand, l), push(right_operand, l), l)
+                self.left_operand.right_operand = iter(self.__class__(push(operand, l), push(right_operand, l), l))
                 return iter(self.left_operand)
 
             self.right_operand = push(operand, l)
@@ -727,12 +802,12 @@ class associative(binary):
             operand, l = operand_location(next(self.left_operand))
             if is_immediate_push(self.right_operand.left_operand):
                 right_operand, l = operand_location(next(self.right_operand.left_operand))
-                self.right_operand.left_operand = self.__class__(push(operand, l), push(operand, l), l)
+                self.right_operand.left_operand = iter(self.__class__(push(operand, l), push(operand, l), l))
                 return iter(self.right_operand)
 
             if is_immediate_push(self.right_operand.right_operand):
                 right_operand, l = operand_location(next(self.right_operand.right_operand))
-                self.right_operand.right_operand = self.__class__(push(operand, l), push(operand, l), l)
+                self.right_operand.right_operand = iter(self.__class__(push(operand, l), push(operand, l), l))
                 return iter(self.right_operand)
 
             self.left_operand = push(operand, l)
@@ -826,7 +901,24 @@ class subtract_float(right_zero_identity, SubtractFloat):
         )
 
 
-class multiply(one_identity, associative, Multiply):
+class convert_to_left_shift(binary):
+    def __iter__(self):
+        if is_immediate_push(self.right_operand):
+            operand, location = operand_location(next(self.right_operand))
+            if long(operand) and not ((long(operand) - 1) & long(operand)):
+                return iter(shift_left(self.left_operand, push_constant(long(log(operand, 2)), location), location))
+            self.right_operand = push(operand, location)
+
+        if is_immediate_push(self.left_operand):
+            operand, location = operand_location(next(self.left_operand))
+            if long(operand) and not((long(operand) - 1) & long(operand)):
+                return iter(shift_left(self.right_operand, push_constant(long(log(operand, 2)), location), location))
+            self.left_operand = push(operand, location)
+
+        return super(convert_to_left_shift, self).__iter__()
+
+
+class multiply(one_identity, associative, convert_to_left_shift, Multiply):
     def apply(self):
         return push(
             long(operns(next(self.left_operand))[0]) * long(operns(next(self.right_operand))[0]),
@@ -840,6 +932,17 @@ class multiply_float(one_identity, associative, MultiplyFloat):
             float(operns(next(self.left_operand))[0]) * float(operns(next(self.right_operand))[0]),
             self.location
         )
+
+
+class convert_to_right_shift(binary):
+    def __iter__(self):
+        if is_immediate_push(self.right_operand):
+            operand, location = operand_location(next(self.right_operand))
+            if long(operand) and not ((long(operand) - 1) & long(operand)):
+                return iter(shift_right(self.left_operand, push_constant(long(log(operand, 2)), location), location))
+            self.right_operand = push(operand, location)
+
+        return super(convert_to_right_shift, self).__iter__()
 
 
 class divide(right_one_identity, Divide):
@@ -966,7 +1069,23 @@ def load_carry_borrow_flag(location):
 
 
 def load_most_significant_bit_flag(location):
-    yield LoadMostSignificantBit(location)
+    yield LoadMostSignificantBitFlag(location)
+
+
+def load_zero_most_significant_bit_flag(location):
+    yield LoadZeroMostSignificantBitFlag(location)
+
+
+def load_zero_carry_borrow_flag(location):
+    yield LoadZeroCarryBorrowFlag(location)
+
+
+def load_non_carry_borrow_flag(location):
+    yield LoadNonCarryBorrowFlag(location)
+
+
+def load_non_most_significant_bit_flag(location):
+    yield LoadNonMostSignificantBitFlag(location)
 
 
 def halt(location):
@@ -1009,8 +1128,8 @@ from copy import deepcopy
 def copy_operand(operand):
     if isinstance(operand, (int, long, float)):
         return operand
-    if isinstance(operand, Address):
-        return Address(operand.obj, loc(operand))
+    if isinstance(operand, (Address, Offset)):
+        return operand.__class__(operand.obj, loc(operand))
     if isinstance(operand, (Integer, Double)):
         return operand.__class__(operand.value, loc(operand))
     raise ValueError('Cannot copy operand: {g}'.format(g=operand))
@@ -1084,11 +1203,11 @@ class logical_and(logical, And):  # it needs to reference an instruction in orde
         return chain(
             jump_false(
                 self.left_operand,
-                Address(getattr(self, 'right_default_instr', self.default_instr), self.location),
+                Offset(getattr(self, 'right_default_instr', self.default_instr), self.location),
                 self.location
             ),
             compare(self.right_operand, push(0, self.location), self.location, (load_non_zero_flag(self.location),)),
-            relative_jump(Address(self.end_instr, self.location), self.location),
+            relative_jump(Offset(self.end_instr, self.location), self.location),
             (self.default_instr,),
             push(0, self.location),
             (self.end_instr,),
@@ -1126,11 +1245,11 @@ class logical_or(logical, Or):
         return chain(
             jump_true(
                 self.left_operand,
-                Address(getattr(self, 'right_default_instr', self.default_instr), self.location),
+                Offset(getattr(self, 'right_default_instr', self.default_instr), self.location),
                 self.location
             ),
             compare(self.right_operand, push(0, self.location), self.location, (load_non_zero_flag(self.location),)),
-            relative_jump(Address(self.end_instr, self.location), self.location),
+            relative_jump(Offset(self.end_instr, self.location), self.location),
             (self.default_instr,),
             push(1, self.location),
             (self.end_instr,),

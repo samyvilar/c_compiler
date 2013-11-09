@@ -15,8 +15,8 @@ from back_end.emitter.c_types import size
 
 from front_end.parser.types import void_pointer_type
 
-from back_end.virtual_machine.instructions.architecture import halt, Byte, add, set_instr, push, Double, Instruction
-from back_end.virtual_machine.instructions.architecture import Address, operns, allocate, RelativeJump, Integer
+from back_end.virtual_machine.instructions.architecture import halt, Byte, Double, Instruction
+from back_end.virtual_machine.instructions.architecture import Address, Offset, operns, RelativeJump, Integer
 
 from back_end.emitter.declarations.declaration import declaration
 from back_end.emitter.statements.statement import statement
@@ -116,13 +116,19 @@ def executable(
 ):
     symbol_table = SymbolTable() if symbol_table is None else symbol_table
     location = '__SOP__'  # Start of Program
-    heap_ptr = Address(0, location)
+    __end__ = Integer(0, location)
 
     libs = tuple(
         Library(lib_file)
         for lib_file in ifilter(os.path.isfile, starmap(os.path.join, product(library_dirs, libraries)))
     )
-    symbols = chain(symbols, (Data('__heap_ptr__', (heap_ptr,), size(void_pointer_type), None, location),))
+    symbols = chain(
+        symbols,  # add heap pointer(s) ...
+        (
+            Data('__base_heap_ptr__', (Address(__end__, location),), size(void_pointer_type), None, location),
+            Data('__heap_ptr__', (Address(__end__, location),), size(void_pointer_type), None, location),
+        )
+    )
 
     def declarations(symbol_table):
         for v in chain.from_iterable(imap(set_binaries, ifilterfalse(lambda s: s.binaries, symbol_table.itervalues()))):
@@ -131,12 +137,6 @@ def executable(
     st = {}
     _ = declaration(entry_point, st)
     instr_seq = chain(
-        # Initialize heap pointer ...
-        add(push(Address(heap_ptr, location), location), push(size(void_pointer_type), location), location),
-        set_instr(
-            push(Address(Reference('__heap_ptr__'), location), location),
-            size(void_pointer_type), location),
-        allocate(-size(void_pointer_type), location),
         statement(  # call entry point ...
             FunctionCallExpression(
                 IdentifierExpression(name(entry_point), c_type(entry_point), location),
@@ -146,10 +146,10 @@ def executable(
             ),
             st
         ),
-        halt(location),  # Halt machine on return, exit() will emit Halt ...
-        chain.from_iterable(starmap(binaries, izip(symbols, repeat(symbol_table))))
+        halt(location),  # Halt machine on return ...
+        chain.from_iterable(starmap(binaries, izip(symbols, repeat(symbol_table)))),
     )            # link all foreign symbols and emit binaries for declarations ...
-    return chain(linker(instr_seq, symbol_table, libs), declarations(symbol_table), (heap_ptr,))
+    return chain(linker(instr_seq, symbol_table, libs), declarations(symbol_table), (__end__,))
 
 
 def resolve(instrs, symbol_table):
@@ -183,8 +183,12 @@ def set_addresses(instrs, addresses=None):  # assign addresses ...
     for instr in instrs:
         instr.address = addresses.send(instr)  # calculate next address based on current value ...
         yield instr
+
+        if type(instr) is Address and type(instr.obj) not in {int, long}:
+            references.append((instr, instr, None))
+
         for operand_index, o in enumerate(operns(instr)):
-            if isinstance(o, Address) and type(o.obj) not in {int, long}:
+            if isinstance(o, (Address, Offset)) and type(o.obj) not in {int, long}:
                 references.append((instr, o, operand_index))
 
             # replace immutable int type by mutable type.
@@ -209,11 +213,15 @@ def set_addresses(instrs, addresses=None):  # assign addresses ...
 
     # At this point all address have being generated and resolve() should have checked or set first_element on Refs ...
     # so update addresses replace Address(obj=instr) by Address(obj=address or offset)
-    # for instr, operand, operand_index in chain(instr_references, symbol_references, label_references):
 
     for instr, operand, operand_index in references:
-        operand.obj = operand.obj.address - ((instr.address + 2) if isinstance(instr, RelativeJump) else 0)
+        if isinstance(operand, Offset):
+            operand.obj = operand.obj.address - ((instr.address + 2) if isinstance(instr, RelativeJump) else 0)
+        else:
+            operand.obj = operand.obj.address
+
         # Update instruction operand ...
-        instr[operand_index] = Address(operand.obj, loc(operand))
+        if isinstance(instr, Instruction):
+            instr[operand_index] = Address(operand.obj, loc(operand))
 
 

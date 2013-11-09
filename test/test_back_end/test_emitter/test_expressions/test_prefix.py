@@ -9,33 +9,33 @@ class TestPrefix(TestStatements):
         {
             int a = 10;
             int b = ++a;
+            a = a - b;
         }
         """
         self.evaluate(source)
-        self.assertEqual(self.mem[self.cpu.stack_pointer], 11)
-        self.assertEqual(self.mem[self.cpu.stack_pointer - 1], 11)
+        self.assertEqual(self.mem[self.cpu.stack_pointer], 0)
 
     def test_decrement(self):
         source = """
         {
             int a = 10;
             int b = --a;
+            a = a - b;
         }
         """
         self.evaluate(source)
-        self.assertEqual(self.mem[self.cpu.stack_pointer], 9)
-        self.assertEqual(self.mem[self.cpu.stack_pointer - 1], 9)
+        self.assertEqual(self.mem[self.cpu.stack_pointer], 0)
 
     def test_address_of(self):
         source = """
         {
             int a = 10;
             int *b = &a;
+            a = (unsigned long long)&a - (unsigned long long)b;
         }
         """
         self.evaluate(source)
-        self.assertEqual(self.mem[self.cpu.stack_pointer], 10)
-        self.assertEqual(self.mem[self.cpu.stack_pointer - 1], self.cpu.stack_pointer)
+        self.assertEqual(self.mem[self.cpu.stack_pointer], 0)
 
     def test_dereference(self):
         source = """

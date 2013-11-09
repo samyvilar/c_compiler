@@ -10,22 +10,22 @@ class TestPostfix(TestStatements):
         {
             int a = 10;
             int b = a++;
+            a = a - b;
         }
         """
         self.evaluate(source)
-        self.assertEqual(self.mem[self.cpu.stack_pointer], 11)
-        self.assertEqual(self.mem[self.cpu.stack_pointer - 1], 10)
+        self.assertEqual(self.mem[self.cpu.stack_pointer], 1)
 
     def test_decrement(self):
         source = """
         {
             int a = 10;
             int b = a--;
+            a = b - a;
         }
         """
         self.evaluate(source)
-        self.assertEqual(self.mem[self.cpu.stack_pointer], 9)
-        self.assertEqual(self.mem[self.cpu.stack_pointer - 1], 10)
+        self.assertEqual(self.mem[self.cpu.stack_pointer], 1)
 
     def test_array_subscript(self):
         source = """
@@ -37,12 +37,11 @@ class TestPostfix(TestStatements):
             b = a[2];
             a[0] = -1;
             a[9] = -1;
-
+            b = b - c;
         }
         """
         self.evaluate(source)
-        self.assertEqual(self.mem[self.cpu.stack_pointer], 10)
-        self.assertEqual(self.mem[self.cpu.stack_pointer - 11], 1)
+        self.assertEqual(self.mem[self.cpu.stack_pointer], 9)
 
     def test_two_d_array(self):
         source = """

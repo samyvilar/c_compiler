@@ -29,6 +29,7 @@
 #define PAGE_BIT_SIZE 7
 #define WORD_BIT_SIZE 9 // 1 Page, (1 << 9) == 512 == (4096/8) assuming word_type is 8 bytes
 #define ARE_LEVEL_SIZES_EQUAL ((BLOCK_BIT_SIZE == PAGE_BIT_SIZE) && (BLOCK_BIT_SIZE == WORD_BIT_SIZE) && (PAGE_BIT_SIZE == WORD_BIT_SIZE))
+#define VM_NUMBER_OF_ADDRESSABLE_WORDS ((word_type)1 << (BLOCK_BIT_SIZE + PAGE_BIT_SIZE + WORD_BIT_SIZE))
 
 #define ADDRESS_BIT_SIZE (BLOCK_BIT_SIZE + PAGE_BIT_SIZE + WORD_BIT_SIZE)
 
@@ -54,9 +55,11 @@
 */
 
 #define page_type word_type
-#define PAGE_POOL_SIZE 10000 // (10000 * 4096)/1000000.0 == 40.96 megabytes.
-extern page_type (*page_pool)[PAGE_POOL_SIZE][NUMBER_OF_WORDS];
-extern word_type available_pages;
+// #define PAGE_POOL_SIZE 10000 // (10000 * 4096)/1000000.0 == 40.96 megabytes.
+#ifdef PAGE_POOL_SIZE
+    extern page_type (*page_pool)[PAGE_POOL_SIZE][NUMBER_OF_WORDS];
+    extern word_type available_pages;
+#endif
 
 #define word(page, word_id) ((word_type **)page + word_id)
 
@@ -76,20 +79,24 @@ typedef struct block_type {
 #define FAULT_ID ((bit_hash_type)-1)
 #define initialize_faults(faults, size) set_all_bits(faults, size)
 #define initilize_vm_cache(vm) (memset(cache(vm), 0, sizeof(cache(vm))), cache(vm)[0][0] = 1)
-#define _new_block_inline(dest)                                          \
-    if (available_blocks)                                                \
-        dest = block_pool + --available_blocks;                          \
-    else                                                                 \
-        initialize_faults(faults((block_type *)(dest = malloc(sizeof(block_type)))), NUMBER_OF_PAGES)
+//#define _new_block_inline(dest)                                          \
+//    if (available_blocks)                                                \
+//        dest = block_pool + --available_blocks;                          \
+//    else                                                                 \
+//        initialize_faults(faults((block_type *)(dest = malloc(sizeof(block_type)))), NUMBER_OF_PAGES)
+#define _new_block_inline(dest) initialize_faults(faults((block_type *)(dest = malloc(sizeof(block_type)))), NUMBER_OF_PAGES)
 //#define _new_block_inline(dest) (dest = (available_blocks ? (block_pool + --available_blocks) : malloc(sizeof(block_type))))
 
+word_type *allocate_entire_physical_address_space();
 
-#define BLOCK_POOL_SIZE 10000 // ((1 << 7)*8) + ((1 << 7)/8) == 1040 bytes,  (10000 * 1040)/1000000.0 == 10.4 megabytes
-extern block_type *block_pool;
-extern word_type available_blocks;
+//#define BLOCK_POOL_SIZE 10000 // ((1 << 7)*8) + ((1 << 7)/8) == 1040 bytes,  (10000 * 1040)/1000000.0 == 10.4 megabytes
+#ifdef BLOCK_POOL_SIZE
+    extern block_type *block_pool;
+    extern word_type available_blocks;
+#endif
 
 // ((1 << 16) * 8) + ((1 << 16) / 8) + (2 * (1 << 12) * 8) == 598016, 598016/1000000.0 == .59 megabytes
-#define CACHE_SIZE ((word_type)(1 << 12))
+#define CACHE_SIZE ((word_type)(1 << 16))
 struct virtual_memory_type {
     block_type *blocks[NUMBER_OF_BLOCKS];
     bit_hash_type faults[NUMBER_ELEMENTS(NUMBER_OF_BLOCKS)];
@@ -103,20 +110,20 @@ struct virtual_memory_type {
 #define cache(vm) ((vm)->cache)
 #define hash(addr) (addr & (CACHE_SIZE - 1))
 #define is_address_cached(vm, addr, _hash) (cache(vm)[_hash][0] == (addr))
+#define is_address_not_cached(vm, addr, _hash) (cache(vm)[_hash][0] != (addr))
 #define cached_address(vm, hash_value) ((word_type *)(cache(vm)[hash_value][1]))
 #define set_cached_address(vm, addr, hash_value, translated_addr) (\
     (cache(vm)[(hash_value)][0] = (addr)), (word_type *)(cache(vm)[(hash_value)][1] = (word_type)(translated_addr))    \
 )
 
 #define block_fault page_fault
-#define block_allocated page_allocated
 #define clear_block_fault clear_page_fault
 
 INLINE struct virtual_memory_type *new_virtual_memory();
 INLINE block_type *new_block();
 
 #define new_page()   malloc(NUMBER_OF_WORDS * sizeof(word_type))
-#define _new_page_inline() ((available_pages) ? (((*page_pool)[--available_pages])) : (new_page()))
+#define _new_page_inline() new_page() // ((available_pages) ? (((*page_pool)[--available_pages])) : (new_page()))
 
 
 #define get_word(vm, addr) (*translate_address(vm, addr))
@@ -128,7 +135,7 @@ INLINE block_type *new_block();
     dest_var,                           \
     hash_var,                           \
     temp_var                            \
-) {                                                                         \
+){   \
     hash_var = hash(addr_var);                                              \
     if (is_address_cached(mem_var, addr_var, hash_var))                     \
         dest_var = (word_type)cached_address(mem_var, hash_var);            \
@@ -157,6 +164,32 @@ INLINE block_type *new_block();
         dest_var = (word_type)set_cached_address(mem_var, addr_var, hash_var, word(temp_var, dest_var)); \
     }   \
 }
+/*  seem slower, even though it has less branching, probably due to the redundant calculations
+{                                                                           \
+    hash_var = hash(addr_var);                                              \
+    if (is_address_not_cached(mem_var, addr_var, hash_var))                 \
+    {                                                                       \
+        dest_var = block_id(addr_var);                                      \
+        if (block_fault(mem_var, dest_var))                                 \
+        {                                                                   \
+            _new_block_inline(temp_var);                                    \
+            set_block(mem_var, dest_var, temp_var);                         \
+            clear_block_fault(mem_var, dest_var);                           \
+        }                                                                   \
+        temp_var = block(mem_var, dest_var);                                \
+        dest_var = page_id(addr_var);                                       \
+        if (page_fault((block_type *)temp_var, dest_var))                   \
+        {                                                                   \
+            clear_page_fault((block_type *)temp_var, dest_var);             \
+            set_page((block_type *)temp_var, dest_var, _new_page_inline()); \
+        }                                                                   \
+        temp_var = page((block_type *)temp_var, dest_var);                  \
+        dest_var = word_id(addr_var);                                       \
+        set_cached_address(mem_var, addr_var, hash_var, word(temp_var, dest_var));  \
+    }                                                                               \
+    dest_var = (word_type)cached_address(mem_var, hash_var);                        \
+}
+*/
 
 
 #if defined(__i386__)

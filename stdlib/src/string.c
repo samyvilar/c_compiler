@@ -1,47 +1,16 @@
 
 #include <string.h>
 
-#define is_aligned(address, size) (!(((unsigned long)address) & (size - 1)))
-
-#ifdef __SSE2__
-    #include <emmintrin.h>
-
-    #define vector_type __m128i
-    #define vector_type_bytes(value) _mm_set1_epi8(value)
-    #define equaled_vectors(vector_0, vector_1) (_mm_movemask_epi8(_mm_cmpeq_epi32(vector_0, vector_1)))
-#else
-    #define vector_type void *
-    static vector_type _vector_type_bytes(unsigned char value)
-    {
-        vector_type temp;
-        unsigned char *address = &temp;
-        while (address != ((void *)&temp) + sizeof(temp))
-            *address++ = value;
-        return temp;
-    }
-    #define vector_type_bytes _vector_type_bytes
-    #define equaled_vectors(vector_0, vector_1) (vector_0 == vector_1)
-#endif
-
 
 void *memcpy(void *dest, const void *src, size_t numb)
 {
-    size_t index = 0;
-    #define __copy_element__(src, dest, element_type, index) (*(element_type *)(dest + index) = *(element_type *)(src + index))
-    if (is_aligned(dest, sizeof(vector_type)) && is_aligned(src, sizeof(vector_type)))
-        while (numb > sizeof(vector_type))
-        {
-            __copy_element__(src, dest, vector_type, index);
-            index += sizeof(vector_type);
-            numb -= sizeof(vector_type);
-        }
+    unsigned char
+        *dest_values = dest,
+        *source_value = src;
 
+    numb /= sizeof(unsigned char);
     while (numb--)
-    {
-        __copy_element__(src, dest, unsigned char, index);
-        ++index;
-    }
-    #undef __copy_element__
+        *dest_values++ = *source_value++;
 
     return dest;
 }
@@ -51,89 +20,68 @@ void *memmove(void *dest, const void *src, size_t numb)
     if (dest < src)
         return memcpy(dest, src, numb);
 
-    if (numb > sizeof(vector_type)
-        && is_aligned((dest + numb - sizeof(vector_type)), sizeof(vector_type))
-        && is_aligned((src + numb - sizeof(vector_type)), sizeof(vector_type)))
-        while (numb > sizeof(vector_type))
-        {
-            numb -= sizeof(vector_type);
-            *(vector_type *)(dest + numb) = *(vector_type *)(src + numb);
-        }
+    unsigned char
+        *destination = dest + numb,
+        *source = src + numb;
 
+    numb /= sizeof(unsigned char);
     while (numb--)
-        *(unsigned char *)(dest + numb) = *(unsigned char *)(src + numb);
+        *--destination = *--source;
 
     return dest;
 }
 
 int memcmp(const void *src_0, const void *src_1, size_t numb)
 {
-    size_t index = 0;
-    if (is_aligned(src_0, sizeof(vector_type)) && is_aligned(src_1, sizeof(vector_type)))
-        while (numb > sizeof(vector_type) && equaled_vectors(*(vector_type *)(src_0 + index), *(vector_type *)(src_1 + index)))
-        {
-            numb -= sizeof(vector_type);
-            index += sizeof(vector_type);
-        }
+    unsigned char
+        *source_0 = src_0,
+        *source_1 = src_1;
 
-    while (numb && (*(unsigned char *)(src_0 + index) == *(unsigned char *)(src_1 + index)))
-        ++index, --numb; // safe guard against numb == 0;
+    numb /= sizeof(unsigned char);
+    while (numb && *source_0 == *source_1)
+        numb--, source_0++, source_1++; // safe guard against numb == 0;
 
-    return numb ? (*(unsigned char *)(src_0 + index) - *(unsigned char *)(src_1 + index)) : 0;
+    return numb ? *source_0 - *source_1 : 0;
 }
 
 void *memchr(const void *dest, int value, size_t numb)
 {
-    size_t index = 0;
-    while (numb && *(unsigned char *)(dest + index) != (unsigned char)value)
-        --numb, ++index;
+    unsigned char *values = dest;
+    numb /= sizeof(unsigned char);
+    while (numb && *values != (unsigned char)value)
+        numb--, values++;
 
-    return numb ? (void *)(dest + index) : NULL;   // if numb is 0 then byte wasn't found.
+    return numb ? values : NULL;   // if numb is 0 then byte wasn't found.
 }
-
 
 void *memset(void *dest, int value, size_t numb)
 {
-    vector_type temp = vector_type_bytes((unsigned char)value);
-    void *destination = dest;
+    numb /= sizeof(unsigned char);
+    unsigned char *destination = dest;
 
-    while (numb > sizeof(vector_type) && !is_aligned(dest, sizeof(vector_type))) // align pointer.
-    {
-        *(unsigned char *)(dest++) = (unsigned char)value;
-        --numb;
-    }
+    while (numb--)
+        *destination++ = (unsigned char)value;
 
-    while (numb > sizeof(vector_type))    // pointer is aligned, use vector operations, if applicable.
-    {
-        *(vector_type *)dest = temp;
-        dest += sizeof(vector_type);
-        numb -= sizeof(vector_type);
-    }
-
-    while (numb--)       // set any remaining bytes ...
-        *(unsigned char *)(dest++) = (unsigned char)value;
-
-    return destination;
+    return dest;
 }
-
 
 
 char *strcpy(char *dest, const char *src)
 {
-    size_t index = 0;
-    while ((dest[index] = src[index]))
-        ++index;
+    unsigned char *destination = dest;
+
+    while ( (*destination++ = *src++) ) ;
+
     return dest;
 }
 
 char *strncpy(char *dest, const char *src, size_t numb)
 {
-    size_t index = 0;
+    unsigned char *destination = dest;
+    while (numb && (*destination++ = *src++))
+        numb--;
 
-    while (numb && (dest[index] = src[index]))
-        --numb, ++index;
-
-    memset((dest + index), '\0', numb);
+    memset(destination, '\0', numb);
     return dest;
 }
 
@@ -146,23 +94,26 @@ char *strcat(char *dest, const char *src)
 
 char *strncat(char *dest, const char *src, size_t numb)
 {
-    size_t index = strlen(dest);
-    while (numb-- && (dest[index++] = *src++)) ;
-    dest[index] = '\0';
+    unsigned char *destination = dest + strlen(dest);
+    while (numb-- && (*destination++ = *src++)) ;
+
+    if (destination != dest) // safeguard against numb == 0
+        *destination = '\0';
+
     return dest;
 }
 
 int strcmp(const char *str1, const char *str2)
 {
     while (*str1 && *str2 && *str1 == *str2)
-        ++str1, ++str2;
+        str1++, str2++;
     return *str1 - *str2;
 }
 
 int strncmp(const char *str1, const char *str2, size_t numb)
 {
     while (numb && *str1 && *str2 && *str1 == *str2)
-        --numb, ++str1, ++str2;
+        numb--, str1++, str2++;
     return numb ? *str1 - *str2 : 0;
 }
 
@@ -170,7 +121,7 @@ int strncmp(const char *str1, const char *str2, size_t numb)
 char *strchr(const char *str, int ch)
 {
     while (*str && *str != (char)ch)
-        ++str;
+        str++;
     return (*str == (char)ch) ? (char *)str : NULL;
 }
 
@@ -178,7 +129,7 @@ size_t strcspn(const char *str, const char *set)
 {
     const char *temp = str;
     while (!strchr(set, *str))
-        ++str;
+        str++;
     return str - temp;
 }
 
@@ -203,25 +154,32 @@ size_t strspn(const char *str, const char *set)
 {
     if (!*set) // if set is empty just return 0;
         return 0;
+
     const char *temp = str;
     while (*str && strchr(set, *str)) // strchr includes '\0' but strspn doesn't
-        ++str;
+        str++;
     return str - temp;
 }
 
 char *strstr(const char *str, const char *sub_str)
 {
-    if (!(*sub_str && *str))
+    if (!(*sub_str && *str)) // return NULL if either is empty ...
         return NULL;
 
-    char *temp = str - 1; // strchr(str, *sub_str);
-    size_t len = strlen(sub_str);
-    while ((temp = strchr(temp + 1, *sub_str)) && strncmp(temp, sub_str, len)) ;
-        // temp = strchr(temp + 1, *sub_str);
+    char *temp = str - 1; // remove one char otherwise infinite loop may occur
+    size_t len = strlen(sub_str);  // pre-calculate len
+    while (
+        (temp = strchr(temp + 1, *sub_str)) // search for first occurrence of matching next, characters updating temp
+            &&  // if no match was found (temp == NULL) break ..
+        strncmp(temp, sub_str, len) // match was found compare to see if the rest of the chars match ...
+    );
+
     return temp;
 }
 
-#include <stdio.h>
+#ifndef NULL
+    #define NULL ((void *)0)
+#endif
 
 char *strtok(char *str, const char *delimiters)
 {
@@ -245,14 +203,6 @@ char *strtok(char *str, const char *delimiters)
 size_t strlen(const char *str)
 {
     const char *temp = str;
-    while (*str)
-        ++str;
+    while (*str) ++str;
     return str - temp;
 }
-
-
-
-
-#undef vector_type
-#undef vector_type_bytes
-#undef equaled_vectors

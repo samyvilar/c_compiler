@@ -1,5 +1,6 @@
 __author__ = 'samyvilar'
 
+from types import MethodType
 from collections import defaultdict
 from itertools import chain
 
@@ -19,7 +20,7 @@ from back_end.emitter.stack_state import Stack, bind_instructions
 
 from back_end.virtual_machine.instructions.architecture import Address, push as push_instr
 
-from back_end.emitter.c_types import bind_load_address_func
+from back_end.emitter.c_types import bind_load_address_func, function_operand_type_sizes
 
 
 def no_rule(dec, *_):
@@ -38,8 +39,12 @@ def get_directives():
 
 def bind_load_instructions(obj):
     def load_address(self, location):
-        return push_instr(Address(Reference(self.symbol.name), location), location)
+        return push_instr(self.get_address_obj(location), location)
 
+    def get_address_obj(self, location):
+        return Address(Reference(self.symbol.name), location)
+
+    obj.get_address_obj = MethodType(get_address_obj, obj)
     obj.load_address = bind_load_address_func(load_address, obj)
     return obj
 
@@ -91,7 +96,11 @@ def function_definition(dec, symbol_table):
         stack = Stack()  # Each function call has its own Frame which is nothing more than a stack.
 
         # Skip return address and pointer to return value ...
-        offset = 1 + 2 * size(void_pointer_type)
+        offset = 2 * size(void_pointer_type) + (
+            # if function has zero return size then the return pointer will be omitted ...
+            size(void_pointer_type) if function_operand_type_sizes(c_type(c_type(dec))) else 0
+        )
+
         for parameter in c_type(dec):
             # monkey patch declarator objects add Load commands according to stack state; add to symbol table.
             symbol_table[name(parameter)] = bind_instructions(parameter, offset)

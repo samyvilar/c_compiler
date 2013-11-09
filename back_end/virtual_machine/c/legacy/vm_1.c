@@ -2,18 +2,22 @@
 #include <unistd.h>
 #include <string.h>
 #include <stdio.h>
-#include "fast_vm.h"
+#include "vm_1.h"
 
 #include "emmintrin.h"
 
-// each block is 1040 bytes assuming (1 << 7) pages
-block_type *block_pool = (block_type []){
-    [0 ... (BLOCK_POOL_SIZE - 1)].faults[0 ... (NUMBER_ELEMENTS(NUMBER_OF_PAGES) - 1)] = FAULT_ID
-};
-word_type available_blocks = BLOCK_POOL_SIZE;
+#ifdef BLOCK_POOL_SIZE
+    // each block is 1040 bytes assuming (1 << 7) pages
+    block_type *block_pool = (block_type []){
+        [0 ... (BLOCK_POOL_SIZE - 1)].faults[0 ... (NUMBER_ELEMENTS(NUMBER_OF_PAGES) - 1)] = FAULT_ID
+    };
+    word_type available_blocks = BLOCK_POOL_SIZE;
+#endif
 
-page_type (*page_pool)[PAGE_POOL_SIZE][NUMBER_OF_WORDS] = &(page_type [PAGE_POOL_SIZE][NUMBER_OF_WORDS]){};
-word_type available_pages = PAGE_POOL_SIZE;
+#ifdef PAGE_POOL_SIZE
+    page_type (*page_pool)[PAGE_POOL_SIZE][NUMBER_OF_WORDS] = &(page_type [PAGE_POOL_SIZE][NUMBER_OF_WORDS]){};
+    word_type available_pages = PAGE_POOL_SIZE;
+#endif
 
 
 INLINE struct virtual_memory_type *new_virtual_memory()
@@ -26,8 +30,10 @@ INLINE struct virtual_memory_type *new_virtual_memory()
 
 INLINE block_type *new_block()
 {
+    #ifdef BLOCK_POOL_SIZE
     if (available_blocks)
         return block_pool + --available_blocks;
+    #endif
     
     block_type *block = malloc(sizeof(block_type));
     initialize_faults(faults(block), NUMBER_OF_PAGES);
@@ -42,6 +48,18 @@ INLINE word_type *_translate_address(struct virtual_memory_type *vm, word_type a
     TRANSLATE_ADDRESS_INLINE(vm, addr, _addr, _hash, _temp);
     
     return (word_type *)_addr;
+}
+
+const word_type vm_number_of_addressable_words = VM_NUMBER_OF_ADDRESSABLE_WORDS;
+
+word_type *allocate_entire_physical_address_space(){
+    return mmap(
+        NULL,
+        VM_NUMBER_OF_ADDRESSABLE_WORDS * sizeof(word_type),
+        PROT_READ | PROT_WRITE, MAP_ANON | MAP_SHARED,
+        0,
+        0
+    );
 }
 
 //INLINE word_type *_translate_address_32_sse(struct virtual_memory_type *vm, word_type addr)

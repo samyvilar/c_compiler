@@ -31,7 +31,9 @@ class TestPointerArithmetic(TestStatements):
         code = """
         {
             unsigned int index = 0;
-            struct foo {double a; int b[10];} *a = (void *)0, *b = (void *)sizeof(struct foo);
+            struct foo {double a; int b[10];}
+                *a = (void *)0,
+                *b = (void *)sizeof(struct foo);
             index = b - a;
         }
         """

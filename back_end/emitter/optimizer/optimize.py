@@ -7,7 +7,8 @@ from itertools import chain, imap, izip, repeat, ifilter, starmap
 from sequences import takewhile, peek, consume
 from back_end.emitter.object_file import Reference
 import back_end.virtual_machine.instructions.architecture as Architecture
-from back_end.virtual_machine.instructions.architecture import operns, Allocate, Pass, Address, Operand, Instruction
+from back_end.virtual_machine.instructions.architecture import operns, Allocate, Pass, Address, Offset, Operand
+from back_end.virtual_machine.instructions.architecture import Instruction
 from back_end.virtual_machine.instructions.architecture import Pop, Push, LoadRegister, Dup, copy_instruction as copy_i
 from front_end.loader.locations import loc
 
@@ -24,11 +25,24 @@ removed_instrs = []
 def replace_instr(old_instr, new_instr):
     if id(old_instr) == id(new_instr):
         return
+
     if id(old_instr) in new_instructions:  # we are replacing an old instructions twice
-        raise ValueError('We are replacing an old instruction twice!')
+        raise ValueError('We are replacing an old instruction {i} with {n} twice!'.format(i=old_instr, n=new_instr))
+
     if id(old_instr) in set(imap(id, new_instructions.itervalues())):
-        raise ValueError('We are replacing a new instruction twice!')
-    if id(old_instr) != id(new_instr):
+        # replacing new_instruction again so we need to update previous references
+        # to this new instruction instead of the old one ...
+        # get all the instructions that where referencing the older instruction ...
+        for orig, prev_new_instr in ifilter(
+                lambda item: id(item[1]) == id(old_instr),
+                new_instructions.iteritems()
+        ):
+            new_instructions[orig] = new_instr
+        removed_instrs.append(old_instr)
+
+        #raise ValueError('We are replacing a new instruction {i} twice new: {n}'.format(i=old_instr, n=new_instr))
+
+    elif id(old_instr) != id(new_instr):
         new_instructions[id(old_instr)] = new_instr
         removed_instrs.append(old_instr)
 
@@ -111,19 +125,6 @@ def remove_pass(instrs):
 
 def remove_dup(instrs):
     """
-        dup instruction is expensive
-        replace all (Push, LoadRegister), DUP 1 by (Push, LoadRegister), (Push, LoadRegister)
-    """
-    current_instr = consume(instrs)
-    if peek(instrs, None) == Dup('', 1):
-        new_instr = copy_instruction(current_instr)
-        replace_instr(consume(instrs), new_instr)
-        return current_instr, new_instr
-    return current_instr,
-
-
-def remove_dup(instrs):
-    """
         replace (Push or LoadRegister), DUP 1 by (Push or LoadRegister), (Push or LoadRegister)
     """
     current_instr = consume(instrs)
@@ -157,7 +158,7 @@ def update_instruction_references(instrs):
     references = []
     for instr in instrs:
         for index, operand in enumerate(operns(instr)):
-            if isinstance(operand, Address) and isinstance(operand.obj, (Operand, Reference, Instruction)):
+            if isinstance(operand, (Address, Offset)) and isinstance(operand.obj, (Operand, Reference, Instruction)):
                 references.append(operand)
         yield instr
 

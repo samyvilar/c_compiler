@@ -9,11 +9,11 @@ class TestTernary(TestStatements):
         {
             int b = 11;
             int foo = b ? b += 2 : (foo += 3);
+            b = b - foo;
         }
         '''
         self.evaluate(code)
-        self.assertEqual(self.mem[self.cpu.stack_pointer], 13)
-        self.assertEqual(self.mem[self.cpu.stack_pointer - 1], 13)
+        self.assertEqual(self.mem[self.cpu.stack_pointer], 0)
 
     def test_ternary_false(self):
         code = '''
@@ -21,9 +21,8 @@ class TestTernary(TestStatements):
             int b = 0;
             int c = 1;
             int foo = b ? c += 1 : b;
+            b = b + c + foo;
         }
         '''
         self.evaluate(code)
-        self.assertEqual(self.mem[self.cpu.stack_pointer], 0)
-        self.assertEqual(self.mem[self.cpu.stack_pointer - 1], 1)
-        self.assertEqual(self.mem[self.cpu.stack_pointer - 2], 0)
+        self.assertEqual(self.mem[self.cpu.stack_pointer], 1)

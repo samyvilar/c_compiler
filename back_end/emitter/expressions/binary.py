@@ -4,7 +4,7 @@ from itertools import chain, izip, repeat
 from sequences import all_but_last
 from front_end.loader.locations import loc
 from front_end.tokenizer.tokens import TOKENS
-from front_end.parser.ast.expressions import oper, left_exp, right_exp
+from front_end.parser.ast.expressions import oper, left_exp, right_exp, AddressOfExpression, IdentifierExpression
 
 from front_end.parser.types import IntegralType, NumericType, c_type, base_c_type, unsigned, void_pointer_type
 from front_end.parser.types import PointerType, VoidType
@@ -22,22 +22,27 @@ from back_end.virtual_machine.instructions.architecture import add_float as add_
 from back_end.virtual_machine.instructions.architecture import subtract_float as subtract_float_instr
 from back_end.virtual_machine.instructions.architecture import multiply_float as multiply_float_instr
 from back_end.virtual_machine.instructions.architecture import divide_float as divide_float_instr
-from back_end.virtual_machine.instructions.architecture import load_zero_flag, logical_or, logical_and, flip_bit
+from back_end.virtual_machine.instructions.architecture import load_zero_flag, logical_or, logical_and
 from back_end.virtual_machine.instructions.architecture import load_most_significant_bit_flag, load_carry_borrow_flag
 from back_end.virtual_machine.instructions.architecture import load_non_zero_flag
 
-from back_end.virtual_machine.instructions.architecture import push, Pass, jump_false, jump_true, Address
-from back_end.virtual_machine.instructions.architecture import dup, swap, relative_jump, compare, compare_floats
+from back_end.virtual_machine.instructions.architecture import push
+from back_end.virtual_machine.instructions.architecture import dup, swap, compare, compare_floats
+from back_end.virtual_machine.instructions.architecture import load_non_zero_non_most_significant_bit_flag
+from back_end.virtual_machine.instructions.architecture import load_non_zero_carry_borrow_flag
+from back_end.virtual_machine.instructions.architecture import load_zero_most_significant_bit_flag
+from back_end.virtual_machine.instructions.architecture import load_zero_carry_borrow_flag
+from back_end.virtual_machine.instructions.architecture import load_non_carry_borrow_flag
+from back_end.virtual_machine.instructions.architecture import load_non_most_significant_bit_flag
 
 
-from back_end.emitter.c_types import size as _size
-size = lambda ctype: _size(ctype, {VoidType: 1})
+from back_end.emitter.c_types import size_extended, size
 
 
 def calculate_pointer_offset(instrs, pointer_type, location):
     return multiply_instr(
         instrs,
-        push(size(c_type(pointer_type)), location),
+        push(size_extended(c_type(pointer_type)), location),
         location,
     )
 
@@ -53,7 +58,6 @@ def add(l_instrs, r_instrs, location, operand_types):
         l_instrs = calculate_pointer_offset(l_instrs, operand_types[2], location)
 
     return add.rules[base_c_type(max(operand_types[1:]))](l_instrs, r_instrs, location)
-
 add.rules = {
     IntegralType: add_instr,
     NumericType: add_float_instr,
@@ -64,7 +68,7 @@ def subtract(l_instrs, r_instrs, location, operand_types):
     if isinstance(operand_types[1], PointerType) and isinstance(operand_types[2], PointerType):
         return divide_instr(
             subtract.rules[base_c_type(operand_types[0])](l_instrs, r_instrs, location),
-            push(size(c_type(operand_types[1])), location),
+            push(size_extended(c_type(operand_types[1])), location),
             location,
         )
     if isinstance(operand_types[1], PointerType) and isinstance(operand_types[2], IntegralType):
@@ -144,31 +148,44 @@ def less_than(l_instrs, r_instrs, location, operand_types):
 
 # One number is said to be greater than another when their difference is non-zero and positive.
 def greater_than(l_instrs, r_instrs, location, operand_types):
-    # 6 instructions!
-    # ZeroFlag, LoadSign
-    # 0, 1 => 0
-    # 1, 0 => 0
-    # 1, 1 => 0
-    # 0, 0 => 1   (Z | L) ^ 1
-    return flip_bit(less_than_or_equal(l_instrs, r_instrs, location, operand_types), location)
+    return compare(  # 2 instructions (Compare, Load*) ...
+        l_instrs,
+        r_instrs,
+        location,
+        (greater_than.rules[unsigned(max(operand_types[1:]))](location),)
+    )
+greater_than.rules = {
+    True: load_non_zero_carry_borrow_flag,  # For unsigned numbers
+    False: load_non_zero_non_most_significant_bit_flag,  # For signed numbers.
+}
 
 
 def less_than_or_equal(l_instrs, r_instrs, location, operand_types):
-    return or_bitwise_instr(  # 4 instructions (Compare, LoadZero, LoadSign, Or)
-        compare_numbers(
-            l_instrs,
-            r_instrs,
-            location,
-            operand_types,
-            (load_zero_flag(location),)
-        ),
-        compare_numbers.rules[unsigned(max(operand_types[1:]))](location),
-        location
+    return compare_numbers(  # 2 instructions ...
+        l_instrs,
+        r_instrs,
+        location,
+        operand_types,
+        (less_than_or_equal.rules[unsigned(max(operand_types[1:]))](location),)
     )
+less_than_or_equal.rules = {
+    True: load_zero_carry_borrow_flag,
+    False: load_zero_most_significant_bit_flag,
+}
 
 
-def greater_than_or_equal(l_instrs, r_instrs, location, operand_types):  # 4 instructions (COMPARE, Load*, Push 1, XOR)
-    return flip_bit(less_than(l_instrs, r_instrs, location, operand_types), location)
+def greater_than_or_equal(l_instrs, r_instrs, location, operand_types):
+    return compare_numbers(  # 2 instructions ..
+        l_instrs,
+        r_instrs,
+        location,
+        operand_types,
+        (greater_than_or_equal.rules[unsigned(max(operand_types[1:]))](location),)
+    )
+greater_than_or_equal.rules = {
+    True: load_non_carry_borrow_flag,  # unsigned
+    False: load_non_most_significant_bit_flag,  # signed
+}
 
 
 # Two number are said to be equal if their difference is zero.
@@ -315,12 +332,38 @@ def patch_comp_assignment(instrs, expr_type, location):
     )
 
 
+# not much of an improvement ....
+def simple_numeric_assignment_no_casting(expr, symbol_table, expression_func, operation):
+    # used when the left operand is an identifier so we can re-emit binaries instead of using expensive Dup instr
+    return set_instr(
+        operation(
+            expression_func(left_exp(expr), symbol_table, expression_func),
+            expression_func(right_exp(expr), symbol_table, expression_func),
+            loc(expr),
+            (c_type(expr), c_type(left_exp(expr)), c_type(right_exp(expr)))
+        ),
+        size(c_type(expr)),
+        loc(expr),
+        expression_func(
+            AddressOfExpression(left_exp(expr), PointerType(c_type(right_exp(expr)), loc(expr)), loc(expr)),
+            symbol_table,
+            expression_func
+        )
+    )
+
+
 def comp_integral_assign(expr, symbol_table, expression_func):
     assert isinstance(c_type(left_exp(expr)), IntegralType) and isinstance(c_type(right_exp(expr)), IntegralType)
+
+    if isinstance(left_exp(expr), IdentifierExpression):
+        return simple_numeric_assignment_no_casting(
+            expr, symbol_table, expression_func, comp_integral_assign.rules[oper(expr)]
+        )
 
     left_instrs = patch_comp_left_instrs(
         expression_func(left_exp(expr), symbol_table, expression_func), loc(expr)
     )
+
     right_instrs = expression_func(right_exp(expr), symbol_table, expression_func)
     return patch_comp_assignment(
         comp_integral_assign.rules[oper(expr)](left_instrs, right_instrs, loc(expr), c_type(expr)),
@@ -342,6 +385,13 @@ comp_integral_assign.rules = {
 
 def comp_numeric_assign(expr, symbol_table, expression_func):
     assert isinstance(c_type(left_exp(expr)), NumericType) and isinstance(c_type(right_exp(expr)), NumericType)
+
+    if isinstance(left_exp(expr), IdentifierExpression) and \
+            base_c_type(c_type(left_exp(expr))) == base_c_type(c_type(right_exp(expr))):
+        return simple_numeric_assignment_no_casting(
+            expr, symbol_table, expression_func, comp_numeric_assign.rules[oper(expr)]
+        )
+
     max_type = max(c_type(left_exp(expr)), c_type(right_exp(expr)))  # cast to largest type.
 
     left_instrs = cast(

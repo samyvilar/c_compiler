@@ -2,9 +2,6 @@
 
 #include <unistd.h>
 
-
-extern void *__heap_ptr__;
-
 int brk(void *addr)
 {
     __heap_ptr__ = addr;

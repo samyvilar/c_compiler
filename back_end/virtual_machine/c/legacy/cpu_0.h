@@ -5,6 +5,7 @@
 
 #include "word_type.h"
 
+
 #define EVAL0(...) __VA_ARGS__
 #define EVAL1(...) EVAL0 (EVAL0 (EVAL0 (__VA_ARGS__)))
 #define EVAL2(...) EVAL1 (EVAL1 (EVAL1 (__VA_ARGS__)))
@@ -23,6 +24,8 @@
 #define MAP0(f, x, peek, ...) f(x) MAP_NEXT (peek, MAP1) (f, peek, __VA_ARGS__)
 #define MAP1(f, x, peek, ...) f(x) MAP_NEXT (peek, MAP0) (f, peek, __VA_ARGS__)
 #define MAP(f, ...) EVAL (MAP1 (f, __VA_ARGS__, (), 0))
+
+
 
 #define HALT_INSTR_ID 255
 
@@ -71,6 +74,9 @@
 #define JUMP_TABLE_INSTR_ID 22
 #define RELATIVE_JUMP_INSTR_ID 25
 
+#define PUSH_FRAME_INSTR_ID 28
+#define POP_FRAME_INSTR_ID 231
+
 #define LOAD_ZERO_FLAG_INSTR_ID 30
 #define LOAD_CARRY_BORROW_FLAG_INSTR_ID 31
 #define LOAD_MOST_SIGNIFICANT_BIT_FLAG_INSTR_ID 32
@@ -99,21 +105,22 @@
 #define INSTR_ID(instr) instr ## _INSTR_ID
 
 #define INSTRUCTIONS    \
-HALT,               \
-PUSH, POP,          \
-LOAD, SET,          \
-LOAD_BASE_STACK_POINTER, SET_BASE_STACK_POINTER, LOAD_STACK_POINTER, SET_STACK_POINTER,         \
-ALLOCATE, DUP,  SWAP,                                                                           \
-ADD, SUBTRACT, MULTIPLY, DIVIDE, MOD, SHIFT_LEFT, SHIFT_RIGHT, OR, AND, XOR, NOT,               \
-ADD_FLOAT, SUBTRACT_FLOAT, MULTIPLY_FLOAT, DIVIDE_FLOAT,                                        \
-CONVERT_TO_FLOAT, CONVERT_TO_FLOAT_FROM_UNSIGNED, CONVERT_TO_INTEGER,                           \
-ABSOLUTE_JUMP, JUMP_FALSE, JUMP_TRUE, JUMP_TABLE, RELATIVE_JUMP,                                \
-LOAD_ZERO_FLAG, LOAD_CARRY_BORROW_FLAG, LOAD_MOST_SIGNIFICANT_BIT_FLAG,                         \
-PASS, SYSTEM_CALL, POSTFIX_UPDATE,                                                              \
-COMPARE, COMPARE_FLOAT, LOAD_NON_ZERO_FLAG, LOAD_NON_ZERO_NON_CARRY_BORROW_FLAG,                \
-LOAD_NON_ZERO_NON_MOST_SIGNIFICANT_BIT_FLAG, LOAD_ZERO_MOST_SIGNIFICANT_BIT_FLAG,               \
-LOAD_ZERO_CARRY_BORROW_FLAG, LOAD_NON_CARRY_BORROW_FLAG, LOAD_NON_MOST_SIGNIFICANT_BIT_FLAG,    \
-LOAD_INSTRUCTION_POINTER
+    HALT,               \
+    PUSH, POP,          \
+    LOAD, SET,          \
+    LOAD_BASE_STACK_POINTER, SET_BASE_STACK_POINTER, LOAD_STACK_POINTER, SET_STACK_POINTER,         \
+    ALLOCATE, DUP,  SWAP,                                                                           \
+    ADD, SUBTRACT, MULTIPLY, DIVIDE, MOD, SHIFT_LEFT, SHIFT_RIGHT, OR, AND, XOR, NOT,               \
+    ADD_FLOAT, SUBTRACT_FLOAT, MULTIPLY_FLOAT, DIVIDE_FLOAT,                                        \
+    CONVERT_TO_FLOAT, CONVERT_TO_FLOAT_FROM_UNSIGNED, CONVERT_TO_INTEGER,                           \
+    ABSOLUTE_JUMP, JUMP_FALSE, JUMP_TRUE, JUMP_TABLE, RELATIVE_JUMP,                                \
+    PUSH_FRAME, POP_FRAME,                                                                          \
+    LOAD_ZERO_FLAG, LOAD_CARRY_BORROW_FLAG, LOAD_MOST_SIGNIFICANT_BIT_FLAG,                         \
+    PASS, SYSTEM_CALL, POSTFIX_UPDATE,                                                              \
+    COMPARE, COMPARE_FLOAT, LOAD_NON_ZERO_FLAG, LOAD_NON_ZERO_NON_CARRY_BORROW_FLAG,                \
+    LOAD_NON_ZERO_NON_MOST_SIGNIFICANT_BIT_FLAG, LOAD_ZERO_MOST_SIGNIFICANT_BIT_FLAG,               \
+    LOAD_ZERO_CARRY_BORROW_FLAG, LOAD_NON_CARRY_BORROW_FLAG, LOAD_NON_MOST_SIGNIFICANT_BIT_FLAG,    \
+    LOAD_INSTRUCTION_POINTER
 
 #define INSTRUCTION_NAME_ENTRY(instr) [INSTR_ID(instr)] = STRING(instr),
 
@@ -128,7 +135,7 @@ extern const char *_instr_names_[256];
 #define INSTR_IMPLEMENTATION_ENTRY(instr) [INSTR_ID(instr)] = &&get_label(instr),
 #define INSTR_IMPLEMENTATION_ADDRESS(invalid_instr_label)  \
     [0 ... 255] = &&invalid_instr_label,                   \
-    MAP(INSTR_IMPLEMENTATION_ENTRY, INSTRUCTIONS)
+    MAP(INSTR_IMPLEMENTATION_ENTRY, INSTRUCTIONS)          
 
 #define evaluate_instr(offsets, instr_id) goto *offsets[instr_id]
 
@@ -154,13 +161,27 @@ extern const word_type _instr_sizes_[256];
 #define INSTR_SIZE(instr_id) (_instr_sizes_[(instr_id)])
 
 
+
+typedef struct frame_type {
+    struct frame_type *next;
+    word_type base_pointer, stack_pointer;
+} frame_type;
+#define next_frame(frame) (*((frame_type **)(frame)))
+#define set_next_frame(frame, value) (next_frame(frame) = (value))
+#define frames_stack_pointer(frame) ((frame)->stack_pointer)
+#define set_frames_stack_pointer(frame, value) (frames_stack_pointer(frame) = (value))
+#define frames_base_pointer(frame) ((frame)->base_pointer)
+#define set_frames_base_pointer(frame, value) (frames_base_pointer(frame) = (value))
+
+
 struct cpu_type {
     word_type
     // Since the stack pointer will be the most heavily accessed value better have it as the first one
-        stack_pointer,
-        base_pointer,
-        instr_pointer,
-        flags;
+            stack_pointer,
+            base_pointer,
+            instr_pointer,
+            flags;
+    frame_type *frames;
 };
 // C guarantees that the address of the first member and the struct itself are the same (no need for member calcs)
 #define stack_pointer(cpu) (*(word_type *)(cpu))
@@ -201,18 +222,31 @@ struct cpu_type {
 #define get_flag(cpu, flag) flag_from_value(flags(cpu), flag)
 
 #define zero_flag(cpu) get_flag(cpu, ZERO_FLAG_INDEX)
+//#define set_zero_flag(cpu, value) (zero_flag(cpu) = (value))
 
 #define non_zero_flag(cpu) get_flag(cpu, NON_ZERO_FLAG_INDEX)
+//#define set_non_zero_flag(cpu, value) (non_zero_flag(cpu) = (value))
 
 #define carry_borrow_flag(cpu) get_flag(cpu, CARRY_BORROW_FLAG_INDEX)
+//#define set_carry_borrow_flag(cpu, value) (carry_borrow_flag(cpu) = (value))
 
 #define most_significant_bit_flag(cpu) get_flag(cpu, MOST_SIGNIFICANT_BIT_FLAG_INDEX)
+//#define set_most_significant_bit_flag(cpu, flag) (most_significant_bit_flag(cpu) = (flag))
+
+#define frames(cpu) ((cpu)->frames)
+#define set_frames(cpu, value) (frames(cpu) = (value))
+
+#define operand(cpu, mem, operand_index) get_word(mem, (instr_pointer(cpu) + INSTR_SIZE(PASS)) + operand_index)
 
 struct kernel_type;
+struct virtual_memory_type;
 
-#define FUNC_SIGNATURE(func_name) void func_name(struct cpu_type *cpu, word_type *mem, struct kernel_type *os)
+
+#define FUNC_SIGNATURE(func_name) void func_name(struct cpu_type *cpu, struct virtual_memory_type *mem, struct kernel_type *os)
 
 #define INLINE_FUNC_SIGNATURE(func_name) INLINE FUNC_SIGNATURE(func_name)
+
+
 
 #define NO_OPERAND_INSTR(instr) INSTR_ID(instr)
 #define SINGLE_OPERAND_INSTR(instr, operand) NO_OPERAND_INSTR(instr), operand
@@ -303,14 +337,30 @@ struct kernel_type;
 #define LOAD_INSTRUCTION_POINTER_INSTR() NO_OPERAND_INSTR(LOAD_INSTRUCTION_POINTER)
 
 #define POSTFIX_UPDATE_INSTR(quantity) SINGLE_OPERAND_INSTR(POSTFIX_UPDATE, quantity)
-#define ALLOCATE_INSTR(quantity) SINGLE_OPERAND_INSTR(ALLOCATE, -quantity)
 
 INLINE_FUNC_SIGNATURE(evaluate);
+
+#define WORD_SIZE 1
 
 #define re_interpret(value, from_type, to_type)  (((union {to_type to_value; from_type from_value;})(value)).to_value)
 #define word_as_float(word) re_interpret(word, word_type, float_type)
 #define float_as_word(double_value) re_interpret(double_value, float_type, word_type)
 #define double_as_signed_word(double_value) re_interpret(double_value, double, signed_word_type)
+
+
+//inline void push_word(word_type word, cpu_type *cpu, virtual_memory_type *mem, struct kernel_type *os)
+//{
+//    set_word(mem, stack_pointer(cpu), word);
+//    set_stack_pointer(cpu, (stack_pointer(cpu) - WORD_SIZE));
+//}
+#define push_word(word, cpu, mem, os) (set_word(mem, stack_pointer(cpu), word), update_stack_pointer(cpu, -WORD_SIZE))
+
+//inline word_type pop_word(cpu_type *cpu, virtual_memory_type *mem, struct kernel_type *os)
+//{
+//    set_stack_pointer(cpu, (stack_pointer(cpu) + WORD_SIZE));
+//    return get_word(mem, stack_pointer(cpu));
+//}
+#define pop_word(cpu, mem, os) (update_stack_pointer(cpu, WORD_SIZE), get_word(mem, stack_pointer(cpu)))
 
 #define MSB(value) (value >> (word_type)((BYTE_BIT_SIZE * sizeof(word_type)) - 1))
 

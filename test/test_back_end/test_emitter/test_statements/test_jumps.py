@@ -46,11 +46,11 @@ class TestJump(TestStatements):
                 }
                 break ;
             }
+            sum = sum + index;
         }
         """
         self.evaluate(source)
-        self.assertEqual(self.mem[self.cpu.stack_pointer], 0)
-        self.assertEqual(self.mem[self.cpu.stack_pointer - 1], 10)
+        self.assertEqual(self.mem[self.cpu.stack_pointer], 10)
 
 
 class TestGoto(TestStatements):
@@ -98,7 +98,8 @@ class TestGoto(TestStatements):
             int foo;
             label:
             foo = 1;
+            index = foo;
         }
         """
         self.evaluate(source)
-        self.assertEqual(self.mem[self.cpu.stack_pointer - 1], 1)
+        self.assertEqual(self.mem[self.cpu.stack_pointer], 1)
