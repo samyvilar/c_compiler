@@ -68,10 +68,8 @@ def return_statement(stmnt, symbol_table, *_):
         set_instr(
             load_instr(
                 add(
-                    load_base_stack_pointer(loc(stmnt)), push(
-                        size(void_pointer_type) + size(char_type),
-                        loc(stmnt)
-                    ),
+                    load_base_stack_pointer(loc(stmnt)),
+                    push(size(void_pointer_type) + size(char_type), loc(stmnt)),
                     loc(stmnt)
                 ),
                 size(void_pointer_type),

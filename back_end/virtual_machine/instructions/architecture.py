@@ -1,7 +1,10 @@
 __author__ = 'samyvilar'
 
+from types import NoneType
+
 from collections import defaultdict
-from itertools import izip, chain, ifilter
+from itertools import izip, chain, ifilter, imap
+
 from math import log
 
 from front_end.loader.locations import LocationNotSet, loc
@@ -59,6 +62,10 @@ class Integer(Operand):
     def __str__(self):
         return 'Integer ' + str(self.value)
 
+    def __float__(self):
+        return float(self.value)
+
+
 Byte = Integer
 
 
@@ -85,6 +92,12 @@ class Offset(Reference):  # similar to Address but mainly used for relative jump
 class Double(Operand):
     def __float__(self):
         return float(self.value)
+
+    def __long__(self):
+        return long(self.value)
+
+    def __int__(self):
+        return int(self.value)
 
     def __str__(self):
         return 'Double ' + str(self.value)
@@ -256,9 +269,6 @@ class VariableLengthInstruction(WideInstruction):  # Instructions with more than
         for operand in self.operands:
             yield operand
 
-    def __setitem__(self, key, value):
-        self.operands[key] = value
-
 
 class JumpTable(RelativeJump, VariableLengthInstruction):
     def __init__(self, location, cases):
@@ -281,7 +291,6 @@ class JumpTable(RelativeJump, VariableLengthInstruction):
         return super(JumpTable, self).name() + str(self.cases)
 
     def __setitem__(self, key, value):
-        super(JumpTable, self).__setitem__(key, value)
         if key < 1 + len(self.cases):
             self.operands[key] = value
         else:
@@ -378,7 +387,7 @@ class LoadNonMostSignificantBitFlag(LoadFlagInstruction):  # signed numbers grea
     pass
 
 
-class Push(WideInstruction, Integral):
+class Push(WideInstruction):
     pass
 
 
@@ -406,33 +415,6 @@ class Set(WideMoveInstruction):
 # As such lets create special instructions that implements them ...
 class PostfixUpdate(WideInstruction):
     pass
-
-
-def postfix_update(addr, amount, location):
-    return chain(addr, (PostfixUpdate(location, amount),))
-
-
-# def postfix_update_manually(addr, amount, location, pointer_size=1):
-#     return chain(
-#         addr,
-#         load_instr(
-#             dup(pointer_size, location),
-#             pointer_size,
-#             location
-#         ),
-#         swap(pointer_size, location),  # swap value and duplicate address,
-#         # value remains for previous expression, addr used to update
-#         add(
-#             load_instr(dup(pointer_size, location), pointer_size, location),
-#             push(amount, location),
-#             location
-#         ),
-#         # load the value increment/decrement
-#
-#         # swap updated value and duplicated address
-#         set_instr(swap(pointer_size, location), pointer_size, location),
-#         allocate(-pointer_size, location)  # remove incremented/decremented value ...
-#     )
 
 
 class ConvertToFloat(Instruction):
@@ -545,6 +527,10 @@ ids.update({
 })
 
 
+def postfix_update(addr, amount, location):
+    return chain(addr, (PostfixUpdate(location, amount),))
+
+
 def call(address, location):
     yield Call(location, address)
 
@@ -565,9 +551,7 @@ def load_non_zero_non_most_significant_bit_flag(location):
     yield LoadNonZeroNonMostSignificantBitFlag(location)
 
 instr_objs = dict(izip(ids.itervalues(), ids.iterkeys()))
-variable_length_instr_ids = dict(
-    ifilter(lambda item: issubclass(item[0], VariableLengthInstruction), ids.iteritems())
-)
+variable_length_instr_ids = dict(ifilter(lambda item: issubclass(item[0], VariableLengthInstruction), ids.iteritems()))
 wide_instr_ids = dict(
     ifilter(
         lambda item: issubclass(item[0], WideInstruction) and not issubclass(item[0], VariableLengthInstruction),
@@ -575,6 +559,28 @@ wide_instr_ids = dict(
     )
 )
 no_operand_instr_ids = dict(ifilter(lambda item: not issubclass(item[0], WideInstruction), ids.iteritems()))
+
+
+def set_instr(stack_instrs, amount, location, addr_instrs=()):
+    if amount == 0 and not addr_instrs:
+        return chain(stack_instrs, pop(location))
+    return chain(stack_instrs, addr_instrs, (Set(location, amount),))
+
+
+def load(instrs, amount, location):
+    for value in instrs:
+        yield value
+    yield Load(location, amount)
+
+
+def pop(location):
+    yield Pop(location)
+
+
+def load_instr(instrs, amount, location, addr_instrs=()):
+    if amount == 0 and not addr_instrs:
+        return pop(location)
+    return load(instrs, amount, location)
 
 
 def dup(amount, location):
@@ -600,8 +606,56 @@ def jump_table(location, addresses, allocations, switch_max_value, switch_body_i
     return chain((JumpTable(location, addresses),), chain.from_iterable(allocations), switch_body_instrs)
 
 
-def push_constant(value, location):
-    yield Push(location, value)
+def is_instr(gen, instr_name):
+            # we use the __name__ for functions or check instance if its defined as a class ...
+    return (getattr(gen, '__name__', '') == instr_name) or isinstance(gen, globals().get(instr_name, NoneType))
+
+
+def is_load(gen):
+    return is_instr(gen, 'load')
+
+
+class single_iteration(object):
+    def __iter__(self):
+        # safe guard against multiple calls to __iter__ instruction are/(should be) emitted only once per instance
+        if hasattr(self, 'emitted'):
+            raise StopIteration
+        self.emitted = True
+        # if ok call __iter__ on the next object not necessary a base class ...
+        return super(single_iteration, self).__iter__()
+
+    def next(self):
+        raise TypeError
+
+    def __next__(self):  # P3K uses __next__
+        raise TypeError
+
+    def __name__(self):
+        return self.__class__.__name__(self)
+
+
+class instruction(Instruction):  # represents an instruction iterator ...
+    def __init__(self, location):
+        self.instr_type = next(ifilter(lambda obj_type: obj_type in ids, self.__class__.mro()))
+        super(instruction, self).__init__(location, instr_id=ids[self.instr_type])
+
+
+class push_constant(single_iteration):
+    def __init__(self, value, location):
+        assert isinstance(value, (int, long, float, Integer, Double))  # safe guard against bad API call ..
+        self.value = value
+        self.location = location
+
+    def __iter__(self):
+        yield Push(loc(self), self.value)
+
+
+class push_integral(push_constant):
+    core_type = long
+
+
+class push_real(push_constant):
+    core_type = float
 
 
 def push_address(value, location):
@@ -611,68 +665,67 @@ def push_address(value, location):
 def push(value, location):
     if isinstance(value, Address):
         return push_address(value, location)
-    return push_constant(value, location)
-
-
-def set_instr(stack_instrs, amount, location, addr_instrs=()):
-    if amount == 0 and not addr_instrs:
-        return chain(stack_instrs, pop(location))
-    return chain(stack_instrs, addr_instrs, (Set(location, amount),))
-
-
-def load(instrs, amount, location):
-    for value in instrs:
-        yield value
-    yield Load(location, amount)
-
-
-def pop(location):
-    yield Pop(location)
-
-
-def load_instr(instrs, amount, location, addr_instrs=()):
-    if amount == 0 and not addr_instrs:
-        return pop(location)
-    return load(instrs, amount, location)
-
-
-def is_instr(gen, instr_name):
-    return getattr(gen, '__name__', '') == instr_name
+    if isinstance(value, (int, long, Integer)):
+        if isinstance(value, int):
+            value = push_integral.core_type(value)  # TODO: fix this ...
+        return push_integral(value, location)
+    if isinstance(value, (float, Double)):
+        return push_real(value, location)
+    raise ValueError('{l} Expected Address/Integral/Real got {g}'.format(l=location, g=value))
 
 
 def is_immediate_push(gen):
     return is_instr(gen, 'push_constant')
 
 
-def is_load(gen):
-    return is_instr(gen, 'load')
+def get_immediate_pushed_value(instr):
+    return instr.value
 
 
-class instruction(Instruction):
-    def __init__(self, location):
-        self.instr_type = next(ifilter(lambda obj_type: obj_type in ids, self.__class__.mro()))
-        super(instruction, self).__init__(location, instr_id=ids[self.instr_type])
+class arithmetic_operator(instruction):
+    func = staticmethod(reduce)
 
-
-class binary(instruction, Binary):
-    def __init__(self, left_operand, right_operand, location):
-        assert self is not left_operand
-        assert self is not right_operand
-        self.left_operand = left_operand
-        self.right_operand = right_operand
-        super(binary, self).__init__(location)
+    def __init__(self, *operands, **kwargs):
+        self.operands = operands
+        super(arithmetic_operator, self).__init__(kwargs.pop('location', LocationNotSet))
 
     def __iter__(self):
-        if is_immediate_push(self.left_operand) and is_immediate_push(self.right_operand) and hasattr(self, 'apply'):
-            return self.apply()
+        if all(imap(is_immediate_push, self.operands)) and hasattr(self, 'operator'):
+            opern = self.operands[0]
+            assert len(set(imap(type, self.operands))) == 1  # safe-guard against mixing types ...
+            return iter(
+                push(
+                    self.func(  # apply python operator on operands converted to python types ...
+                        getattr(opern.core_type, self.operator),  # get python operator
+                        # get operands and convert them to python type
+                        imap(opern.core_type, imap(get_immediate_pushed_value, self.operands))
+                    ),
+                    self.location
+                )
+            )
 
-        return chain(self.left_operand, self.right_operand, (self.instr_type(self.location),))
+        return chain(chain.from_iterable(self.operands), (self.instr_type(self.location),))
 
-    def next(self):
-        raise TypeError
 
-    def __name__(self):
-        return self.__class__.__name__(self)
+class binary(arithmetic_operator, Binary):
+    def __init__(self, left_operand, right_operand, location):
+        super(binary, self).__init__(left_operand, right_operand, location=location)
+
+    @property
+    def left_operand(self):
+        return self.operands[0]
+
+    @left_operand.setter
+    def left_operand(self, value):
+        self.operands = (value, self.right_operand)
+
+    @property
+    def right_operand(self):
+        return self.operands[1]
+
+    @right_operand.setter
+    def right_operand(self, value):
+        self.operands = (self.left_operand, value)
 
 
 def operand_location(instr):
@@ -687,57 +740,56 @@ class identity(binary):
 
 class left_identity(identity):
     def __iter__(self):
-        if is_immediate_push(self.left_operand):
-            operand, location = operand_location(next(self.left_operand))
-            if operand == self.identity_value:
+        if is_immediate_push(self.left_operand) and \
+           get_immediate_pushed_value(self.left_operand) == self.identity_value:
                 return iter(self.right_operand)
-            self.left_operand = push(operand, location)
 
         return super(left_identity, self).__iter__()
 
 
 class associative(binary):
-    def __iter__(self):
-        # Collapse associative operations +, *, |, & ... (1 + x) + 1 => (2 + x), (2 * x) * 4 => 8 * x
+    def __iter__(self):  # first __iter__ in mro for associative operators ...
+        # Collapse associative operations +, *, |, & ... (1 + x) + 1 => (2 + x) ... (2 * x) * 4 => 8 * x ...
+
+        # check left operand ...
         if isinstance(self.left_operand, getattr(self, 'instr_type', type)) and is_immediate_push(self.right_operand):
-            operand, l = operand_location(next(self.right_operand))
+            l, operand = loc(self.right_operand), get_immediate_pushed_value(self.right_operand)
             if is_immediate_push(self.left_operand.left_operand):
-                right_operand, location = operand_location(next(self.left_operand.left_operand))
+                right_operand = get_immediate_pushed_value(self.left_operand.left_operand)
                 self.left_operand.left_operand = \
-                    iter(self.__class__(push(operand, location), push(right_operand, l), l))
+                    iter(self.__class__(push(operand, loc(self)), push(right_operand, l), l))  # collapse ...
                 return iter(self.left_operand)
 
             if is_immediate_push(self.left_operand.right_operand):
-                right_operand, l = operand_location(next(self.left_operand.right_operand))
+                l, right_operand = loc(self.left_operand.right_operand), \
+                    get_immediate_pushed_value(self.left_operand.right_operand)
                 self.left_operand.right_operand = iter(self.__class__(push(operand, l), push(right_operand, l), l))
                 return iter(self.left_operand)
 
-            self.right_operand = push(operand, l)
-
+        # check right operand ...
         if isinstance(self.right_operand, getattr(self, 'instr_type', type)) and is_immediate_push(self.left_operand):
-            operand, l = operand_location(next(self.left_operand))
+            l, operand = loc(self.left_operand), get_immediate_pushed_value(self.left_operand)
             if is_immediate_push(self.right_operand.left_operand):
-                right_operand, l = operand_location(next(self.right_operand.left_operand))
+                right_operand, l = get_immediate_pushed_value(self.right_operand.left_operand),\
+                    loc(self.right_operand.left_operand)
                 self.right_operand.left_operand = iter(self.__class__(push(operand, l), push(operand, l), l))
                 return iter(self.right_operand)
 
             if is_immediate_push(self.right_operand.right_operand):
-                right_operand, l = operand_location(next(self.right_operand.right_operand))
+                l, right_operand = loc(self.right_operand.right_operand), \
+                    get_immediate_pushed_value(self.right_operand.right_operand)
                 self.right_operand.right_operand = iter(self.__class__(push(operand, l), push(operand, l), l))
                 return iter(self.right_operand)
 
-            self.left_operand = push(operand, l)
-
+        # no collapse continue ...
         return super(associative, self).__iter__()
 
 
 class right_identity(identity):
-    def __iter__(self):
-        if is_immediate_push(self.right_operand):
-            operand, location = operand_location(next(self.right_operand))
-            if operand == self.identity_value:
+    def __iter__(self):  # first __iter__ for non-associative binary operators ...
+        if is_immediate_push(self.right_operand) and \
+           get_immediate_pushed_value(self.right_operand) == self.identity_value:
                 return iter(self.left_operand)
-            self.right_operand = push(operand, location)
 
         return super(right_identity, self).__iter__()
 
@@ -785,174 +837,116 @@ class one_identity(left_one_identity, right_one_identity):
     pass
 
 
-class add(zero_identity, associative, Add):
-    def apply(self):
-        return push(
-            long(operns(next(self.left_operand))[0]) + long(operns(next(self.right_operand))[0]),
-            self.location
-        )
+class add(single_iteration, zero_identity, associative, Add):
+    operator = '__add__'
 
 
-class add_float(zero_identity, associative, AddFloat):
-    def apply(self):
-        return push(
-            float(operns(next(self.left_operand))[0]) + float(operns(next(self.right_operand))[0]),
-            self.location
-        )
+class add_float(single_iteration, zero_identity, associative, AddFloat):
+    operator = '__add__'
 
 
-class subtract(right_zero_identity, Subtract):
-    def apply(self):
-        return push(
-            long(operns(next(self.left_operand))[0]) - long(operns(next(self.right_operand))[0]),
-            self.location
-        )
+class subtract(single_iteration, right_zero_identity, Subtract):
+    operator = '__sub__'
 
 
-class subtract_float(right_zero_identity, SubtractFloat):
-    def apply(self):
-        return push(
-            float(operns(next(self.left_operand))[0]) - float(operns(next(self.right_operand))[0]),
-            self.location
-        )
+class subtract_float(single_iteration, right_zero_identity, SubtractFloat):
+    operator = '__sub__'
 
 
-class convert_to_left_shift(binary):
+class convert_to_left_shift(binary):  # converts constant multiplication to faster left shifts ...
     def __iter__(self):
+        assert isinstance(self, Associative)  # safe-guard against non-associative instructions (-, /)
         if is_immediate_push(self.right_operand):
-            operand, location = operand_location(next(self.right_operand))
-            if long(operand) and not ((long(operand) - 1) & long(operand)):
-                return iter(shift_left(self.left_operand, push_constant(long(log(operand, 2)), location), location))
-            self.right_operand = push(operand, location)
+            operand, location = get_immediate_pushed_value(self.right_operand), loc(self.right_operand)
+            if operand and not ((operand - 1) & operand):  # is operand a non-zero power of 2
+                return iter(shift_left(self.left_operand, push(
+                    push_integral.core_type(log(operand, 2)), location
+                ), location))
 
         if is_immediate_push(self.left_operand):
-            operand, location = operand_location(next(self.left_operand))
-            if long(operand) and not((long(operand) - 1) & long(operand)):
-                return iter(shift_left(self.right_operand, push_constant(long(log(operand, 2)), location), location))
+            operand, location = get_immediate_pushed_value(self.left_operand), loc(self.left_operand)
+            if operand and not((operand - 1) & operand):
+                return iter(shift_left(self.right_operand, push(
+                    push_integral.core_type(log(operand, 2)), location), location))
             self.left_operand = push(operand, location)
 
         return super(convert_to_left_shift, self).__iter__()
 
 
-class multiply(one_identity, associative, convert_to_left_shift, Multiply):
-    def apply(self):
-        return push(
-            long(operns(next(self.left_operand))[0]) * long(operns(next(self.right_operand))[0]),
-            self.location
-        )
+class multiply(single_iteration, one_identity, associative, convert_to_left_shift, Multiply):
+    operator = '__mul__'
 
 
-class multiply_float(one_identity, associative, MultiplyFloat):
-    def apply(self):
-        return push(
-            float(operns(next(self.left_operand))[0]) * float(operns(next(self.right_operand))[0]),
-            self.location
-        )
+class multiply_float(single_iteration, one_identity, associative, MultiplyFloat):
+    operator = '__mul__'
 
 
 class convert_to_right_shift(binary):
     def __iter__(self):
         if is_immediate_push(self.right_operand):
-            operand, location = operand_location(next(self.right_operand))
-            if long(operand) and not ((long(operand) - 1) & long(operand)):
-                return iter(shift_right(self.left_operand, push_constant(long(log(operand, 2)), location), location))
-            self.right_operand = push(operand, location)
+            operand, location = get_immediate_pushed_value(self.right_operand), loc(self.right_operand)
+            if operand and not ((operand - 1) & operand):
+                return iter(shift_right(
+                    self.left_operand,
+                    push(push_integral.core_type(log(operand, 2)), location),
+                    location
+                ))
 
         return super(convert_to_right_shift, self).__iter__()
 
 
-class divide(right_one_identity, Divide):
-    def apply(self):
-        return push(
-            long(operns(next(self.left_operand))[0]) / long(operns(next(self.right_operand))[0]),
-            self.location
-        )
+class divide(single_iteration, right_one_identity, Divide):
+    operator = '__div__'
 
 
-class divide_float(right_one_identity, DivideFloat):
-    def apply(self):
-        return push(
-            float(operns(next(self.left_operand))[0]) / float(operns(next(self.right_operand))[0]),
-            self.location
-        )
+class divide_float(single_iteration, right_one_identity, DivideFloat):
+    operator = '__div__'
 
 
-class mod(binary, Mod):
-    def apply(self):
-        return push(
-            long(operns(next(self.left_operand))[0]) % long(operns(next(self.right_operand))[0]),
-            self.location
-        )
+class mod(single_iteration, binary, Mod):
+    operator = '__mod__'
 
 
-class shift_left(right_zero_identity, ShiftLeft):
-    def apply(self):
-        return push(
-            long(operns(next(self.left_operand))[0]) << long(operns(next(self.right_operand))[0]),
-            self.location
-        )
+class shift_left(single_iteration, right_zero_identity, ShiftLeft):
+    operator = '__lshift__'
 
 
-class shift_right(right_zero_identity, ShiftRight):
-    def apply(self):
-        return push(
-            long(operns(next(self.left_operand))[0]) >> long(operns(next(self.right_operand))[0]),
-            self.location
-        )
+class shift_right(single_iteration, right_zero_identity, ShiftRight):
+    operator = '__rshift__'
 
 
-class or_bitwise(zero_identity, associative, Or):
-    def apply(self):
-        return push(
-            long(operns(next(self.left_operand))[0]) | long(operns(next(self.right_operand))[0]),
-            self.location
-        )
+class or_bitwise(single_iteration, zero_identity, associative, Or):
+    operator = '__or__'
 
 
-class xor_bitwise(zero_identity, associative, Xor):
-    def apply(self):
-        return push(
-            long(operns(next(self.left_operand))[0]) ^ long(operns(next(self.right_operand))[0]),
-            self.location
-        )
+class xor_bitwise(single_iteration, zero_identity, associative, Xor):
+    operator = '__xor__'
 
 
-class and_bitwise(negative_one_identity, associative, And):
-    def apply(self):
-        return push(
-            long(operns(next(self.left_operand))[0]) & long(operns(next(self.right_operand))[0]),
-            self.location
-        )
+class and_bitwise(single_iteration, negative_one_identity, associative, And):
+    operator = '__and__'
 
 
-class unary(instruction, Unary):
+class unary(arithmetic_operator, Unary):
+    func = staticmethod(lambda oper, operands: oper(next(iter(operands))))
+
     def __init__(self, operand, location):
-        self.operand = operand
-        super(unary, self).__init__(location)
-
-    def __iter__(self):
-        if is_immediate_push(self.operand):
-            return self.apply()
-
-        return chain(iter(self.operand), (self.instr_type(self.location),))
+        super(unary, self).__init__(operand, location=location)
 
 
-class not_bitwise(unary, Not):
-    def apply(self):
-        return push(~long(operns(next(self.operand))[0]), self.location)
+class not_bitwise(single_iteration, unary, Not):
+    operator = '__invert__'
 
 
-class convert_to_float(unary, ConvertToFloat):
-    def apply(self):
-        return push(float(operns(next(self.operand))[0]), self.location)
+class convert_to_float(single_iteration, unary, ConvertToFloat):
+    operator = '__float__'
 
 
-class convert_to_int(unary, ConvertToInteger):
-    def apply(self):
-        return push(int(operns(next(self.operand))[0]), self.location)
+class convert_to_int(single_iteration, unary, ConvertToInteger):
+    operator = '__' + push_integral.core_type.__name__ + '__'
 
 
-def convert_to_float_from_unsigned(instr, location):
+def convert_to_float_from_unsigned(instr, location):  # Python does not have unsigned numeric types ...
     return chain(instr, (ConvertToFloatFromUnsigned(location),))
 
 
@@ -1018,7 +1012,7 @@ def absolute_jump(instr, location):
 
 def jump_false(instrs, address, location):
     if is_immediate_push(instrs):
-        operand, location = operand_location(next(instrs))
+        operand, location = get_immediate_pushed_value(instrs), loc(instrs)
         if operand == 0:  # if operand is a constant 0, just use relative_jump instead.
             return relative_jump(address, location)
         return ()  # otherwise omit instruction all together
@@ -1027,7 +1021,7 @@ def jump_false(instrs, address, location):
 
 def jump_true(instrs, address, location):
     if is_immediate_push(instrs):
-        operand, location = operand_location(next(instrs))
+        operand, location = get_immediate_pushed_value(instrs), loc(instrs)
         if operand == 0:  # if operand is zero omit instruction all together
             return ()
         return relative_jump(address, location)  # otherwise just replace with relative jump
@@ -1075,40 +1069,44 @@ def value(obj):
     return getattr(obj, 'value', obj)
 
 
-def flip_bit(instrs, location):
-    return xor_bitwise(instrs, push(1, location), location)
-
-
 class logical(binary):
     def __init__(self, left_operand, right_operand, location, operand_types):
         self.operand_types = operand_types
         self.default_instr, self.end_instr = Pass(location), Pass(location)
-        super(logical, self).__init__(left_operand, right_operand, location)
+        super(logical, self).__init__(left_operand, right_operand, location=location)
 
 
-class logical_and(logical, And):  # it needs to reference an instruction in order to create the object ...
-    def apply(self):
-        return push(
-            int(bool(value(operns(next(self.left_operand))[0]) and value(operns(next(self.right_operand))[0]))),
-            self.location
-        )
-
+class logical_and(single_iteration, logical, And):  # it needs to reference an instruction in order to create the object
     def __iter__(self):
         if is_immediate_push(self.left_operand) and is_immediate_push(self.right_operand):
-            return self.apply()
+            return iter(  # collapse constants
+                push(
+                    push_integral.core_type(
+                        all(imap(push_real.core_type, imap(get_immediate_pushed_value, self.operands)))
+                    ),
+                    self.location
+                )
+            )
 
-        if is_immediate_push(self.left_operand):
-            operand, location = operand_location(next(self.left_operand))
-            return (operand == 0) and push(0, location) or \
-                compare(self.right_operand, push(0, location), self.location,
-                        (load_non_zero_flag(self.location),))
+        if is_immediate_push(self.left_operand):  # check left operand
+            operand, location = get_immediate_pushed_value(self.left_operand), loc(self.left_operand)
+            # if left operand is zero than simply push zero otherwise check right operand ...
+            # use float just to be safe ...
+            return iter(
+                compare(self.right_operand, push(0, location), self.location, (load_non_zero_flag(self.location),))
+                if push_real.core_type(operand)
+                else push(0, loc(self))
+            )
 
-        if is_immediate_push(self.right_operand):
+        if is_immediate_push(self.right_operand):  # check right operand
             # care must be taken if the right operand is constant zero since we still need to evaluate the left,
-            # but we really don't need to compare it, simply pop result and push 0.
-            operand, location = operand_location(next(self.right_operand))
-            return operand == 0 and chain(self.right_operand, pop(self.location), push(0, self.location)) or \
+            # but we really don't need to apply expensive 'compare', simply pop the result ...
+            operand, location = get_immediate_pushed_value(self.right_operand), loc(self.right_operand)
+            return iter(
                 compare(self.left_operand, push(0, location), self.location, (load_non_zero_flag(self.location),))
+                if push_real.core_type(operand)
+                else chain(self.left_operand, pop(self.location), push(0, self.location))
+            )
 
         if isinstance(self.left_operand, logical_and):
             # check we are chaining && if so update the left operands false_instr instruction, so it can skip this one
@@ -1130,30 +1128,43 @@ class logical_and(logical, And):  # it needs to reference an instruction in orde
         )
 
 
-class logical_or(logical, Or):
+class logical_or(single_iteration, logical, Or):
     def apply(self):
         return push(
-            int(bool(value(operns(next(self.left_operand))[0]) or value(operns(next(self.right_operand))[0]))),
+            push_integral.core_type(
+                bool(value(operns(next(self.left_operand))[0]) or value(operns(next(self.right_operand))[0]))
+            ),
             self.location
         )
 
     def __iter__(self):
         if is_immediate_push(self.left_operand) and is_immediate_push(self.right_operand):
-            return self.apply()
+            return iter(
+                push(
+                    push_integral.core_type(
+                        any(imap(push_real.core_type, imap(get_immediate_pushed_value, self.operands)))
+                    ),
+                    self.location
+                )
+            )
 
         if is_immediate_push(self.left_operand):
-            operand, location = operand_location(next(self.left_operand))
-            return operand == 0 and \
-                compare(self.right_operand, push(0, location), self.location, (load_non_zero_flag(self.location),)) \
-                or push(1, location)
+            operand, location = get_immediate_pushed_value(self.left_operand), loc(self.left_operand)
+            return iter(
+                compare(self.right_operand, push(0, location), self.location, (load_non_zero_flag(self.location),))
+                if push_real.core_type(operand)
+                else push(1, location)
+            )
 
         if is_immediate_push(self.right_operand):
             # again care must be taken if the right operand is 0, we still need to evaluate the left
             # but no need for COMPARE
-            operand, location = operand_location(next(self.right_operand))
-            return operand == 0 and \
-                compare(self.left_operand, push(0, location), self.location, (load_non_zero_flag(self.location),)) \
-                or chain(self.left_operand, pop(self.location), push(1, location))
+            operand, location = get_immediate_pushed_value(self.right_operand), loc(self.right_operand)
+            return iter(
+                compare(self.left_operand, push(0, location), self.location, (load_non_zero_flag(self.location),))
+                if push_real.core_type(operand)
+                else chain(self.left_operand, pop(self.location), push(1, location))
+            )
 
         if isinstance(self.left_operand, logical_or):
             self.left_operand.right_default_instr = getattr(self, 'right_default_instr', self.default_instr)

@@ -13,7 +13,7 @@ class TestWhile(TestStatements):
         }
         """
         super(TestWhile, self).evaluate(source)
-        self.assertEqual(self.mem[self.cpu.stack_pointer], 0)
+        self.assertEqual(int(self.mem[self.cpu.stack_pointer]), 0)
 
     def test_true_while_loop(self):
         source = """
@@ -39,7 +39,7 @@ class TestWhile(TestStatements):
         }
         """
         super(TestWhile, self).evaluate(source)
-        self.assertEqual(self.mem[self.cpu.stack_pointer], 10)
+        self.assertEqual(int(self.mem[self.cpu.stack_pointer]), 10)
 
 
 class TestDoWhile(TestStatements):
@@ -53,7 +53,7 @@ class TestDoWhile(TestStatements):
         }
         """
         super(TestDoWhile, self).evaluate(source)
-        self.assertEqual(self.mem[self.cpu.stack_pointer], 10)
+        self.assertEqual(int(self.mem[self.cpu.stack_pointer]), 10)
 
     def test_true_do_while_loop(self):
         source = """
@@ -91,7 +91,7 @@ class TestFor(TestStatements):
         }
         """
         super(TestFor, self).evaluate(source)
-        self.assertEqual(self.mem[self.cpu.stack_pointer], 10)
+        self.assertEqual(int(self.mem[self.cpu.stack_pointer]), 10)
 
     def test_true_for_loop(self):
         source = """

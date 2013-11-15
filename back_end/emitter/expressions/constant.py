@@ -1,7 +1,7 @@
 __author__ = 'samyvilar'
 
 from sequences import peek, takewhile
-from itertools import chain
+from itertools import chain, imap
 
 from sequences import reverse, flatten
 
@@ -12,9 +12,11 @@ from back_end.emitter.c_types import binaries
 from front_end.parser.ast.expressions import exp
 
 from front_end.parser.types import CharType, ShortType, IntegerType, LongType, FloatType, DoubleType, PointerType
-from front_end.parser.types import StringType, c_type, StructType, ArrayType
+from front_end.parser.types import StringType, c_type, StructType, ArrayType, UnionType
 
 from back_end.virtual_machine.instructions.architecture import push, Double, Address, Byte, relative_jump, Offset
+from back_end.virtual_machine.instructions.architecture import allocate
+from back_end.emitter.c_types import size
 
 
 def const_string_expr(expr):
@@ -47,6 +49,14 @@ def const_struct_expr(expr):
     return chain.from_iterable(constant_expression(e) for e in reverse(flatten(exp(expr))))
 
 
+def const_union_expr(expr):
+    return chain(
+        allocate(size(c_type(expr)) - sum(imap(size, imap(c_type, exp(expr)))), loc(expr)),  # allocate rest ...
+        chain.from_iterable(constant_expression(e) for e in reverse(flatten(exp(expr))))
+
+    )
+
+
 def constant_expression(expr, *_):
     return constant_expression.rules[type(c_type(expr))](expr)
 constant_expression.rules = {
@@ -60,6 +70,7 @@ constant_expression.rules = {
     DoubleType: const_float_expr,
     StringType: const_string_expr,
 
+    UnionType: const_union_expr,
     StructType: const_struct_expr,
     ArrayType: const_struct_expr,
 }

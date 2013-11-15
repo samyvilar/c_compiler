@@ -15,7 +15,7 @@ class TestExit(TestStdLib):
         }
         """
         self.evaluate(code)
-        self.assertEqual(self.mem[self.cpu.stack_pointer], 0)
+        self.assertEqual(int(self.mem[self.cpu.stack_pointer]), 0)
 
     def test_exit_nested(self):
         code = """
@@ -41,5 +41,5 @@ class TestExit(TestStdLib):
         }
         """
         self.evaluate(code)
-        self.assertEqual(self.mem[self.cpu.stack_pointer], 100)
+        self.assertEqual(int(self.mem[self.cpu.stack_pointer]), 100)
 

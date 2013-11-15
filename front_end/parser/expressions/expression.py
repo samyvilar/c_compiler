@@ -9,7 +9,7 @@ from front_end.tokenizer.tokens import TOKENS, IDENTIFIER, CONSTANT, CHAR, INTEG
 from front_end.tokenizer.tokens import long_long_suffix, long_suffix, unsigned_suffix, suffix
 
 from front_end.parser.types import CharType, StringType, IntegerType, DoubleType, c_type, StructType, ArrayType
-from front_end.parser.types import IntegralType, NumericType, LongType, safe_type_coercion, unsigned
+from front_end.parser.types import IntegralType, NumericType, LongType, safe_type_coercion, unsigned, UnionType
 from front_end.parser.ast.expressions import ConstantExpression, IdentifierExpression, EmptyExpression
 from front_end.parser.ast.expressions import CastExpression, CompoundLiteral, CommaExpression, exp
 
@@ -57,7 +57,7 @@ def designations(tokens, symbol_table, _ctype, default_designations):
         _, _ = consume(tokens), error_if_not_type(_ctype, StructType)
         ident = error_if_not_type(consume(tokens, EOFLocation), IDENTIFIER)
         if ident not in _ctype:
-            raise ValueError('{l} identifier designator {ident} not in struct type'.format(l=loc(ident), ident=ident))
+            raise ValueError('{l} identifier designator {ident} not in {c}'.format(l=loc(ident), ident=ident, c=_ctype))
         values = ((_ctype.offset(ident),),)
         _ctype = _ctype.members[ident]
     else:
@@ -89,6 +89,7 @@ def initializer_list(tokens, symbol_table, ctype, values):
     expr, designations = _value(tokens, symbol_table, ctype, default_designation=(
         (isinstance(ctype, (StructType, ArrayType)) and ((0,),)) or ((),)
     ))
+
     prev_designation = set_expr_designations(designations, expr, values, ctype)
     while peek(tokens, '') == TOKENS.COMMA:
         _ = consume(tokens)
@@ -107,9 +108,32 @@ def initializer(tokens, symbol_table, ctype):
     return values
 
 
+def max_length(ctypes):
+    def _len(ctype):
+        if isinstance(ctype, ArrayType):
+            return len(ctype) * _len(c_type(ctype))
+        elif isinstance(ctype, UnionType):
+            return max_length(ctype)
+        elif isinstance(ctype, StructType):
+            return sum(imap(_len, imap(c_type, ctype.members.itervalues())))
+        elif isinstance(ctype, NumericType):
+            return 1
+        else:
+            raise TypeError("{l} Expected a ctype got {g}".format(l=loc(ctype), g=ctype))
+
+    max_type = next(ctypes, ArrayType(CharType(), 0))
+    for ctype in ctypes:
+        if _len(max_type) < _len(ctype):
+            max_type = ctype
+    return max_type
+
+
 def defaults(ctype):
     if isinstance(ctype, ArrayType):
         return CompoundLiteral((defaults(c_type(ctype)) for _ in xrange(len(ctype))), ctype)
+    elif isinstance(ctype, UnionType):  # Unions are a subtype of Struct hence we need to check them first ...
+        # assuming all numeric types are of the same length, TODO: deal with variable sizes ...
+        return CompoundLiteral(defaults(max_length(imap(c_type, ctype.members.itervalues()))), ctype)
     elif isinstance(ctype, StructType):
         return CompoundLiteral((defaults(c_type(ctype.members[member_name])) for member_name in ctype.members), ctype)
     elif isinstance(ctype, NumericType):
@@ -135,7 +159,11 @@ def set_designated_expression(designation, expr, values, _ctype):
             values = False
             break
 
-        values = values[des]
+        # All unions have a zero offset ...
+        # TODO: better implement this, as of now we are using the offset to the expected c_type of the expression
+        # hence we can't update Union.offset to properly return 0 since it would get the wrong type when initializing
+        # something besides the first element ...
+        values = values[0 if isinstance(_ctype, UnionType) else des]
         _ctype = c_type((isinstance(_ctype, StructType) and _ctype.members.values()[des]) or _ctype)
 
     if not values:

@@ -1,7 +1,7 @@
 __author__ = 'samyvilar'
 
 from itertools import chain, imap, izip_longest
-from collections import Iterable
+from collections import Iterable, deque
 
 __iterators__ = {}
 
@@ -31,6 +31,10 @@ def consume(seq, default=__required__):
         if default is __required__:
             raise ex
         return default
+
+
+def exhaust(iterator):
+    _ = deque(iterator, maxlen=0)
 
 
 def takewhile(func, value_stream):
@@ -77,4 +81,3 @@ def all_but_last(values, assert_last=default_last_object, location=''):
 
     if assert_last is not default_last_object and not isinstance(temp, assert_last):
         raise ValueError('{l}Expected but got {g}'.format(l=location + ' ', g=temp))
-

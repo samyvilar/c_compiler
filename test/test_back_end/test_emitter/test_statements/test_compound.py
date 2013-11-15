@@ -49,4 +49,4 @@ class TestCompoundStatement(TestStatements):
         }
         """
         super(TestCompoundStatement, self).evaluate(source)
-        self.assertEqual(self.mem[self.cpu.stack_pointer], 10)
+        self.assertEqual(int(self.mem[self.cpu.stack_pointer]), 10)

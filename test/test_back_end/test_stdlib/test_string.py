@@ -352,7 +352,7 @@ class TestString(TestStdLib):
         }
         """
         self.evaluate(code)
-        self.assertEqual(self.mem[self.cpu.stack_pointer], 1)
+        self.assertEqual(int(self.mem[self.cpu.stack_pointer]), 1)
 
     def test_strncmp(self):
         code = """
@@ -372,7 +372,7 @@ class TestString(TestStdLib):
         }
         """
         self.evaluate(code)
-        self.assertEqual(self.mem[self.cpu.stack_pointer], 1)
+        self.assertEqual(int(self.mem[self.cpu.stack_pointer]), 1)
 
     def test_strchr(self):
         code = """
@@ -392,7 +392,7 @@ class TestString(TestStdLib):
         }
         """
         self.evaluate(code)
-        self.assertEqual(self.mem[self.cpu.stack_pointer], 1)
+        self.assertEqual(int(self.mem[self.cpu.stack_pointer]), 1)
 
     def test_strcspn(self):
         code = """
@@ -412,7 +412,7 @@ class TestString(TestStdLib):
         }
         """
         self.evaluate(code)
-        self.assertEqual(self.mem[self.cpu.stack_pointer], 1)
+        self.assertEqual(int(self.mem[self.cpu.stack_pointer]), 1)
 
     def test_strpbrk(self):
         code = """
@@ -432,7 +432,7 @@ class TestString(TestStdLib):
         }
         """
         self.evaluate(code)
-        self.assertEqual(self.mem[self.cpu.stack_pointer], 1)
+        self.assertEqual(int(self.mem[self.cpu.stack_pointer]), 1)
 
     def test_strrchr(self):
         code = """
@@ -454,7 +454,7 @@ class TestString(TestStdLib):
         }
         """
         self.evaluate(code)
-        self.assertEqual(self.mem[self.cpu.stack_pointer], 1)
+        self.assertEqual(int(self.mem[self.cpu.stack_pointer]), 1)
 
     def test_strspn(self):
         code = """
@@ -477,7 +477,7 @@ class TestString(TestStdLib):
         }
         """
         self.evaluate(code)
-        self.assertEqual(self.mem[self.cpu.stack_pointer], 1)
+        self.assertEqual(int(self.mem[self.cpu.stack_pointer]), 1)
 
     def test_strstr(self):
         code = """
@@ -499,11 +499,12 @@ class TestString(TestStdLib):
         }
         """
         self.evaluate(code)
-        self.assertEqual(self.mem[self.cpu.stack_pointer], 1)
+        self.assertEqual(int(self.mem[self.cpu.stack_pointer]), 1)
 
     def test_a_strtok(self):
         code = """
         #include <string.h>
+        #include <stdio.h>
 
         int main()
         {
@@ -514,26 +515,30 @@ class TestString(TestStdLib):
                 return -1;
 
             current = strtok(temp, " ");
-            if (current != temp)
-                return -1;
+            if (current != temp || strlen(current) != 4)
+                return -strlen(current);
 
             current = strtok(NULL, " ");
-            if (*current != '1')
-                return -1;
-            current = strtok(NULL, "is ");
-            if (*current != '2')
-                return -1;
+            if (*current != '1' || strlen(current) != 1)
+                return -3;
+
+            current = strtok(NULL, "s i");
+            if (*current != '2' || strlen(current) != 2)
+                return -10;
+
+
             current = strtok(NULL, "");
             if (*current != 't')
-                return *current;
+                return temp - current;
+
             if (strtok(NULL, " "))
-                return -4;
+                return -5;
 
             return 1;
         }
         """
         self.evaluate(code)
-        self.assertEqual(self.mem[self.cpu.stack_pointer], 1)
+        self.assertEqual(int(self.mem[self.cpu.stack_pointer]), 1)
 
     def test_strlen(self):
         code = """
@@ -541,19 +546,22 @@ class TestString(TestStdLib):
 
         int main()
         {
-            char temp[50] = "this is a test ...";
-            if (strlen(""))
+            if (strlen("a") != 1)
                 return -1;
 
-            if (strlen(temp) != ((sizeof("this is a test ...")/sizeof(char)) - 1)) // subtract to one account for '\0'
-                return -1;
-           if (strlen("a") != 1)
-                return -1;
+            if (strlen(""))
+                return -2;
+
+            char temp[50] = "this is a test ...";
+
+            if (strlen(temp) != ((sizeof("this is a test ...")/sizeof(char)) - 1)) // subtract one to account for '\0'
+                return -3;
+
             if (strlen("\0asdasd"))
-                return -1;
+                return -5;
 
             return 1;
         }
         """
         self.evaluate(code)
-        self.assertEqual(self.mem[self.cpu.stack_pointer], 1)
+        self.assertEqual(int(self.mem[self.cpu.stack_pointer]), 1)

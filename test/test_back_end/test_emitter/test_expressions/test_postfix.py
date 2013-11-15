@@ -53,7 +53,22 @@ class TestPostfix(TestStatements):
         }
         """
         self.evaluate(source)
-        self.assertEqual(self.mem[self.cpu.stack_pointer], 5)
+        self.assertEqual(int(self.mem[self.cpu.stack_pointer]), 5)
+
+    def test_union_member_selection(self):
+        source = """
+        {
+            double value = 0;
+            union {
+                unsigned long long a;
+                double b;
+                char c[20];
+                int d[0];
+            } foo = {.a=10, .b=10.5};
+            value = 10.5 - foo.b;
+        """
+        self.evaluate(source)
+        self.assertEqual(int(self.mem[self.cpu.stack_pointer]), 0)
 
     def test_struct_member_selection(self):
         source = """
@@ -70,7 +85,7 @@ class TestPostfix(TestStatements):
         }
         """
         self.evaluate(source)
-        self.assertEqual(self.mem[self.cpu.stack_pointer], 4)
+        self.assertEqual(int(self.mem[self.cpu.stack_pointer]), 4)
 
     def test_nested_struct_member_selection(self):
         source = """
@@ -90,7 +105,7 @@ class TestPostfix(TestStatements):
         }
         """
         self.evaluate(source)
-        self.assertEqual(self.mem[self.cpu.stack_pointer], ord('a'))
+        self.assertEqual(int(self.mem[self.cpu.stack_pointer]), ord('a'))
 
     def test_struct_member_selection_pointer(self):
         source = """
@@ -114,7 +129,7 @@ class TestPostfix(TestStatements):
         }
         """
         self.evaluate(source)
-        self.assertEqual(self.mem[self.cpu.stack_pointer], 10)
+        self.assertEqual(int(self.mem[self.cpu.stack_pointer]), 10)
 
     # def test_compound_literal(self):
     #     code = """
@@ -140,7 +155,7 @@ class TestPostFixFunction(TestDeclarations):
         }
         """
         self.evaluate(source)
-        self.assertEqual(self.mem[self.cpu.stack_pointer], 10)
+        self.assertEqual(int(self.mem[self.cpu.stack_pointer]), 10)
 
     def test_function_call_parameters(self):
         source = """
@@ -153,7 +168,7 @@ class TestPostFixFunction(TestDeclarations):
         }
         """
         self.evaluate(source)
-        self.assertEqual(self.mem[self.cpu.stack_pointer], 10)
+        self.assertEqual(int(self.mem[self.cpu.stack_pointer]), 10)
 
     def test_function_return(self):
         source = """
@@ -186,7 +201,7 @@ class TestPostFixFunction(TestDeclarations):
         }
         """
         self.evaluate(source)
-        self.assertEqual(self.mem[self.cpu.stack_pointer], ord('a'))
+        self.assertEqual(int(self.mem[self.cpu.stack_pointer]), ord('a'))
 
     def test_function_pointer(self):
         source = """

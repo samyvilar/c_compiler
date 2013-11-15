@@ -13,7 +13,7 @@ class TestPrefix(TestStatements):
         }
         """
         self.evaluate(source)
-        self.assertEqual(self.mem[self.cpu.stack_pointer], 0)
+        self.assertEqual(int(self.mem[self.cpu.stack_pointer]), 0)
 
     def test_decrement(self):
         source = """
@@ -24,7 +24,7 @@ class TestPrefix(TestStatements):
         }
         """
         self.evaluate(source)
-        self.assertEqual(self.mem[self.cpu.stack_pointer], 0)
+        self.assertEqual(int(self.mem[self.cpu.stack_pointer]), 0)
 
     def test_address_of(self):
         source = """
@@ -35,7 +35,7 @@ class TestPrefix(TestStatements):
         }
         """
         self.evaluate(source)
-        self.assertEqual(self.mem[self.cpu.stack_pointer], 0)
+        self.assertEqual(int(self.mem[self.cpu.stack_pointer]), 0)
 
     def test_dereference(self):
         source = """
@@ -46,7 +46,7 @@ class TestPrefix(TestStatements):
         }
         """
         self.evaluate(source)
-        self.assertEqual(self.mem[self.cpu.stack_pointer], 9)
+        self.assertEqual(int(self.mem[self.cpu.stack_pointer]), 9)
 
     def test_minus(self):
         source = """
@@ -56,7 +56,7 @@ class TestPrefix(TestStatements):
         }
         """
         self.evaluate(source)
-        self.assertEqual(self.mem[self.cpu.stack_pointer], 10)
+        self.assertEqual(int(self.mem[self.cpu.stack_pointer]), 10)
 
     def test_plus(self):
         source = """
@@ -66,7 +66,7 @@ class TestPrefix(TestStatements):
         }
         """
         self.evaluate(source)
-        self.assertEqual(self.mem[self.cpu.stack_pointer], 10)
+        self.assertEqual(int(self.mem[self.cpu.stack_pointer]), 10)
 
     def test_not(self):
         source = """

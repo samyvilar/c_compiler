@@ -91,7 +91,7 @@ def allocation(instrs):
     if not allocations:  # Operand must be non-primitive type (Address) ... must wait for its value.
         yield consume(instrs)
     else:
-        total = sum(imap(lambda instr: long(operns(instr)[0]), allocations))
+        total = sum(imap(lambda instr: int(operns(instr)[0]), allocations))
 
         if total:  # non-zero allocates changes the state of the stack.
             if len(allocations) == 1:  # if single allocation, replace with faster Pop if removing single value

@@ -2,6 +2,7 @@ __author__ = 'samyvilar'
 
 import os
 from itertools import chain, ifilter, ifilterfalse, imap, product, starmap, izip, repeat
+from back_end.emitter.cpu import word_size
 
 try:
     import cPickle as pickle
@@ -173,8 +174,9 @@ def set_addresses(instrs, addresses=None):  # assign addresses ...
         previous_address = 0
         _ = (yield)
         while True:
-            _ = (yield previous_address)  # TODO: calculate address based on size of previous instr (for now all 1)
-            previous_address += 1
+            # TODO: calculate address based on size of previous instr (for now all 1 word)
+            _ = (yield previous_address)
+            previous_address += word_size
 
     addresses = addresses or default_address_gen()
     _ = next(addresses)
@@ -200,15 +202,6 @@ def set_addresses(instrs, addresses=None):  # assign addresses ...
                 instr[operand_index] = o  # update instruction operand.
 
             o.address = addresses.send(o)
-
-                # if not isinstance(o.obj, (int, long)):  # referencing a symbol that has yet to be resolved ...
-                #     symbol_references.append((instr, o, operand_index))
-                # elif isinstance(o.obj, NoneType):  # referencing an unseen label ...
-                #     label_references.append((instr, o, operand_index))
-                # elif isinstance(o.obj, (Instruction, Operand)):  # referencing an instr or Operand..
-                #     instr_references.append((instr, o, operand_index))
-                # elif not isinstance(o.obj, (int, long)):
-                #     raise ValueError('Bad operand type {t} for Address object ...'.format(t=type(o.obj)))
             yield o
 
     # At this point all address have being generated and resolve() should have checked or set first_element on Refs ...
@@ -216,7 +209,8 @@ def set_addresses(instrs, addresses=None):  # assign addresses ...
 
     for instr, operand, operand_index in references:
         if isinstance(operand, Offset):
-            operand.obj = operand.obj.address - ((instr.address + 2) if isinstance(instr, RelativeJump) else 0)
+            operand.obj = operand.obj.address - (instr.address + (2 * word_size
+                                                                  if isinstance(instr, RelativeJump) else 0))
         else:
             operand.obj = operand.obj.address
 

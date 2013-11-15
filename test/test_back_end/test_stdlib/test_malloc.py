@@ -34,7 +34,7 @@ class TestMalloc(TestStdLib):
         }
         """
         self.evaluate(source)
-        self.assertEqual(self.mem[self.cpu.stack_pointer], 0)
+        self.assertEqual(int(self.mem[self.cpu.stack_pointer]), 0)
 
     def test_malloc_complex(self):
         source = """

@@ -1,9 +1,12 @@
 __author__ = 'samyvilar'
 
 import sys
-
-from itertools import izip, repeat, chain
+from itertools import izip, repeat, chain, starmap, imap, product
 from collections import defaultdict
+
+from struct import pack, unpack
+
+from sequences import exhaust
 
 from logging_config import logging
 from front_end.loader.locations import loc
@@ -17,126 +20,187 @@ from back_end.virtual_machine.instructions.architecture import LoadZeroFlag, Loa
 from back_end.virtual_machine.instructions.architecture import AbsoluteJump, LoadInstructionPointer, LoadCarryBorrowFlag
 from back_end.virtual_machine.instructions.architecture import RelativeJump, JumpTrue, JumpFalse, JumpTable
 from back_end.virtual_machine.instructions.architecture import LoadBaseStackPointer, LoadStackPointer, Load, Set
-from back_end.virtual_machine.instructions.architecture import SetBaseStackPointer, SetStackPointer, SystemCall, operns
+from back_end.virtual_machine.instructions.architecture import SetBaseStackPointer, SetStackPointer, SystemCall
 from back_end.virtual_machine.instructions.architecture import Allocate, Dup, Swap, LoadNonZeroFlag
 from back_end.virtual_machine.instructions.architecture import Integer, Double, PostfixUpdate, Compare, CompareFloat
 from back_end.virtual_machine.instructions.architecture import LoadNonCarryBorrowFlag, LoadNonMostSignificantBitFlag
 from back_end.virtual_machine.instructions.architecture import LoadNonZeroNonCarryBorrowFlag, LoadZeroCarryBorrowFlag
 from back_end.virtual_machine.instructions.architecture import LoadNonZeroNonMostSignificantBitFlag
-from back_end.virtual_machine.instructions.architecture import LoadZeroMostSignificantBitFlag
+from back_end.virtual_machine.instructions.architecture import LoadZeroMostSignificantBitFlag, Binary, NumericBinary
+from back_end.virtual_machine.instructions.architecture import push_integral, push_real, Address
 
 logger = logging.getLogger('virtual_machine')
 
+word_size = 8
+machine_integral_type = push_integral.core_type
+machine_real_type = push_real.core_type
+machine_types = (machine_integral_type, machine_real_type)
+
+interpret_real_as_integral = lambda value: machine_integral_type(unpack('Q', pack('d', float(value)))[0])
+interpret_integral_as_real = lambda value: machine_real_type(unpack('d', pack('Q', float(value)))[0])
+
 
 def pop(cpu, mem):
-    cpu.stack_pointer += 1
+    cpu.stack_pointer += word_size
     return mem[cpu.stack_pointer]
 
 
+def peek(cpu, mem, index=word_size):
+    return mem[cpu.stack_pointer + index]
+
+
+def update(value, cpu, mem):
+    mem[cpu.stack_pointer + word_size] = value
+
+
 def push(value, cpu, mem):
-    if isinstance(value, Integer):
-        value = int(value)
-    elif isinstance(value, Double):
-        value = float(value)
-    assert isinstance(value, (int, float, long))
+    # safeguard against trying to push a non-numeric type (such as an instruction ...)
+    if not isinstance(value, (machine_integral_type, machine_real_type, Integer, Double, int)):
+        print value, type(value)
+        exit(-1)
+
     mem[cpu.stack_pointer] = value
-    cpu.stack_pointer -= 1
+    cpu.stack_pointer -= word_size
 
 
-def add(oper1, oper2):
-    return oper1 + oper2
+def set_flags(instr, cpu, mem, operand_0, operand_1):
+    result = operand_0 - operand_1
+
+    cpu.zero_flag = machine_integral_type(result == 0)
+    cpu.non_zero_flag = machine_integral_type(result != 0)
+
+    cpu.most_significant_bit_flag = cpu.carry_borrow_flag = machine_integral_type(result < 0)
+    cpu.non_most_significant_bit_flag = cpu.non_carry_borrow_flag = machine_integral_type(result >= 0)
+    cpu.zero_most_significant_bit_flag = cpu.zero_carry_borrow_flag = machine_integral_type(result <= 0)
+    cpu.non_zero_non_most_significant_bit_flag = cpu.non_zero_non_carry_borrow_flag = machine_integral_type(result > 0)
 
 
-def sub(oper1, oper2):
-    return oper1 - oper2
+def compare(instr, cpu, mem, _):
+    operand_1 = pop(cpu, mem)
+    operand_0 = pop(cpu, mem)
+    compare.rules[type(operand_0), type(operand_1), type(instr)](instr, cpu, mem, operand_0, operand_1)
+compare.rules = {
+    (machine_integral_type, machine_integral_type, Compare): set_flags,
+
+    (machine_integral_type, machine_real_type, Compare): lambda instr, cpu, mem, oper0, oper1:
+    set_flags(instr, cpu, mem, oper0, interpret_real_as_integral(oper1)),
+
+    (machine_real_type, machine_integral_type, Compare): lambda instr, cpu, mem, oper0, oper1:
+    set_flags(instr, cpu, mem, interpret_real_as_integral(oper0), oper1),
+
+    (machine_real_type, machine_real_type, Compare): lambda instr, cpu, mem, oper0, oper1:
+    set_flags(instr, cpu, mem, interpret_real_as_integral(oper0), interpret_real_as_integral(oper1)),
 
 
-def mult(oper1, oper2):
-    return oper1 * oper2
+    (machine_real_type, machine_real_type, CompareFloat): set_flags,
+
+    (machine_real_type, machine_integral_type, CompareFloat): lambda instr, cpu, mem, oper0, oper1:
+    set_flags(instr, cpu, mem, oper0, interpret_integral_as_real(oper1)),
+
+    (machine_integral_type, machine_real_type, CompareFloat): lambda instr, cpu, mem, oper0, oper1:
+    set_flags(instr, cpu, mem, interpret_integral_as_real(oper0), oper1),
+
+    (machine_integral_type, machine_integral_type, CompareFloat): lambda instr, cpu, mem, oper0, oper1:
+    set_flags(instr, cpu, mem, interpret_integral_as_real(oper0), interpret_real_as_integral(oper1))
+}
+
+compare_float = compare
 
 
-def div(oper1, oper2):
-    return oper1 / oper2
+binary_instr_names = {
+    Add: '__add__',
+    AddFloat: '__add__',
+    Subtract: '__sub__',
+    SubtractFloat: '__sub__',
+    Multiply: '__mul__',
+    MultiplyFloat: '__mul__',
+    Divide: '__div__',
+    DivideFloat: '__div__',
+
+    And: '__and__',
+    Or: '__or__',
+    Xor: '__xor__',
+    Mod: '__mod__',
+    ShiftLeft: '__lshift__',
+    ShiftRight: '__rshift__'
+}
 
 
-def _and(oper1, oper2):
-    return oper1 & oper2
+def _entry(operand_types, instr_type, instructions=binary_instr_names):
+    oper1_type, oper2_type = operand_types
+
+    interpret_left_operand = lambda oper, intrp: lambda oper1, oper2, oper=oper, intrp=intrp: oper(intrp(oper1), oper2)
+    interpret_right_operand = lambda oper, intrp: lambda oper1, oper2, oper=oper, intrp=intrp: oper(oper1, intrp(oper2))
+    interpret_both_operands = lambda oper, intrp: \
+        lambda oper1, oper2, oper=oper, intrp=intrp: oper(intrp(oper1), intrp(oper2))
+
+    expected_instr_type = {machine_integral_type: Binary, machine_real_type: NumericBinary}
+
+     # both types ok and match instruction type, do nothing ...
+    if oper1_type is oper2_type and issubclass(instr_type, expected_instr_type[oper1_type]):
+        _impl = getattr(oper1_type, instructions[instr_type])
+
+    elif issubclass(instr_type, Binary):  # expects both operands to be of integral types ...
+        func = getattr(machine_integral_type, instructions[instr_type])
+        if oper1_type is machine_real_type and oper2_type is machine_integral_type:
+            _impl = interpret_left_operand(func, interpret_real_as_integral)
+        elif oper1_type is machine_integral_type and oper2_type is machine_real_type:
+            _impl = interpret_right_operand(func, interpret_real_as_integral)
+        else:
+            _impl = interpret_both_operands(func, interpret_real_as_integral)
+
+    elif issubclass(instr_type, NumericBinary):  # expects both operands to be of real types ...
+        func = getattr(machine_real_type, instructions[instr_type])
+        if oper1_type is machine_integral_type and oper2_type is machine_real_type:
+            _impl = interpret_left_operand(func, interpret_integral_as_real)
+        elif oper1_type is machine_real_type and oper2_type is machine_integral_type:
+            _impl = interpret_right_operand(func, interpret_integral_as_real)
+        else:
+            _impl = interpret_both_operands(func, interpret_integral_as_real)
+
+    else:
+        raise ValueError('Expected a class of Binary or Numeric subclass got {g}'.format(g=instr_type))
+
+    return (oper1_type, oper2_type, instr_type), _impl
 
 
-def _or(oper1, oper2):
-    return oper1 | oper2
+default_binary_implementations = dict(
+    starmap(_entry, product(product(machine_types, machine_types), binary_instr_names.iterkeys()))
+)
 
 
-def _xor(oper1, oper2):
-    return oper1 ^ oper2
-
-
-def mod(oper1, oper2):
-    return oper1 % oper2
-
-
-def _shift_left(oper1, oper2):
-    return oper1 << (oper2 & 0b111111)  # safe guard against large numbers, python has indefinitely large integers ...
-
-
-def _shift_right(oper1, oper2):
-    return oper1 >> oper2
-
-
-def _not(oper1):
-    return ~oper1
-
-
-def convert_to_int(oper1):
-    return long(oper1)
-
-
-def convert_to_float(oper1):
-    return float(oper1)
-
-
-def bin_arithmetic(instr, cpu, mem):
+def bin_arithmetic(instr, cpu, mem, implementations=None):
     oper2, oper1 = pop(cpu, mem), pop(cpu, mem)
-     # make sure emitter doesn't generate instr that mixes types.
-    # if not (isinstance(oper1, (int, long)) and isinstance(oper2, (int, long)) or
-    #         isinstance(oper1, float) and isinstance(oper2, float)):
-    #     raise ValueError('Bad operands!')
-    result = bin_arithmetic.rules[type(instr)](oper1, oper2)
-    # if isinstance(instr, (Add, AddFloat, Subtract, SubtractFloat, Multiply, MultiplyFloat, Divide, DivideFloat)):
-    #     cpu.most_significant_bit_flag = cpu.carry_borrow_flag = int(result < 0)
-    #     cpu.zero_flag = int(not result)
-    return result
-bin_arithmetic.rules = {
-    Add: add,
-    AddFloat: add,
-    Subtract: sub,
-    SubtractFloat: sub,
-    Multiply: mult,
-    MultiplyFloat: mult,
-    Divide: div,
-    DivideFloat: div,
-    And: _and,
-    Or: _or,
-    Xor: _xor,
-    Mod: mod,
-    ShiftLeft: _shift_left,
-    ShiftRight: _shift_right,
+    return (implementations or default_binary_implementations)[type(oper1), type(oper2), type(instr)](oper1, oper2)
+bin_arithmetic.rules = dict(izip(binary_instr_names.iterkeys(), repeat(bin_arithmetic)))
+
+
+default_unary_implementations = {
+    (machine_integral_type, Not): machine_integral_type.__invert__,
+    (machine_real_type, Not): lambda operand: machine_integral_type.__invert__(interpret_real_as_integral(operand)),
+
+    (machine_integral_type, ConvertToFloat): machine_real_type,
+    (machine_real_type, ConvertToFloat): lambda operand: operand,
+
+    (machine_real_type, ConvertToInteger): machine_integral_type,
+    (machine_integral_type, ConvertToInteger): lambda operand: operand,
 }
 
 
-def unary_arithmetic(instr, cpu, mem):
-    return unary_arithmetic.rules[type(instr)](pop(cpu, mem))
-unary_arithmetic.rules = {
-    Not: _not,
-    ConvertToFloat: convert_to_float,
-    ConvertToInteger: convert_to_int,
-}
+def unary_arithmetic(instr, cpu, mem, implementations=None):
+    operand = pop(cpu, mem)
+    return (implementations or default_unary_implementations)[type(operand), type(instr)](operand)
+unary_arithmetic.rules = {Not, ConvertToFloat, ConvertToInteger}
 
 
 def expr(instr, cpu, mem, _):
     push(expr.rules[type(instr)](instr, cpu, mem), cpu, mem)
-expr.rules = {rule: bin_arithmetic for rule in bin_arithmetic.rules}
-expr.rules.update(izip(unary_arithmetic.rules, repeat(unary_arithmetic)))
+expr.rules = dict(
+    chain(
+        izip(bin_arithmetic.rules, repeat(bin_arithmetic)),
+        izip(unary_arithmetic.rules, repeat(unary_arithmetic))
+    )
+)
 
 
 def _jump(addr, cpu, *_):
@@ -148,19 +212,33 @@ def abs_jump(instr, cpu, mem):
 
 
 def rel_jump(instr, cpu, mem):
-    _jump(cpu.instr_pointer + int(operns(instr)[0]) + instr_size(instr), cpu, mem)
+    _jump(cpu.instr_pointer + mem[cpu.instr_pointer + word_size] + instr_size(instr), cpu, mem)
 
 
 def jump_if_true(instr, cpu, mem):
-    _jump(cpu.instr_pointer + (int(operns(instr)[0]) * bool(pop(cpu, mem))) + instr_size(instr), cpu, mem)
+    _jump(
+        cpu.instr_pointer + (mem[cpu.instr_pointer + word_size] * bool(pop(cpu, mem))) + instr_size(instr),
+        cpu,
+        mem
+    )
 
 
 def jump_if_false(instr, cpu, mem):
-    _jump(cpu.instr_pointer + (int(operns(instr)[0]) * (not pop(cpu, mem))) + instr_size(instr), cpu, mem)
+    _jump(
+        cpu.instr_pointer + (mem[cpu.instr_pointer + word_size] * (not pop(cpu, mem))) + instr_size(instr),
+        cpu,
+        mem
+    )
 
 
 def jump_table(instr, cpu, mem):
-    _jump(cpu.instr_pointer + int(instr.cases.get(pop(cpu, mem), int(instr.cases['default'].obj))) + 2, cpu, mem)
+    _jump(
+        cpu.instr_pointer
+        + machine_integral_type(instr.cases.get(pop(cpu, mem), machine_integral_type(instr.cases['default'].obj)))
+        + instr_size(instr),
+        cpu,
+        mem
+    )
 
 
 def jump(instr, cpu, mem, _):
@@ -174,104 +252,11 @@ jump.rules = {
 }
 
 
-def _pass(instr, cpu, *_):
-    pass
-
-
-def load_base_pointer(instr, cpu, mem, _):
-    push(cpu.base_pointer, cpu, mem)
-
-
-def set_base_pointer(instr, cpu, mem, _):
-    cpu.base_pointer = _pop(instr, cpu, mem, _)
-
-
-def load_stack_pointer(instr, cpu, mem, _):
-    push(cpu.stack_pointer, cpu, mem)
-
-
-def set_stack_pointer(instr, cpu, mem, _):
-    cpu.stack_pointer = pop(cpu, mem)
-
-
-def load_instr_pointer(instr, cpu, mem, _):
-    push(cpu.instr_pointer + instr_size(instr), cpu, mem)
-
-
-def _allocate(instr, cpu, mem, _):
-    cpu.stack_pointer += int(operns(instr)[0])
-
-
-def _dup(instr, cpu, mem, _):
-    for addr in xrange(cpu.stack_pointer + int(operns(instr)[0]), cpu.stack_pointer, -1):
-        push(mem[addr], cpu, mem)
-
-
-def _swap(instr, cpu, mem, _):
-    amount = int(operns(instr)[0])
-    for addr in xrange(cpu.stack_pointer + int(operns(instr)[0]), cpu.stack_pointer, -1):
-        temp = mem[addr]
-        mem[addr] = mem[addr + amount]
-        mem[addr + amount] = temp
-
-
-def _load(instr, cpu, mem, _):
-    addr, quantity = pop(cpu, mem), int(operns(instr)[0])
-    for index in reversed(xrange(addr, addr + quantity)):
-        push(mem[index], cpu, mem)
-
-
-def _set(instr, cpu, mem, os):
-    addr, quantity, stack_pointer = _pop(instr, cpu, mem, os), int(operns(instr)[0]), cpu.stack_pointer + 1
-    for addr, stack_addr in izip(xrange(addr, addr + quantity), xrange(stack_pointer, stack_pointer + quantity)):
-        mem[addr] = mem[stack_addr]
-
-
-def _push(instr, cpu, mem, _):
-    push(operns(instr)[0], cpu, mem)
-
-
-def _pop(instr, cpu, mem, _):
-    return pop(cpu, mem)
-
-
-def system_call(instr, cpu, mem, os):
-    os.calls[pop(cpu, mem)](cpu, mem, os)
-
-
 def instr_size(instr):
     return instr_size.rules[type(instr)]
-instr_size.rules = {instr: 1 for instr in no_operand_instr_ids}  # default all instructions to 1
-instr_size.rules.update((instr, 2) for instr in wide_instr_ids)  # wide instructions are 2
-instr_size.rules[JumpTable] = 2
-
-
-def compare(instr, cpu, mem, _):
-    operand_1 = long(pop(cpu, mem))
-    operand_0 = long(pop(cpu, mem))
-    result = operand_0 - operand_1
-
-    cpu.zero_flag = result == 0
-    cpu.non_zero_flag = result != 0
-
-    cpu.most_significant_bit_flag = cpu.carry_borrow_flag = result < 0
-    cpu.non_most_significant_bit_flag = cpu.non_carry_borrow_flag = result >= 0
-    cpu.zero_most_significant_bit_flag = cpu.zero_carry_borrow_flag = result <= 0
-    cpu.non_zero_non_most_significant_bit_flag = cpu.non_zero_non_carry_borrow_flag = result > 0
-
-
-def compare_float(instr, cpu, mem, _):
-    operand_1 = float(pop(cpu, mem))
-    operand_0 = float(pop(cpu, mem))
-    result = operand_0 - operand_1
-
-    cpu.zero_flag = result == 0
-    cpu.non_zero_flag = result != 0
-
-    cpu.most_significant_bit_flag = cpu.carry_borrow_flag = result < 0
-    cpu.non_most_significant_bit_flag = cpu.non_carry_borrow_flag = result >= 0
-    cpu.zero_most_significant_bit_flag = cpu.zero_carry_borrow_flag = result <= 0
-    cpu.non_zero_non_most_significant_bit_flag = cpu.non_zero_non_carry_borrow_flag = result > 0
+instr_size.rules = {instr: word_size for instr in no_operand_instr_ids}  # default all instructions to one word
+instr_size.rules.update((instr, 2*word_size) for instr in wide_instr_ids)  # wide instructions are 2 words
+instr_size.rules[JumpTable] = 2*word_size
 
 
 def instr_pointer_update(instr):
@@ -282,24 +267,35 @@ for instr in instr_size.rules:  # Make sure not to update the instruction pointe
 
 
 def postfix_update(instr, cpu, mem, _):
-    dest = pop(cpu, mem)
-    push(mem[dest], cpu, mem)
-    mem[dest] = long(mem[dest]) + long(operns(instr)[0])
+    addr = peek(cpu, mem)  # get/copy address
+    update(mem[addr], cpu, mem)  # replace pushed address with value ...
+    mem[addr] += mem[cpu.instr_pointer + word_size]  # update value at address ...
 
 
 def evaluate(cpu, mem, os=None):
     os = os or Kernel()
     instr = None
 
+    # Convert Operands/Values to native machine/python types ...
+    def machine_word(value):
+        if isinstance(value, (int, Integer, Address)):
+            return machine_integral_type(value)
+        if isinstance(value, (float, Double)):
+            return machine_real_type(value)
+        return value
+
+    mem.update(izip(mem.iterkeys(), imap(machine_word, mem.itervalues())))
+
     while not isinstance(instr, Halt):
         instr = mem[cpu.instr_pointer]
-        evaluate.rules[type(instr)](instr, cpu, mem, os)
+        _ = evaluate.rules[type(instr)](instr, cpu, mem, os)
         cpu.instr_pointer += instr_pointer_update(instr)
 evaluate.rules = {
-    Halt: _pass,  # evaluate will halt ...
-    Pass: _pass,
-    Push: _push,
-    Pop: _pop,
+    Halt: lambda instr, cpu, mem, _: None,  # evaluate will halt ...
+    Pass: lambda instr, cpu, mem, _: None,
+
+    Push: lambda instr, cpu, mem, _: push(mem[cpu.instr_pointer + word_size], cpu, mem),
+    Pop: lambda instr, cpu, mem, _: pop(cpu, mem),
 
     LoadNonZeroFlag: lambda instr, cpu, mem, _: push(cpu.non_zero_flag, cpu, mem),
     LoadZeroFlag: lambda instr, cpu, mem, _: push(cpu.zero_flag, cpu, mem),
@@ -319,24 +315,75 @@ evaluate.rules = {
     LoadZeroMostSignificantBitFlag: lambda instr, cpu, mem, _: push(cpu.zero_most_significant_bit_flag, cpu, mem),
 
 
-    LoadBaseStackPointer: load_base_pointer,
-    SetBaseStackPointer: set_base_pointer,
-    LoadStackPointer: load_stack_pointer,
-    SetStackPointer: set_stack_pointer,
+    LoadBaseStackPointer: lambda instr, cpu, mem, _: push(cpu.base_pointer, cpu, mem),
+    SetBaseStackPointer: lambda instr, cpu, mem, _: setattr(cpu, 'base_pointer', pop(cpu, mem)),
+    LoadStackPointer: lambda instr, cpu, mem, _: push(cpu.stack_pointer, cpu, mem),
+    SetStackPointer: lambda instr, cpu, mem, _: setattr(cpu, 'stack_pointer', pop(cpu, mem)),
+    LoadInstructionPointer: lambda instr, cpu, mem, _: push(cpu.instr_pointer + instr_size(instr), cpu, mem),
+
     PostfixUpdate: postfix_update,
 
-    LoadInstructionPointer: load_instr_pointer,
+    Allocate: lambda instr, cpu, mem, _: setattr(
+        cpu, 'stack_pointer', cpu.stack_pointer + mem[cpu.instr_pointer + word_size]
+    ),
 
-    Allocate: _allocate,
-    Dup: _dup,
-    Swap: _swap,
+    Dup: lambda instr, cpu, mem, _: exhaust(
+        starmap(
+            push,
+            izip(
+                chain.from_iterable(repeat(
+                    (pop(cpu, mem) for _ in xrange(mem[cpu.instr_pointer + word_size]/word_size)),
+                    2
+                )),
+                repeat(cpu),
+                repeat(mem),
+            )
+        )
+    ),
+
+    Swap: lambda instr, cpu, mem, _: exhaust(
+        starmap(
+            push,
+            izip(
+                reversed(pop(cpu, mem) for _ in xrange(mem[cpu.instr_pointer + word_size]/word_size)),
+                repeat(cpu),
+                repeat(mem),
+            )
+        )
+    ),
+
+    Load: lambda instr, cpu, mem, _: exhaust(
+        starmap(
+            push,
+            izip(
+                imap(
+                    mem.__getitem__,
+                    reversed(xrange(peek(cpu, mem), pop(cpu, mem) + mem[cpu.instr_pointer + word_size], word_size))
+                ),
+                repeat(cpu),
+                repeat(mem)
+            )
+        )
+    ),
+
+    Set: lambda instr, cpu, mem, _: mem.update(
+        izip(
+            xrange(peek(cpu, mem), pop(cpu, mem) + mem[cpu.instr_pointer + word_size], word_size),
+            starmap(
+                peek,
+                izip(
+                    repeat(cpu),
+                    repeat(mem),
+                    xrange(word_size, mem[cpu.instr_pointer + word_size] + word_size, word_size)
+                )
+            )
+        )
+    ),
 
     Compare: compare,
     CompareFloat: compare_float,
 
-    Load: _load,
-    Set: _set,
-    SystemCall: system_call,
+    SystemCall: lambda instr, cpu, mem, os: os.calls[machine_integral_type(pop(cpu, mem))](cpu, mem, os),
 }
 evaluate.rules.update(chain(izip(expr.rules, repeat(expr)), izip(jump.rules, repeat(jump))))
 
@@ -346,44 +393,34 @@ stderr_file_no = getattr(sys.stderr, 'fileno', lambda: 2)()
 std_files = ((stdin_file_no, sys.stdin), (stdout_file_no, sys.stdout), (stderr_file_no, sys.stderr))
 
 
-class Kernel(object):
-    def __init__(self, calls=None, open_files=std_files):
-        self.calls = calls or {}
-        self.opened_files = dict(open_files)
-
-
-class CPU(object):
-    def __init__(self):
-        self.instr_pointer = 0
-        self.flags = {
-            'zero_flag': 0, 'non_zero_flag': 0, 'carry_borrow_flag': 0, 'most_significant_bit_flag': 0,
-            'non_carry_borrow_flag': 0, 'non_most_significant_bit_flag': 0,
-            'non_zero_non_carry_borrow_flag': 0, 'non_zero_non_most_significant_bit_flag': 0,
-            'zero_carry_borrow_flag': 0, 'zero_most_significant_bit_flag': 0
-        }
-
-        for flag_name in self.flags:
-            setattr(self, flag_name, self.flags[flag_name])
-
-        self._stack_pointer, self.base_pointer = -1, -1
-
-    @property
-    def stack_pointer(self):
-        return self._stack_pointer
-
-    @stack_pointer.setter
-    def stack_pointer(self, value):
-        self._stack_pointer = value
-
-
-class VirtualMemory(defaultdict):
-    def __init__(self, default_factory=long):
-        super(VirtualMemory, self).__init__(default_factory)
-
-
-word_size = 1
-
 try:
-    from back_end.virtual_machine.c.cpu import c_evaluate as evaluate, CPU, VirtualMemory, Kernel, word_size
+    from back_end.virtual_machine.c.cpu import c_evaluate as evaluate, CPU, Kernel, VirtualMemory
 except ImportError as er:
+    class Kernel(object):
+        def __init__(self, calls=None, open_files=std_files):
+            self.calls = calls or {}
+            self.opened_files = dict(open_files)
+
+    class CPU(object):
+        def __init__(self):
+            self.instr_pointer = machine_integral_type(0)
+            self.stack_pointer, self.base_pointer = machine_integral_type(-word_size), machine_integral_type(-word_size)
+
+            self.flag_names = (
+                'zero_flag', 'non_zero_flag',
+                'carry_borrow_flag', 'non_carry_borrow_flag',
+                'most_significant_bit_flag', 'non_most_significant_bit_flag',
+                'non_zero_non_carry_borrow_flag', 'zero_carry_borrow_flag',
+                'non_zero_non_most_significant_bit_flag', 'zero_most_significant_bit_flag'
+            )
+
+            for flag_name in self.flag_names:
+                setattr(self, flag_name, machine_integral_type(0))
+
+    class VirtualMemory(defaultdict):
+        def __init__(self, default_factory=machine_integral_type):
+            super(VirtualMemory, self).__init__(default_factory)
+
+    evaluate = evaluate
+
     logger.warning('Failed to import C implementations, reverting to Python')

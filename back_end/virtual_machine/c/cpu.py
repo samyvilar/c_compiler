@@ -1,6 +1,6 @@
 __author__ = 'samyvilar'
 
-#raise ImportError
+# raise ImportError
 import os
 import sys
 
@@ -9,7 +9,7 @@ from ctypes import c_float, c_double, cast, sizeof, addressof, pointer
 from ctypes import pythonapi, py_object
 from struct import pack, unpack
 
-from back_end.virtual_machine.instructions.architecture import Double, Push, Address, operns
+from back_end.virtual_machine.instructions.architecture import Double, Address, operns
 from back_end.virtual_machine.instructions.architecture import Allocate, Dup, Swap, Load, Set
 
 from logging_config import logging
@@ -18,10 +18,7 @@ logger = logging.getLogger('virtual_machine')
 
 word_type, word_format = c_ulonglong, 'Q'
 float_type, float_format = c_double, 'd'
-# word_type, word_format = c_uint, 'I'
-# float_type, float_format = c_float, 'f'
-
-word_size = sizeof(word_type)
+word_size = 8
 
 
 try:
@@ -195,10 +192,8 @@ class VirtualMemory(object):
 
         if isinstance(value, Address):
             self.pushed_addresses[key] = value
-            if not isinstance(self.code.get(key - 1, None), Push):
-                pass
 
-        self.c_vm_p[key] = self.factory_type(value)
+        cast(self.start_of_physical_addr + key, POINTER(word_type))[0] = self.factory_type(value)
 
     def __getitem__(self, addr):
         return cast(addr, POINTER(word_type))[0]
@@ -213,14 +208,10 @@ def c_evaluate(cpu, mem, os=None):
 
     for v_addr, instr in mem.pushed_addresses.iteritems():  # translate all virtual addresses ...
         if isinstance(instr, Address):
-            mem.c_vm_p[v_addr] = mem.factory_type(mem.start_of_physical_addr + (instr.obj * sizeof(word_type)))
+            mem[v_addr] = mem.start_of_physical_addr + instr.obj
 
     for virtual_addr, instr in mem.instrs_word_operands.iteritems():  # update operands since machine will use word
-        mem[virtual_addr + 1] = long(operns(instr)[0])/word_size
-
-    # from front_end.loader.locations import loc
-    # for instr in mem.code.itervalues():
-    #     print loc(instr), instr
+        mem[virtual_addr + word_size] = long(operns(instr)[0])/word_size
 
     libvm.evaluate(
         byref(cpu),

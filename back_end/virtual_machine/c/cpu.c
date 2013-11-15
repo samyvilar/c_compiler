@@ -82,8 +82,9 @@ INLINE_FUNC_SIGNATURE(evaluate)
         
     #define instr_operand(ip) *ip++
     
+    
     #define BINARY_OPERATION(_o_) ((++_stack_pointer), (peek(_stack_pointer) _o_##= *_stack_pointer))
-        
+    
     #define FLOATING_BINARY_OPERATION(_o_) ((++_stack_pointer), (*(float_type *)(_stack_pointer + 1) _o_##= *(float_type *)_stack_pointer))
     
     #define update_cpu(cpu)                                         \
@@ -179,12 +180,12 @@ INLINE_FUNC_SIGNATURE(evaluate)
         done();
     
     get_label(POSTFIX_UPDATE):
-        #define update_value number_of_elements
-        update_value = instr_operand(_instr_pointer);  // get update value
+        #define magnitude_of_update number_of_elements
+        magnitude_of_update = instr_operand(_instr_pointer);  // get update value
         source_addr = (word_type *)pop(_stack_pointer);
         push(_stack_pointer, *source_addr);
-        *source_addr += update_value;
-        #undef update_value
+        *source_addr += magnitude_of_update;
+        #undef magnitude_of_update
         done();
     
     get_label(SWAP):
@@ -379,16 +380,16 @@ INLINE_FUNC_SIGNATURE(evaluate)
         _instr_pointer = (word_type *)pop(_stack_pointer);
         done();
     
-    get_label(RELATIVE_JUMP):
-        _instr_pointer += *_instr_pointer + 1;
+    get_label(RELATIVE_JUMP): // All jumps now assume that the pointers are numeric types ...
+        _instr_pointer = (word_type *)((word_type)_instr_pointer + *_instr_pointer + WORD_SIZE);
         done();
     
     get_label(JUMP_TRUE):
-        _instr_pointer += ((pop(_stack_pointer) != 0) * *_instr_pointer) + 1;
+        _instr_pointer = (word_type *)((word_type)_instr_pointer + (word_type)((pop(_stack_pointer) != 0) * *_instr_pointer) + WORD_SIZE);
         done();
 
     get_label(JUMP_FALSE):
-        _instr_pointer += ((pop(_stack_pointer) == 0) * *_instr_pointer) + 1;
+        _instr_pointer = (word_type *) ((word_type)_instr_pointer + (word_type)((pop(_stack_pointer) == 0) * *_instr_pointer) + WORD_SIZE);
         done();
     
     get_label(JUMP_TABLE):  // JumpTable implemeneted as binary search ... (it assumes values are sorted ...)
@@ -410,7 +411,7 @@ INLINE_FUNC_SIGNATURE(evaluate)
             check_median_value:
                 if (value == *ptr_to_current_median_value)
                 {
-                    _instr_pointer += *(ptr_to_current_median_value + number_of_values);
+                    _instr_pointer = (word_type *) ((word_type)_instr_pointer + *(ptr_to_current_median_value + number_of_values));
                     done();
                 }
             
@@ -422,7 +423,7 @@ INLINE_FUNC_SIGNATURE(evaluate)
                 goto check_median_value; // all values have being removed, check that the current value is the one we are seeking...
             }
         }
-        _instr_pointer += default_offset;
+        _instr_pointer = (word_type *)((word_type)_instr_pointer + default_offset);
         done();
         #undef ptr_to_values
         #undef ptr_to_current_median_value

@@ -120,3 +120,15 @@ class TestInitializer(TestDeclarations):
         """
         self.evaluate(code)
         self.assertEqual(1, self.mem[self.cpu.stack_pointer])
+
+    def test_global_union_initializer(self):
+        code = """
+            union {unsigned long long a; double b; char c[20]; int d[0];} foo = {.a=10, .b=10.5};
+
+            int main()
+            {
+                return foo.b == 10.5;
+            }
+            """
+        self.evaluate(code)
+        self.assertEqual(1, self.mem[self.cpu.stack_pointer])

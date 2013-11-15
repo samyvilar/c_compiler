@@ -17,7 +17,7 @@ class TestJump(TestStatements):
         }
         """
         self.evaluate(source)
-        self.assertEqual(self.mem[self.cpu.stack_pointer], 0)
+        self.assertEqual(int(self.mem[self.cpu.stack_pointer]), 0)
 
     def test_break(self):
         source = """
@@ -64,7 +64,7 @@ class TestGoto(TestStatements):
         }
         """
         self.evaluate(source)
-        self.assertEqual(self.mem[self.cpu.stack_pointer], 1)
+        self.assertEqual(int(self.mem[self.cpu.stack_pointer]), 1)
 
     def test_goto_into_nested(self):
         source = """
@@ -82,7 +82,7 @@ class TestGoto(TestStatements):
         }
         """
         self.evaluate(source)
-        self.assertEqual(self.mem[self.cpu.stack_pointer], 0)
+        self.assertEqual(int(self.mem[self.cpu.stack_pointer]), 0)
 
     def test_goto_out_of_nested(self):
         source = """
@@ -102,4 +102,4 @@ class TestGoto(TestStatements):
         }
         """
         self.evaluate(source)
-        self.assertEqual(self.mem[self.cpu.stack_pointer], 1)
+        self.assertEqual(int(self.mem[self.cpu.stack_pointer]), 1)

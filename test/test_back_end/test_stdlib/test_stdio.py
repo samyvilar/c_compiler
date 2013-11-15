@@ -148,3 +148,17 @@ class TestPrintf(TestStdLib):
         """
         self.evaluate(code)
         self.assertEqual("(0x1fb51)(0xa8eb)(0x0)", self.stdout.read())
+
+    def test_printf_union(self):
+        code = """
+            #include <stdio.h>
+
+            union {unsigned long long a; double b; char c[20]; int d[0];} foo = {.a=10, .b=10.5};
+
+            int main()
+            {
+                printf("%llu %f %lu\n", foo.a, foo.b, sizeof(foo));
+                return foo.b == 10.5;
+            }
+        """
+        self.evaluate(code)

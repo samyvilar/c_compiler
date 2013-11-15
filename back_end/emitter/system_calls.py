@@ -7,37 +7,33 @@ from front_end.loader.locations import Location, LocationNotSet
 from front_end.parser.types import IntegerType, VoidType, FunctionType, void_pointer_type, c_type, PointerType, CharType
 from front_end.parser.types import LongType
 
-from back_end.emitter.statements.jump import return_statement
 from front_end.parser.ast.declarations import AbstractDeclarator
-from front_end.parser.ast.statements import ReturnStatement
-from front_end.parser.ast.expressions import ConstantExpression
 
 from back_end.emitter.c_types import size
-from back_end.virtual_machine.instructions.architecture import Integer, Byte, Set, Push
-from back_end.virtual_machine.instructions.architecture import SetStackPointer, SetBaseStackPointer
-from back_end.virtual_machine.instructions.architecture import SystemCall as SysCallInstruction
+from back_end.virtual_machine.instructions.architecture import Integer, Byte, Push
+from back_end.virtual_machine.instructions.architecture import SystemCall as SysCallInstruction, push_integral
 
-from back_end.emitter.cpu import evaluate, std_files, logger, Halt
+from back_end.emitter.cpu import std_files, logger, Halt, word_size
 from back_end.emitter.c_types import function_operand_type_sizes
 
 __str__ = lambda ptr, mem, max_l=512: ''.join(imap(chr, takewhile(lambda byte: byte, __buffer__(ptr, max_l, mem))))
-__buffer__ = lambda ptr, count, mem: (mem[ptr] for ptr in xrange(ptr, ptr + count))
+__buffer__ = lambda ptr, count, mem: imap(mem.__getitem__, xrange(ptr, ptr + (count * word_size), word_size))
 
 
 SysCallLocation = Location('__ SYS_CALL __', '', '')
 
 
 def __return__(value, cpu, mem, os, func_signature=FunctionType(IntegerType(SysCallLocation), (), SysCallLocation)):
-    for instr in return_statement(
-        ReturnStatement(ConstantExpression(value, IntegerType(SysCallLocation), SysCallLocation), SysCallLocation),
-            {'__ CURRENT FUNCTION __': func_signature}):
-        evaluate.rules[type(instr)](instr, cpu, mem, os)
+    cpu.instr_pointer = mem[cpu.base_pointer + word_size]  # get return instruction ...
+    assert size(c_type(c_type(func_signature))) == word_size
+    mem[cpu.base_pointer + 2 * word_size] = value
 
 
 def argument_address(func_type, cpu, mem):
-    index = 1 + size(void_pointer_type) + (
+    index = 2 * size(void_pointer_type) + (
         size(void_pointer_type) if function_operand_type_sizes(c_type(c_type(func_type))) else 0
     )
+
     for ctype in imap(c_type, func_type):
         yield cpu.base_pointer + index
         index += size(ctype)
@@ -45,8 +41,9 @@ def argument_address(func_type, cpu, mem):
 
 def args(func_type, cpu, mem):
     for address, arg in izip(argument_address(func_type, cpu, mem), func_type):
-        yield mem[address] if size(c_type(arg)) == 1 \
-            else (mem[offset] for offset in xrange(address, address + size(arg)))
+        yield mem[address] \
+            if size(c_type(arg)) == word_size \
+            else (mem[offset] for offset in xrange(address, address + size(c_type(arg)), word_size))
 
 
 def __open__(
@@ -169,7 +166,7 @@ def __write__(
 
     values = ''.join(imap(chr, __buffer__(buffer_ptr, number_of_bytes, mem)))
     try:
-        file_id = kernel.opened_files[file_id]
+        file_id = kernel.opened_files[int(file_id)]
         file_id.write(values)
         return_value = Integer(0, LocationNotSet)
     except KeyError as _:
@@ -249,25 +246,16 @@ def __exit__(
     for file_id in ifilter(lambda file_id: file_id not in dict(std_files), kernel.opened_files):
         kernel.opened_files[file_id].flush()
         kernel.opened_files[file_id].close()
-    instrs = (
-        # Set the return status on top of the stack
-        Push(SysCallLocation, value),
-        Push(SysCallLocation, -size(IntegerType())),
-        Set(SysCallLocation, size(IntegerType())),
-        # reset stack ...
-        Push(SysCallLocation, -1),
-        Push(SysCallLocation, -1),
-        SetBaseStackPointer(SysCallLocation),
-        SetStackPointer(SysCallLocation)
-    )
-    for instr in instrs:
-        evaluate.rules[type(instr)](instr, cpu, mem, kernel)
-    mem[cpu.instr_pointer + 1] = Halt(SysCallLocation)
+
+    mem[-size(IntegerType())] = value  # Set the return status on top of the stack
+    cpu.base_pointer = cpu.stack_pointer = push_integral.core_type(-word_size)  # reset stack/base pointers ...
+
+    mem[cpu.instr_pointer + word_size] = Halt(SysCallLocation)  # Halt machine ...
 
 
 class SystemCall(Code):
     def __init__(self, name, size, storage_class, location, call_id):
-        self._first_element = Push(location, call_id)
+        self._first_element = Push(location, push_integral.core_type(call_id))
         super(SystemCall, self).__init__(
             name,
             (self._first_element, SysCallInstruction(location)),

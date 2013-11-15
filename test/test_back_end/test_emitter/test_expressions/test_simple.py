@@ -31,12 +31,12 @@ class TestRawExpression(TestCase):
     def test_binary_expr(self):
         source = '((int)(1) + (int)(2)) * (int)(3) - (int)((float)(3.0)) / (int)(1) >> (int)(2) * (int)(1) << (int)(2)'
         self.evaluate_expr(source)
-        self.assertEqual(self.mem[self.cpu.base_pointer], eval(source))
+        self.assertEqual(int(self.mem[self.cpu.base_pointer]), eval(source))
 
     def test_unary_binary_expr(self):
         source = '~1 + (int)(2) * (int)(3) + (int)(4) & (int)(5) | (int)((int)(5) + ((float)(10.9) - (int)(2)))'
         self.evaluate_expr(source)
-        self.assertEqual(self.mem[self.cpu.base_pointer], eval(source))
+        self.assertEqual(int(self.mem[self.cpu.base_pointer]), eval(source))
 
     def test_binary_logical_expr(self):
         py_exp = '(int)(1) > (int)(3) and (int)(1) <= (int)(10) and' + \
@@ -48,4 +48,4 @@ class TestRawExpression(TestCase):
 
             """ + py_exp
         self.evaluate_expr(code)
-        self.assertEqual(eval(py_exp), self.mem[self.cpu.base_pointer])
+        self.assertEqual(eval(py_exp), int(self.mem[self.cpu.base_pointer]))

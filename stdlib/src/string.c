@@ -181,6 +181,8 @@ char *strstr(const char *str, const char *sub_str)
     #define NULL ((void *)0)
 #endif
 
+#include <stdio.h>
+
 char *strtok(char *str, const char *delimiters)
 {
     static char *current = NULL;
@@ -193,7 +195,7 @@ char *strtok(char *str, const char *delimiters)
     {
         start = current + strspn(current, delimiters); // search for first occurrence of delimiter if any ...
         current = start + strcspn(start, delimiters);  // search for end of token
-        if (*current) // if not at end set '\0 and increment
+        if (*current) // if not at end set '\0' and increment
             *current++ = '\0';
     }
 
@@ -203,6 +205,7 @@ char *strtok(char *str, const char *delimiters)
 size_t strlen(const char *str)
 {
     const char *temp = str;
-    while (*str) ++str;
+    while (*str)
+        str++;
     return str - temp;
 }

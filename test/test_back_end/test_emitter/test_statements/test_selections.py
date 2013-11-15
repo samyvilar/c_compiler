@@ -13,7 +13,7 @@ class TestSelectionStatements(TestStatements):
         }
         """
         self.evaluate(source)
-        self.assertEqual(self.mem[self.cpu.stack_pointer], 0)
+        self.assertEqual(int(self.mem[self.cpu.stack_pointer]), 0)
 
     def test_else_statement(self):
         source = """
@@ -26,7 +26,7 @@ class TestSelectionStatements(TestStatements):
         }
         """
         self.evaluate(source)
-        self.assertEqual(self.mem[self.cpu.stack_pointer], 0)
+        self.assertEqual(int(self.mem[self.cpu.stack_pointer]), 0)
 
     def test_else_if_statement(self):
         source = """
@@ -41,7 +41,7 @@ class TestSelectionStatements(TestStatements):
         }
         """
         self.evaluate(source)
-        self.assertEqual(self.mem[self.cpu.stack_pointer], 1)
+        self.assertEqual(int(self.mem[self.cpu.stack_pointer]), 1)
 
     def test_switch_statement(self):
         source = """
@@ -72,7 +72,7 @@ class TestSelectionStatements(TestStatements):
         }
         """
         self.evaluate(source)
-        self.assertEqual(self.mem[self.cpu.stack_pointer], 12)
+        self.assertEqual(int(self.mem[self.cpu.stack_pointer]), 12)
 
     def test_switch_statement_declarations(self):
         code = """
@@ -115,7 +115,7 @@ class TestSelectionStatements(TestStatements):
         }
         """
         self.evaluate(code)
-        self.assertEqual(self.mem[self.cpu.stack_pointer], 46)
+        self.assertEqual(int(self.mem[self.cpu.stack_pointer]), 46)
 
     def test_nested_switch_statement(self):
         code = """
@@ -140,5 +140,5 @@ class TestSelectionStatements(TestStatements):
         }
         """
         self.evaluate(code)
-        self.assertEqual(self.mem[self.cpu.stack_pointer], 9)
+        self.assertEqual(int(self.mem[self.cpu.stack_pointer]), 9)
 

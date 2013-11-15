@@ -10,14 +10,19 @@ from front_end.parser.ast.expressions import ConstantExpression, exp, CastExpres
 
 from front_end.parser.types import CharType, ShortType, IntegerType, LongType, FloatType, DoubleType, VoidType
 from front_end.parser.types import StructType, PointerType, ArrayType, c_type, StringType, VAListType, void_pointer_type
+from front_end.parser.types import UnionType
 
-from back_end.virtual_machine.instructions.architecture import Integer, Double, Pass
+from back_end.virtual_machine.instructions.architecture import Integer, Double, Pass, Byte
 
 from back_end.emitter.cpu import word_size
 
 
 def struct_size(ctype):
     return sum(size(c_type(member)) for member in ctype.members.itervalues())
+
+
+def union_size(ctype):
+    return max(imap(size, imap(c_type, ctype.members.itervalues())))
 
 
 def array_size(ctype):
@@ -51,6 +56,7 @@ def size(ctype, overrides=()):
     return size.rules[type(ctype)](ctype)
 size.rules = {                                                     # all non-composite types are 1 word, 64 bits.
     StructType: struct_size,
+    UnionType: union_size,
     ArrayType: array_size,
     StringType: array_size,
     VAListType: lambda _: 0
@@ -61,9 +67,8 @@ size.rules.update(chain(
 ))
 
 
-def size_extended(ctype):
-    return size(ctype, overrides={VoidType: 1})  # The C standard dictates that Void pointers are incremented by 1...
-
+ # The C standard dictates that Void pointers are incremented by 1...
+size_extended = lambda ctype: size(ctype, overrides={VoidType: 1})
 
 function_operand_type_sizes = lambda ctype: size(ctype, overrides={
     ArrayType: size(void_pointer_type),
@@ -101,6 +106,20 @@ def struct_const(const_exp):
     return chain.from_iterable(bins)
 
 
+def union_const(const_exp):
+    if isinstance(getattr(const_exp, 'exp', None), Iterable):
+        # initialize union expression add any remaining default values if initializing to a smaller type then largest
+        bins = chain(
+            (binaries(value) for value in exp(const_exp)),
+            (Byte(0) for _ in xrange(size(c_type(const_exp)) - sum(imap(size, imap(c_type, exp(const_exp))))))
+        )
+    else:
+        assert isinstance(const_exp, UnionType)
+        # get largest type ...
+        bins = binaries(sorted(imap(c_type, const_exp.members.itervalues()), size)[-1])
+    return chain.from_iterable(bins)
+
+
 def dec_binaries(_):
     return ()
 
@@ -126,6 +145,7 @@ const_exp_binaries.rules = {
     ArrayType: array_const,
     StringType: array_const,
     StructType: struct_const,
+    UnionType: union_const,
 }
 
 
@@ -154,6 +174,9 @@ binaries.rules.update(izip(const_exp_binaries.rules, repeat(const_exp_binaries))
 
 
 def struct_member_offset(struct_type, member_exp):
+    if isinstance(struct_type, UnionType):  # unions can only store one value at a time ...
+        return 0
+
     assert member_exp
     offset = 0
     for name in struct_type:

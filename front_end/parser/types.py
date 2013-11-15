@@ -281,7 +281,7 @@ class StructType(CType):
         super(StructType, self).__init__(location)
 
     def __call__(self, location):
-        struct = StructType(self._name, self.members, location)
+        struct = self.__class__(self._name, self.members, location)
         struct._incomplete = incomplete(self)
         return struct
 

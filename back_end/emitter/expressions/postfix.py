@@ -226,8 +226,7 @@ def element_selection(expr, symbol_table, expression_func):
     return chain(
         set_instr(
             chain(
-                load_instr(addr_instr, member_size, loc(expr))
-                if not isinstance(c_type(expr), ArrayType)
+                load_instr(addr_instr, member_size, loc(expr)) if not isinstance(c_type(expr), ArrayType)
                 else addr_instr,
                 add(load_stack_pointer(loc(expr)), push((struct_size + member_size), loc(expr)), loc(expr)),
             ),
@@ -245,6 +244,7 @@ def element_section_pointer(expr, symbol_table, expression_func):
         loc(expr),
         load_instrs=expression_func(left_exp(expr), symbol_table, expression_func)
     )
+
 
 
 def postfix_expression(expr, symbol_table, expression_func):
