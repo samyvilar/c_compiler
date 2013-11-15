@@ -1,13 +1,13 @@
 __author__ = 'samyvilar'
 
-from itertools import izip_longest, izip, imap
+from itertools import imap
 from struct import pack, unpack
 from collections import Iterable
 
-from back_end.virtual_machine.cpu.alu import z, o
-from back_end.virtual_machine.cpu.alu import adder, inverter, join_bits, msb, byte_seq
-from back_end.virtual_machine.cpu.alu import and_circuit, or_circuit, xor_circuit, bits
-from back_end.virtual_machine.cpu.alu import shift_left, shift_right, multiplier, divider
+from back_end.virtual_machine.legacy.cpu.alu import z, o
+from back_end.virtual_machine.legacy.cpu.alu import adder, inverter, join_bits, msb, byte_seq
+from back_end.virtual_machine.legacy.cpu.alu import and_circuit, or_circuit, xor_circuit, bits
+from back_end.virtual_machine.legacy.cpu.alu import shift_left, shift_right, multiplier, divider
 
 
 def int_to_bin(number, bit_size=8):

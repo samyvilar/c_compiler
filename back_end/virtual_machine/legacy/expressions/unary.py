@@ -2,7 +2,7 @@ __author__ = 'samyvilar'
 
 from back_end.virtual_machine.instructions.architecture import ids
 from back_end.virtual_machine.instructions.architecture import Not, ConvertToInteger, ConvertToFloat
-from back_end.virtual_machine.instructions.stack import __pop, _push
+from back_end.virtual_machine.legacy.instructions.stack import __pop, _push
 
 
 def _not(oper1, cpu, mem):

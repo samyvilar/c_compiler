@@ -4,7 +4,7 @@ from unittest import TestCase
 from itertools import izip, imap
 from random import getrandbits
 
-from back_end.virtual_machine.cpu.word import Word, Float
+from back_end.virtual_machine.legacy.cpu.word import Word, Float
 
 
 def random_iter(bit_size, count):

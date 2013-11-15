@@ -4,7 +4,7 @@ from back_end.virtual_machine.instructions.architecture import ids
 from back_end.virtual_machine.instructions.architecture import Push, Pop, Load, Set
 from back_end.virtual_machine.instructions.architecture import LoadBaseStackPointer, LoadStackPointer
 
-from back_end.virtual_machine.operands import oprn
+from back_end.virtual_machine.legacy.operands import oprn
 
 
 def _pop(cpu, mem):

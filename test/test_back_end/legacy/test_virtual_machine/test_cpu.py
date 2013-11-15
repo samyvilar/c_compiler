@@ -3,13 +3,13 @@ __author__ = 'samyvilar'
 from unittest import TestCase
 from itertools import izip, chain, imap
 from collections import defaultdict
-from back_end.virtual_machine.cpu.core import CPU
+from back_end.virtual_machine.legacy.cpu.core import CPU
 
-import back_end.virtual_machine.instructions.encoder as encoder
+import back_end.virtual_machine.legacy.instructions.encoder as encoder
 from back_end.virtual_machine.instructions.architecture import Push, Pop, Halt, Load
 from back_end.virtual_machine.instructions.architecture import ids, LoadBaseStackPointer, LoadStackPointer, Add
-from back_end.virtual_machine.instructions.stack import _push, _pop
-from back_end.virtual_machine.cpu.core import HaltException
+from back_end.virtual_machine.legacy.instructions.stack import _push, _pop
+from back_end.virtual_machine.legacy.cpu.core import HaltException
 
 
 def size(value):

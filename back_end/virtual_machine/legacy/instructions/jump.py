@@ -6,8 +6,8 @@ from back_end.virtual_machine.instructions.architecture import ids
 from back_end.virtual_machine.instructions.architecture import AbsoluteJump
 from back_end.virtual_machine.instructions.architecture import JumpTable, JumpFalse, JumpTrue
 
-from back_end.virtual_machine.instructions.stack import __pop
-from back_end.virtual_machine.operands import oprn, oprns
+from back_end.virtual_machine.legacy.instructions.stack import __pop
+from back_end.virtual_machine.legacy.operands import oprn, oprns
 
 
 def _abs_jump(addr, cpu, mem):

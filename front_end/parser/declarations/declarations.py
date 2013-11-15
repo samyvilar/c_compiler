@@ -11,7 +11,7 @@ from front_end.tokenizer.tokens import TOKENS
 from front_end.parser.symbol_table import SymbolTable, push, pop
 
 from front_end.parser.ast.statements import CompoundStatement, FunctionDefinition
-from front_end.parser.ast.declarations import EmptyDeclaration, Declaration, Auto, Register, name, Static
+from front_end.parser.ast.declarations import EmptyDeclaration, Declaration, Auto, Register, name
 from front_end.parser.ast.declarations import Extern, Definition, TypeDef
 from front_end.parser.ast.declarations import initialization
 from front_end.parser.ast.expressions import ConstantExpression, EmptyExpression, exp

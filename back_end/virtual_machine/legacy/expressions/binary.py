@@ -1,9 +1,9 @@
 __author__ = 'samyvilar'
 
-from back_end.virtual_machine.instructions.expressions.arithmetic import arithmetic_instrs
-from back_end.virtual_machine.instructions.expressions.bit import bit_instrs
+from back_end.virtual_machine.legacy.expressions.arithmetic import arithmetic_instrs
+from back_end.virtual_machine.legacy.expressions.bit import bit_instrs
 
-from back_end.virtual_machine.instructions.stack import _push, __pop
+from back_end.virtual_machine.legacy.instructions.stack import _push, __pop
 
 
 def binary_instrs(instr, cpu, mem):

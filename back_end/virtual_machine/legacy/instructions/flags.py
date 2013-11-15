@@ -4,7 +4,7 @@ from back_end.virtual_machine.instructions.architecture import ids
 from back_end.virtual_machine.instructions.architecture import LoadCarryBorrowFlag, LoadZeroFlag
 from back_end.virtual_machine.instructions.architecture import LoadMostSignificantBitFlag
 
-from back_end.virtual_machine.instructions.stack import _push
+from back_end.virtual_machine.legacy.instructions.stack import _push
 
 
 def _load_carry_flag(instr, cpu, mem):

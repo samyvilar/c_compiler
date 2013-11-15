@@ -113,6 +113,7 @@ class TOKENS(object):
     DO = KeywordSymbol('do')
     DOUBLE = KeywordSymbol('double')
     ELSE = KeywordSymbol('else')
+    ENUM = KeywordSymbol('enum')
     EXTERN = KeywordSymbol('extern')
     FLOAT = KeywordSymbol('float')
     FOR = KeywordSymbol('for')

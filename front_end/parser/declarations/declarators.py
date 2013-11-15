@@ -6,12 +6,12 @@ from sequences import peek, consume
 from front_end.loader.locations import loc, EOFLocation
 from front_end.tokenizer.tokens import TOKENS, IDENTIFIER
 
-from front_end.parser.ast.expressions import exp
-from front_end.parser.ast.declarations import TypeDef
+from front_end.parser.ast.expressions import exp, ConstantExpression
+from front_end.parser.ast.declarations import TypeDef, Definition
 
 from front_end.parser.types import CType, FunctionType, PointerType, set_core_type, c_type, StructType, ArrayType
 from front_end.parser.types import VoidType, CharType, ShortType, IntegerType, LongType, FloatType, DoubleType
-from front_end.parser.types import IntegralType, UnionType, VAListType
+from front_end.parser.types import IntegralType, UnionType, VAListType, EnumType
 
 from front_end.parser.ast.declarations import AbstractDeclarator, Declarator, name
 from front_end.parser.ast.declarations import Auto, Extern, Static, Register
@@ -147,7 +147,7 @@ def direct_abstract_declarator(tokens, symbol_table):
     return c_decl
 
 
-def abstract_declarator(tokens, symbol_table): # pointer direct_abstract_declarator? | direct_abstract_declarator
+def abstract_declarator(tokens, symbol_table):  # pointer direct_abstract_declarator? | direct_abstract_declarator
     if peek(tokens, '') == TOKENS.STAR:
         pointer_type = pointer(tokens)
         if peek(tokens, '') in {TOKENS.LEFT_PARENTHESIS, TOKENS.LEFT_BRACKET} or \
@@ -195,11 +195,11 @@ def parse_sign_token(tokens, symbol_table):
 
 def parse_struct_members(tokens, symbol_table):
     location, members = loc(consume(tokens)), OrderedDict()
-    while peek(tokens, '') != TOKENS.RIGHT_BRACE:
+    while peek(tokens, TOKENS.RIGHT_BRACE) != TOKENS.RIGHT_BRACE:
 
         type_spec = specifier_qualifier_list(tokens, symbol_table)
 
-        while peek(tokens, '') != TOKENS.SEMICOLON:
+        while peek(tokens, TOKENS.SEMICOLON) != TOKENS.SEMICOLON:
             decl = declarator(tokens, symbol_table)
             set_core_type(decl, type_spec)
             if name(decl) in members:
@@ -214,36 +214,55 @@ def parse_struct_members(tokens, symbol_table):
     return members
 
 
-def struct_specifier(tokens, symbol_table, obj_type=StructType):
+def parse_enum_members(tokens, symbol_table):
+    from front_end.parser.expressions.expression import constant_expression
+
+    location, members, current_value = loc(consume(tokens)), OrderedDict(), 0
+
+    while peek(tokens, TOKENS.RIGHT_BRACE) != TOKENS.RIGHT_BRACE:
+        ident = error_if_not_type(consume(tokens, ''), IDENTIFIER)
+        if peek(tokens, '') == TOKENS.EQUAL:
+            _, e = consume(tokens), constant_expression(tokens, symbol_table)
+            _, current_value = error_if_not_type(c_type(e), IntegerType), exp(e)
+        value = ConstantExpression(current_value, IntegerType(location), location)
+        current_value += 1
+
+        symbol_table[ident] = value  # Add value to symbol_table
+        members[ident] = Definition(ident, c_type(value), value, location)
+
+        _ = peek(tokens, '') == TOKENS.COMMA and consume(tokens)
+    _ = error_if_not_value(tokens, TOKENS.RIGHT_BRACE)
+
+    return members
+
+
+def composite_specifier(tokens, symbol_table, obj_type=StructType, member_parse_func=parse_struct_members):
     """
-    : 'struct' IDENTIFIER
-    | 'struct' IDENTIFIER  '{' (specifier_qualifier_list  declarator ';')* '}'
-    | 'struct' '{' (specifier_qualifier_list declarator ';')* '}'
+    : 'composite type' IDENTIFIER
+    | 'composite type' IDENTIFIER  '{' members '}'
+    | 'composite type' '{' members '}'
     """
     location = loc(consume(tokens))
-    if peek(tokens, '') == TOKENS.LEFT_BRACE:  # anonymous structure.
-        obj = obj_type(None, parse_struct_members(tokens, symbol_table), location)
-    elif isinstance(peek(tokens, ''), IDENTIFIER):
+    if peek(tokens, '') == TOKENS.LEFT_BRACE:  # anonymous composite ...
+        return obj_type(None, member_parse_func(tokens, symbol_table), location)
+
+    if isinstance(peek(tokens, ''), IDENTIFIER):
         obj = symbol_table.get(obj_type.get_name(peek(tokens)), obj_type(consume(tokens), None, location))
-        # Structs are bit tricky, since any of its members may contain itself as a reference, so we'll add the type to
+        # some composites are bit tricky such as Struct/Union ...
+        # since any of its members may contain itself as a reference, so we'll add the type to
         # the symbol table before adding the members ...
-        # TODO: make structures types immutable, right now they are being shared.
+        # TODO: make types immutable, right now they are being shared.
         terminal = object()
         if symbol_table.get(obj.name, terminal) is terminal:
             symbol_table[name(obj)] = obj
         if peek(tokens, '') == TOKENS.LEFT_BRACE:
-            obj.members = parse_struct_members(tokens, symbol_table)
+            obj.members = member_parse_func(tokens, symbol_table)
 
         return obj
-    else:
-        raise ValueError('{l} Expected IDENTIFIER or "{" got {got}'.format(
-            loc=loc(peek(tokens, EOFLocation)), got=peek(tokens, '')
-        ))
-    return obj
 
-
-def union_specifier(tokens, symbol_table):
-    return struct_specifier(tokens, symbol_table, obj_type=UnionType)
+    raise ValueError('{l} Expected IDENTIFIER or "{" got {got}'.format(
+        l=loc(peek(tokens, EOFLocation)), got=peek(tokens, '')
+    ))
 
 
 def no_type_specifier(tokens, _):
@@ -269,6 +288,8 @@ def type_specifier(tokens, symbol_table, *args):
         | ['signed' or 'unsigned'] 'int' | ['signed' or 'unsigned'] 'long'
         | 'float' | 'double'
         | struct_specifier
+        | union_specifier
+        | enum_specifier
         | TYPE_NAME
     """
     if peek(tokens, '') in type_specifier.rules:
@@ -291,11 +312,14 @@ type_specifier.rules.update({
     TOKENS.LONG: _long,
     TOKENS.SHORT: _short,
 
-    TOKENS.STRUCT: struct_specifier,
     TOKENS.SIGNED: parse_sign_token,
     TOKENS.UNSIGNED: parse_sign_token,
 
-    TOKENS.UNION: union_specifier,
+    TOKENS.STRUCT: composite_specifier,
+    TOKENS.UNION: lambda tokens, symbol_table: composite_specifier(tokens, symbol_table, obj_type=UnionType),
+    TOKENS.ENUM: lambda tokens, symbol_table: composite_specifier(
+        tokens, symbol_table, obj_type=EnumType, member_parse_func=parse_enum_members
+    ),
 })
 
 

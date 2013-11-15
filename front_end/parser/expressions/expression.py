@@ -397,8 +397,11 @@ def expression(tokens, symbol_table=None):
 
 def constant_expression(tokens, symbol_table):
     const_exp = logical_or_expression(tokens, symbol_table, cast_expression)
+
+    if isinstance(const_exp, IdentifierExpression) and \
+            isinstance(symbol_table.get(exp(const_exp), type), ConstantExpression):
+        const_exp = symbol_table[exp(const_exp)]
+
     if not isinstance(const_exp, ConstantExpression):
-        raise ValueError('{l} Expected a constant expression got {got}'.format(
-            l=loc(const_exp), got=const_exp
-        ))
+        raise ValueError('{l} Expected a constant expression got {got}'.format(l=loc(const_exp), got=const_exp))
     return const_exp

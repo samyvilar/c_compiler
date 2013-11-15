@@ -25,8 +25,10 @@ class SymbolTable(object):
         # 2) Giving a definition, check its consistent with previous declaration and its consistent with previous
         # declaration if any.
 
-        if isinstance(value, Declaration) and key in self:  # either function definition, definition or declaration.
-            if declaration(self[key]) == declaration(value):  # check for consistency.
+        if isinstance(value, Declaration) and key in self:
+             # either function definition, definition or declaration.
+            # check for consistency.
+            if isinstance(self[key], Declaration) and declaration(self[key]) == declaration(value):
                 if type(self[key]) is Declaration:  # if previous is declaration pop it and insert new either def or dec
                     _ = self.pop(key)
             else:

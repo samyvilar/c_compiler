@@ -8,7 +8,7 @@ from front_end.loader.locations import loc
 from front_end.parser.ast.declarations import Declaration, Definition, initialization
 from front_end.parser.ast.expressions import ConstantExpression, exp, CastExpression, CompoundLiteral, EmptyExpression
 
-from front_end.parser.types import CharType, ShortType, IntegerType, LongType, FloatType, DoubleType, VoidType
+from front_end.parser.types import CharType, ShortType, IntegerType, LongType, FloatType, DoubleType, VoidType, EnumType
 from front_end.parser.types import StructType, PointerType, ArrayType, c_type, StringType, VAListType, void_pointer_type
 from front_end.parser.types import UnionType
 
@@ -35,6 +35,9 @@ numeric_type.rules = {  # Virtual Machine is word based, all non-composite types
     CharType: word_size,
     ShortType: word_size,
     IntegerType: word_size,
+
+    EnumType: word_size,
+
     LongType: word_size,
     PointerType: word_size,
     FloatType: word_size,
@@ -54,7 +57,7 @@ def size(ctype, overrides=()):
     if type(ctype) in overrides:
         return overrides[type(ctype)]
     return size.rules[type(ctype)](ctype)
-size.rules = {                                                     # all non-composite types are 1 word, 64 bits.
+size.rules = {                          # all non-composite types are 1 word (except for Enum ...), 64 bits.
     StructType: struct_size,
     UnionType: union_size,
     ArrayType: array_size,

@@ -3,9 +3,9 @@ __author__ = 'samyvilar'
 from unittest import TestCase
 from itertools import izip
 
-from back_end.virtual_machine.cpu.word import bin_repr
+from back_end.virtual_machine.legacy.cpu.word import bin_repr
 
-from back_end.virtual_machine.cpu.alu import byte_adder, byte_inverter, byte_and, byte_or, byte_xor, z
+from back_end.virtual_machine.legacy.cpu.alu import byte_adder, byte_inverter, byte_and, byte_or, byte_xor, z
 
 
 # byte_adder = build_adder()

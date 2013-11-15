@@ -1,6 +1,6 @@
 __author__ = 'samyvilar'
 
-from itertools import izip, imap
+from itertools import izip, imap, ifilter
 from collections import Iterable
 
 from logging_config import logging
@@ -269,30 +269,35 @@ class FunctionType(ChainedType, list):
         return True
 
 
-class StructType(CType):
-    supported_operations = {MEMBER_ACCESS_OPERATOR, TOKENS.EQUAL}
+class UserDefinedTypes(CType):
+    def __init__(self, name, location):
+        self._name = name
+        super(UserDefinedTypes, self).__init__(location)
 
+    @property
+    def name(self):
+        return self.__class__.get_name(self._name)
+
+    @classmethod
+    def get_name(cls, value):
+        return (value and cls.__name__.split('Type')[0].lower() + ' ' + value) or value
+
+
+class CompositeType(UserDefinedTypes):
     def __init__(self, name, members, location=LocationNotSet):
-        self._name, self._members = name or '', members
-        if isinstance(members, Iterable):
-            self._offsets = dict(imap(reversed, enumerate(members)))
-        else:
-            self._offsets = None
-        super(StructType, self).__init__(location)
+        self._members = members
+        super(CompositeType, self).__init__(name, location)
 
     def __call__(self, location):
-        struct = self.__class__(self._name, self.members, location)
-        struct._incomplete = incomplete(self)
-        return struct
+        obj = self.__class__(self._name, self.members, location)
+        obj._incomplete = incomplete(self)
+        return obj
 
     def __contains__(self, item):
         return item in self.members
 
     def __iter__(self):
         return iter(self.members)
-
-    def offset(self, member_name):
-        return self._offsets[member_name]
 
     @property
     def members(self):
@@ -302,42 +307,60 @@ class StructType(CType):
     def members(self, _members):
         if self.members is None:
             self._members = _members
-            self._offsets = dict(imap(reversed, enumerate(_members)))
         elif _members != self._members:
-            raise TypeError('{l} StructType already has members'.format(l=loc(self)))
+            raise TypeError('{l} {t} already has members'.format(t=self.__class__.__name__, l=loc(self)))
 
     @property
     def incomplete(self):
         return self.members is None
 
-    @property
-    def name(self):
-        return StructType.get_name(self._name)
-
-    @staticmethod
-    def get_name(value):
-        return (value and 'struct ' + value) or value
-
     def __nonzero__(self):
         return 1
 
     def __eq__(self, other):
-        return self is other or (  # Structs are self referencing each other when nested, TODO: fix this!!!!
-            super(StructType, self).__eq__(other) and
+        return self is other or (  # Composites are self referencing each other when nested, TODO: fix this!!!!
+            super(CompositeType, self).__eq__(other) and
             len(self.members) == len(other.members) and
             all(member == other_member for member, other_member in izip(
                 self.members.itervalues(), other.members.itervalues()))
         )
 
 
-class UnionType(StructType):
-    @property
-    def name(self):
-        return UnionType.get_name(self._name)
+class StructType(CompositeType):
+    supported_operations = {MEMBER_ACCESS_OPERATOR, TOKENS.EQUAL}
 
-    @staticmethod
-    def get_name(value):
-        return (value and 'union ' + value) or value
+    def __init__(self, name, members, location=LocationNotSet):
+        if isinstance(members, Iterable):
+            self._offsets = dict(imap(reversed, enumerate(members)))
+        else:
+            self._offsets = None
+        super(StructType, self).__init__(name, members, location)
+
+    def offset(self, member_name):
+        return self._offsets[member_name]
+
+    @property
+    def members(self):
+        return super(StructType, self).members
+
+    @members.setter
+    def members(self, _members):
+        CompositeType.members.fset(self, _members)
+        # Unfortunately the only way to get the setter of Parent class is to look for it manually :( ...
+        # (without explicitly using the base class Name ...)
+        # sub_classes = iter(self.__class__.mro())
+        # _ = next(sub_classes)  # skip current class or infinite recursion ..
+        # next(ifilter(lambda cls: hasattr(cls, 'members'), sub_classes)).members.fset(self, _members)
+        if _members is not None:
+            self._offsets = dict(imap(reversed, enumerate(_members)))
+
+
+class UnionType(StructType):
+    pass
+
+
+class EnumType(CompositeType, IntegerType):
+    pass
 
 
 # check if one type could be coerce to another.

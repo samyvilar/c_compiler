@@ -6,16 +6,16 @@ from collections import defaultdict
 from back_end.virtual_machine.instructions.architecture import ids, instr_objs, Pass, Halt
 from back_end.virtual_machine.instructions.architecture import VariableLengthInstruction, WideInstruction, Instruction
 
-from back_end.virtual_machine.instructions.stack import stack_instrs
-from back_end.virtual_machine.instructions.expressions.binary import binary_instrs
-from back_end.virtual_machine.instructions.expressions.unary import unary_instrs
+from back_end.virtual_machine.legacy.instructions.stack import stack_instrs
+from back_end.virtual_machine.legacy.expressions.binary import binary_instrs
+from back_end.virtual_machine.legacy.expressions.unary import unary_instrs
 
-from back_end.virtual_machine.instructions.flags import load_flag_instrs
-from back_end.virtual_machine.instructions.jump import jump_instrs
+from back_end.virtual_machine.legacy.instructions.flags import load_flag_instrs
+from back_end.virtual_machine.legacy.instructions.jump import jump_instrs
 
-from back_end.virtual_machine.operands import oprn
+from back_end.virtual_machine.legacy.operands import oprn
 
-from back_end.virtual_machine.cpu.word import Word
+from back_end.virtual_machine.legacy.cpu.word import Word
 
 
 class HaltException(Exception):
