@@ -3,7 +3,7 @@ __author__ = 'samyvilar'
 from collections import defaultdict
 from itertools import chain, izip, repeat
 
-from sequences import peek, consume, terminal
+from utils.sequences import peek, consume, terminal
 from logging_config import logging
 
 from front_end.loader.locations import loc, EOFLocation
@@ -33,10 +33,6 @@ def no_rule(tokens, *_):
 
 def _empty_statement(tokens, *_):
     yield EmptyStatement(loc(error_if_not_value(tokens, TOKENS.SEMICOLON)))
-
-
-def _expression(expr):
-    yield expr
 
 
 def compound_statement(tokens, symbol_table, statement_func):  #: '{' statement*  '}'
@@ -80,20 +76,21 @@ def statement(tokens, symbol_table=None, statement_func=None):
         # it must be an expression, TODO: figure out a way without using dangerous chain!
         tokens = chain((label_name, consume(tokens)), tokens)
         expr, _ = expression(tokens, symbol_table), error_if_not_value(tokens, TOKENS.SEMICOLON)
-        return _expression(expr)
+        return repeat(expr, 1)
 
     if peek(tokens, '') in statement.rules:
         return statement.rules[peek(tokens)](tokens, symbol_table, statement_func)
 
     if peek(tokens, terminal) is not terminal:
         expr, _ = expression(tokens, symbol_table), error_if_not_value(tokens, TOKENS.SEMICOLON)
-        return _expression(expr)
+        return repeat(expr, 1)
 
     raise ValueError('{l} No rule could be found to create statement, got {got}'.format(
         l=loc(peek(tokens, EOFLocation)), got=peek(tokens, '')
     ))
-statement.rules = defaultdict(lambda: no_rule)
-statement.rules.update(chain(
+statement.rules = defaultdict(
+    lambda: no_rule,
+    chain(
     izip(labeled_statement.rules, repeat(labeled_statement)),
     izip(selection_statement.rules, repeat(selection_statement)),
     izip(iteration_statement.rules, repeat(iteration_statement)),

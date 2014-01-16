@@ -1,6 +1,6 @@
 __author__ = 'samyvilar'
 
-from sequences import peek, consume
+from utils.sequences import peek, consume
 from front_end.loader.locations import loc, EOFLocation
 from front_end.tokenizer.tokens import TOKENS
 from front_end.parser.types import CType, IntegralType, PointerType, c_type, NumericType, IntegerType

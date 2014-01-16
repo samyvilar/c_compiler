@@ -4,7 +4,7 @@ __author__ = 'samyvilar'
 from os import linesep, path, getcwd
 from StringIO import StringIO
 
-from sequences import peek, consume
+from utils.sequences import peek, consume
 from front_end.loader.locations import Location, Str
 
 

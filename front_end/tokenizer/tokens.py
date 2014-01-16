@@ -2,7 +2,7 @@ __author__ = 'samyvilar'
 
 import string
 from itertools import imap, chain
-from sequences import permute_case
+from utils.sequences import permute_case
 from front_end.loader.locations import LocationNotSet
 from front_end.loader.load import Str
 

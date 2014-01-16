@@ -1,6 +1,6 @@
 __author__ = 'samyvilar'
 
-from front_end.parser.types import CType, c_type, char_type
+from front_end.parser.types import CType, c_type
 
 from front_end.parser.ast.declarations import Declaration, Declarator
 
@@ -41,12 +41,7 @@ def bind_instructions(obj, offset):
 
 
 def stack_allocation(stack, obj):
-    if isinstance(obj, CType):
-        obj_type = obj
-    else:
-        obj_type = c_type(obj)
-
+    obj_type = obj if isinstance(obj, CType) else c_type(obj)
     stack.allocate(size(obj_type))
-    offset = stack.stack_pointer + size(char_type)
-
+    offset = stack.stack_pointer
     return bind_instructions(obj, offset) if isinstance(obj, (Declaration, Declarator)) else obj

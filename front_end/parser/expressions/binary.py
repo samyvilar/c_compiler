@@ -1,14 +1,17 @@
 __author__ = 'samyvilar'
 
-from sequences import peek, consume
+from utils.rules import rules
+from utils.sequences import peek, consume
+#from utils.sequences takewhile
+# from itertools import repeat
 from front_end.loader.locations import loc
 from front_end.tokenizer.tokens import TOKENS
 
 from front_end.parser.types import NumericType, IntegralType, c_type, safe_type_coercion, supported_operators
-from front_end.parser.types import LOGICAL_OPERATIONS, IntegerType, PointerType
+from front_end.parser.types import LOGICAL_OPERATIONS, IntegerType
 
 from front_end.parser.ast.expressions import BinaryExpression, AssignmentExpression, CompoundAssignmentExpression, oper
-from front_end.parser.ast.expressions import TernaryExpression, left_exp, right_exp, SizeOfExpression
+from front_end.parser.ast.expressions import TernaryExpression, left_exp, right_exp
 from front_end.parser.expressions.reduce import reduce_expression
 
 from front_end.errors import error_if_not_type, error_if_not_value
@@ -18,10 +21,9 @@ from front_end.errors import error_if_not_type, error_if_not_value
 def get_binary_expression(tokens, symbol_table, l_exp, right_exp_func, exp_type, cast_expression):
     operator = consume(tokens)
 
-    if right_exp_func == cast_expression:
-        r_exp = right_exp_func(tokens, symbol_table)
-    else:
-        r_exp = right_exp_func(tokens, symbol_table, cast_expression)
+    r_exp = right_exp_func(tokens, symbol_table)    \
+        if right_exp_func == cast_expression        \
+        else right_exp_func(tokens, symbol_table, cast_expression)
 
     exp_type = max(error_if_not_type(c_type(l_exp), exp_type), error_if_not_type(c_type(r_exp), exp_type))
     if operator in LOGICAL_OPERATIONS:
@@ -37,10 +39,16 @@ def get_binary_expression(tokens, symbol_table, l_exp, right_exp_func, exp_type,
 
 def multiplicative_expression(tokens, symbol_table, cast_expression):
     # : cast_expression ('*' cast_expression | '/' cast_expression | '%' cast_expression)*
+    # return reduce(
+    #     lambda l_exp, r_exp, tokens=tokens, symbol_table=symbol_table, cast_expression=cast_expression:
+    #     multiplicative_expression.rules[peek(tokens)](tokens, symbol_table, l_exp, cast_expression),
+    #     takewhile(lambda tokens: peek(tokens, '') in multiplicative_expression.rules, repeat(tokens)),  # repeat
+    #     cast_expression(tokens, symbol_table)  # initial expression ...
+    # )
+
     exp = cast_expression(tokens, symbol_table)
     while peek(tokens, '') in {TOKENS.STAR, TOKENS.PERCENTAGE, TOKENS.FORWARD_SLASH}:
-        # noinspection PyUnresolvedReferences
-        exp = multiplicative_expression.rules[peek(tokens)](tokens, symbol_table, exp, cast_expression)
+        exp = rules(multiplicative_expression)[peek(tokens)](tokens, symbol_table, exp, cast_expression)
     return exp
 multiplicative_expression.rules = {
     TOKENS.STAR:
@@ -56,40 +64,77 @@ multiplicative_expression.rules = {
 
 def additive_expression(tokens, symbol_table, cast_expression):
     # : multiplicative_expression ('+' multiplicative_expression | '-' multiplicative_expression)*
+    # return reduce(
+    #     get_binary_reduction_func(tokens, symbol_table, cast_expression, multiplicative_expression, NumericType),
+    #     #lambda l_exp, r_exp, tokens=tokens, symbol_table=symbol_table, cast_expression=cast_expression:
+    #     #get_binary_expression(tokens, symbol_table, l_exp, multiplicative_expression, NumericType, cast_expression),
+    #     takewhile(lambda tokens: peek(tokens, '') in additive_expression.rules, repeat(tokens)),  # repeat
+    #     multiplicative_expression(tokens, symbol_table, cast_expression)  # initial expression ...
+    # )
     exp = multiplicative_expression(tokens, symbol_table, cast_expression)
     while peek(tokens, '') in {TOKENS.PLUS, TOKENS.MINUS}:
         exp = get_binary_expression(tokens, symbol_table, exp, multiplicative_expression, NumericType, cast_expression)
     return exp
+additive_expression.rules = {TOKENS.PLUS, TOKENS.MINUS}
 
 
 def shift_expression(tokens, symbol_table, cast_expression):
     # : additive_expression (('<<'|'>>') additive_expression)*
+    # return reduce(
+    #     lambda l_exp, r_exp, tokens=tokens, symbol_table=symbol_table, cast_expression=cast_expression:
+    #     get_binary_expression(tokens, symbol_table, l_exp, additive_expression, IntegralType, cast_expression),
+    #     takewhile(lambda tokens: peek(tokens, '') in shift_expression.rules, repeat(tokens)),  # repeat
+    #     additive_expression(tokens, symbol_table, cast_expression)  # initial expression ...
+    # )
     exp = additive_expression(tokens, symbol_table, cast_expression)
-    while peek(tokens, '') in {TOKENS.SHIFT_LEFT, TOKENS.SHIFT_RIGHT}:
+    while peek(tokens, '') in rules(shift_expression):
         exp = get_binary_expression(tokens, symbol_table, exp, additive_expression, IntegralType, cast_expression)
     return exp
+shift_expression.rules = {TOKENS.SHIFT_LEFT, TOKENS.SHIFT_RIGHT}
 
 
 def relational_expression(tokens, symbol_table, cast_expression):
     # : shift_expression (('<'|'>'|'<='|'>=') shift_expression)*
+    # return reduce(
+    #     lambda l_exp, r_exp, tokens=tokens, symbol_table=symbol_table, cast_expression=cast_expression:
+    #     get_binary_expression(tokens, symbol_table, l_exp, shift_expression, NumericType, cast_expression),
+    #     takewhile(lambda tokens: peek(tokens, '') in relational_expression.rules, repeat(tokens)),  # repeat
+    #     shift_expression(tokens, symbol_table, cast_expression)  # initial expression ...
+    # )
     exp = shift_expression(tokens, symbol_table, cast_expression)
     while peek(tokens, '') in {
         TOKENS.LESS_THAN, TOKENS.GREATER_THAN, TOKENS.LESS_THAN_OR_EQUAL, TOKENS.GREATER_THAN_OR_EQUAL
     }:
         exp = get_binary_expression(tokens, symbol_table, exp, shift_expression, NumericType, cast_expression)
     return exp
+relational_expression.rules = {
+    TOKENS.LESS_THAN, TOKENS.GREATER_THAN, TOKENS.LESS_THAN_OR_EQUAL, TOKENS.GREATER_THAN_OR_EQUAL
+}
 
 
 def equality_expression(tokens, symbol_table, cast_expression):
     # : relational_expression (('=='|'!=') relational_expression)*
+    # return reduce(
+    #     lambda l_exp, r_exp, tokens=tokens, symbol_table=symbol_table, cast_expression=cast_expression:
+    #     get_binary_expression(tokens, symbol_table, l_exp, relational_expression, NumericType, cast_expression),
+    #     takewhile(lambda tokens: peek(tokens, '') in equality_expression.rules, repeat(tokens)),  # repeat
+    #     relational_expression(tokens, symbol_table, cast_expression)  # initial expression ...
+    # )
     exp = relational_expression(tokens, symbol_table, cast_expression)
     while peek(tokens, '') in {TOKENS.EQUAL_EQUAL, TOKENS.NOT_EQUAL}:
         exp = get_binary_expression(tokens, symbol_table, exp, relational_expression, NumericType, cast_expression)
     return exp
+equality_expression.rules = {TOKENS.EQUAL_EQUAL, TOKENS.NOT_EQUAL}
 
 
 def and_expression(tokens, symbol_table, cast_expression):
     # : equality_expression ('&' equality_expression)*
+    # return reduce(
+    #     lambda l_exp, r_exp, tokens=tokens, symbol_table=symbol_table, cast_expression=cast_expression:
+    #     get_binary_expression(tokens, symbol_table, l_exp, equality_expression, IntegralType, cast_expression),
+    #     takewhile(lambda tokens: peek(tokens, '') == TOKENS.AMPERSAND, repeat(tokens)),  # repeat
+    #     equality_expression(tokens, symbol_table, cast_expression)  # initial expression ...
+    # )
     exp = equality_expression(tokens, symbol_table, cast_expression)
     while peek(tokens, '') == TOKENS.AMPERSAND:
         exp = get_binary_expression(tokens, symbol_table, exp, equality_expression, IntegralType, cast_expression)
@@ -98,6 +143,12 @@ def and_expression(tokens, symbol_table, cast_expression):
 
 def exclusive_or_expression(tokens, symbol_table, cast_expression):
     # : and_expression ('^' and_expression)*
+    # return reduce(
+    #     lambda l_exp, r_exp, tokens=tokens, symbol_table=symbol_table, cast_expression=cast_expression:
+    #     get_binary_expression(tokens, symbol_table, l_exp, and_expression, IntegralType, cast_expression),
+    #     takewhile(lambda tokens: peek(tokens, '') == TOKENS.CARET, repeat(tokens)),  # repeat
+    #     and_expression(tokens, symbol_table, cast_expression)  # initial expression ...
+    # )
     exp = and_expression(tokens, symbol_table, cast_expression)
     while peek(tokens, '') == TOKENS.CARET:
         exp = get_binary_expression(tokens, symbol_table, exp, and_expression, IntegralType, cast_expression)
@@ -106,6 +157,12 @@ def exclusive_or_expression(tokens, symbol_table, cast_expression):
 
 def inclusive_or_expression(tokens, symbol_table, cast_expression):
     # : exclusive_or_expression ('|' exclusive_or_expression)*
+    # return reduce(
+    #     lambda l_exp, r_exp, tokens=tokens, symbol_table=symbol_table, cast_expression=cast_expression:
+    #     get_binary_expression(tokens, symbol_table, l_exp, exclusive_or_expression, IntegralType, cast_expression),
+    #     takewhile(lambda tokens: peek(tokens, '') == TOKENS.BAR, repeat(tokens)),  # repeat
+    #     exclusive_or_expression(tokens, symbol_table, cast_expression)  # initial expression ...
+    # )
     exp = exclusive_or_expression(tokens, symbol_table, cast_expression)
     while peek(tokens, '') == TOKENS.BAR:
         exp = get_binary_expression(tokens, symbol_table, exp, exclusive_or_expression, IntegralType, cast_expression)
@@ -114,6 +171,12 @@ def inclusive_or_expression(tokens, symbol_table, cast_expression):
 
 def logical_and_expression(tokens, symbol_table, cast_expression):
     # : inclusive_or_expression ('&&' inclusive_or_expression)*
+    # return reduce(
+    #     lambda l_exp, r_exp, tokens=tokens, symbol_table=symbol_table, cast_expression=cast_expression:
+    #     get_binary_expression(tokens, symbol_table, l_exp, inclusive_or_expression, NumericType, cast_expression),
+    #     takewhile(lambda tokens: peek(tokens, '') == TOKENS.LOGICAL_AND, repeat(tokens)),  # repeat
+    #     inclusive_or_expression(tokens, symbol_table, cast_expression)  # initial expression ...
+    # )
     exp = inclusive_or_expression(tokens, symbol_table, cast_expression)
     while peek(tokens, '') == TOKENS.LOGICAL_AND:
         exp = get_binary_expression(tokens, symbol_table, exp, inclusive_or_expression, NumericType, cast_expression)
@@ -122,6 +185,13 @@ def logical_and_expression(tokens, symbol_table, cast_expression):
 
 def logical_or_expression(tokens, symbol_table, cast_expression):
     # : logical_and_expression ('||' logical_and_expression)*
+    # return reduce(
+    #     lambda l_exp, r_exp, tokens=tokens, symbol_table=symbol_table, cast_expression=cast_expression:
+    #     get_binary_expression(tokens, symbol_table, l_exp, logical_and_expression, NumericType, cast_expression),
+    #     takewhile(lambda tokens: peek(tokens, '') == TOKENS.LOGICAL_OR, repeat(tokens)),  # repeat
+    #     logical_and_expression(tokens, symbol_table, cast_expression)  # initial expression ...
+    # )
+
     exp = logical_and_expression(tokens, symbol_table, cast_expression)
     while peek(tokens, '') == TOKENS.LOGICAL_OR:
         exp = get_binary_expression(tokens, symbol_table, exp, logical_and_expression, NumericType, cast_expression)
@@ -131,7 +201,7 @@ def logical_or_expression(tokens, symbol_table, cast_expression):
 def conditional_expression(tokens, symbol_table, cast_expression):
     # logical_or_expression ('?' expression ':' conditional_expression)?
     exp = logical_or_expression(tokens, symbol_table, cast_expression)
-    if peek(tokens, '') in conditional_expression.rules:
+    if peek(tokens, '') in rules(conditional_expression):
         location = loc(error_if_not_value(tokens, TOKENS.QUESTION))
         _ = error_if_not_type(c_type(exp), NumericType)
         if_true_exp = assignment_expression(tokens, symbol_table, cast_expression)
@@ -148,9 +218,18 @@ def conditional_expression(tokens, symbol_table, cast_expression):
                 t1=ctype_1, t2=ctype_2
             ))
         return TernaryExpression(exp, if_true_exp, if_false_exp, ctype, location)
-    else:
-        return exp
+    return exp
 conditional_expression.rules = {TOKENS.QUESTION}
+
+
+def assignment_expression(tokens, symbol_table, cast_expression):
+    # : conditional_expression | conditional_expression assignment_operator assignment_expression
+    left_value_exp = conditional_expression(tokens, symbol_table, cast_expression)
+
+    if peek(tokens, '') in rules(assignment_expression):
+        return rules(assignment_expression)[peek(tokens)](tokens, symbol_table, left_value_exp, cast_expression)
+
+    return left_value_exp
 
 
 def numeric_type(tokens, symbol_table, l_exp, cast_expression):
@@ -167,13 +246,6 @@ def assign(tokens, symbol_table, l_exp, cast_expression):
     operator, r_exp = consume(tokens), assignment_expression(tokens, symbol_table, cast_expression)
     return AssignmentExpression(l_exp, operator, r_exp, c_type(l_exp)(loc(oper)), loc(operator))
 
-
-def assignment_expression(tokens, symbol_table, cast_expression):
-    # : conditional_expression | conditional_expression assignment_operator assignment_expression
-    left_value_exp = conditional_expression(tokens, symbol_table, cast_expression)
-    if peek(tokens, '') in assignment_expression.rules:
-        return assignment_expression.rules[peek(tokens)](tokens, symbol_table, left_value_exp, cast_expression)
-    return left_value_exp
 assignment_expression.rules = {
     TOKENS.EQUAL: assign,                        # '=',
 

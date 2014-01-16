@@ -6,16 +6,15 @@ from collections import defaultdict
 
 from struct import pack, unpack
 
-from sequences import exhaust
+from utils.sequences import exhaust
 
 from logging_config import logging
-from front_end.loader.locations import loc
 from back_end.virtual_machine.instructions.architecture import no_operand_instr_ids, wide_instr_ids
 from back_end.virtual_machine.instructions.architecture import Push, Pop, Halt, Pass, Jump
 from back_end.virtual_machine.instructions.architecture import Add, Subtract, Multiply, Divide, Mod
 from back_end.virtual_machine.instructions.architecture import AddFloat, SubtractFloat, MultiplyFloat, DivideFloat
 from back_end.virtual_machine.instructions.architecture import And, Or, Xor, Not, ShiftLeft, ShiftRight
-from back_end.virtual_machine.instructions.architecture import ConvertToInteger, ConvertToFloat
+from back_end.virtual_machine.instructions.architecture import ConvertTo, ConvertToFloatFrom
 from back_end.virtual_machine.instructions.architecture import LoadZeroFlag, LoadMostSignificantBitFlag
 from back_end.virtual_machine.instructions.architecture import AbsoluteJump, LoadInstructionPointer, LoadCarryBorrowFlag
 from back_end.virtual_machine.instructions.architecture import RelativeJump, JumpTrue, JumpFalse, JumpTable
@@ -179,18 +178,18 @@ default_unary_implementations = {
     (machine_integral_type, Not): machine_integral_type.__invert__,
     (machine_real_type, Not): lambda operand: machine_integral_type.__invert__(interpret_real_as_integral(operand)),
 
-    (machine_integral_type, ConvertToFloat): machine_real_type,
-    (machine_real_type, ConvertToFloat): lambda operand: operand,
+    (machine_integral_type, ConvertToFloatFrom): machine_real_type,
+    (machine_real_type, ConvertToFloatFrom): lambda operand: operand,
 
-    (machine_real_type, ConvertToInteger): machine_integral_type,
-    (machine_integral_type, ConvertToInteger): lambda operand: operand,
+    (machine_real_type, ConvertTo): machine_integral_type,
+    (machine_integral_type, ConvertTo): lambda operand: operand,
 }
 
 
 def unary_arithmetic(instr, cpu, mem, implementations=None):
     operand = pop(cpu, mem)
     return (implementations or default_unary_implementations)[type(operand), type(instr)](operand)
-unary_arithmetic.rules = {Not, ConvertToFloat, ConvertToInteger}
+unary_arithmetic.rules = {Not, ConvertToFloatFrom, ConvertTo}
 
 
 def expr(instr, cpu, mem, _):
@@ -394,7 +393,7 @@ std_files = ((stdin_file_no, sys.stdin), (stdout_file_no, sys.stdout), (stderr_f
 
 
 try:
-    from back_end.virtual_machine.c.cpu import c_evaluate as evaluate, CPU, Kernel, VirtualMemory
+    from back_end.virtual_machine.c.cpu import c_evaluate as evaluate, CPU, Kernel, VirtualMemory, base_element
 except ImportError as er:
     class Kernel(object):
         def __init__(self, calls=None, open_files=std_files):
@@ -422,5 +421,8 @@ except ImportError as er:
             super(VirtualMemory, self).__init__(default_factory)
 
     evaluate = evaluate
+
+    def base_element(cpu, mem, _):
+        return mem[cpu.base_pointer - 1]
 
     logger.warning('Failed to import C implementations, reverting to Python')

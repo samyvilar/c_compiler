@@ -1,7 +1,7 @@
 __author__ = 'samyvilar'
 
 from test.test_back_end.test_emitter.test_statements.test_compound import TestStatements
-
+from front_end.parser.ast.expressions import ConstantExpression, IntegerType
 
 class TestJump(TestStatements):
     def test_continue(self):
@@ -17,7 +17,8 @@ class TestJump(TestStatements):
         }
         """
         self.evaluate(source)
-        self.assertEqual(int(self.mem[self.cpu.stack_pointer]), 0)
+        # self.assertEqual(int(self.mem[self.cpu.stack_pointer]), 0)
+        self.assert_base_element(ConstantExpression(0, IntegerType()))
 
     def test_break(self):
         source = """
@@ -31,7 +32,8 @@ class TestJump(TestStatements):
         }
         """
         self.evaluate(source)
-        self.assertEqual(self.mem[self.cpu.stack_pointer], 1)
+        self.assert_base_element(ConstantExpression(1, IntegerType()))
+        # self.assertEqual(self.mem[self.cpu.stack_pointer], 1)
 
     def test_nested_continue(self):
         source = """
@@ -50,7 +52,8 @@ class TestJump(TestStatements):
         }
         """
         self.evaluate(source)
-        self.assertEqual(self.mem[self.cpu.stack_pointer], 10)
+        self.assert_base_element(ConstantExpression(10, IntegerType()))
+        # self.assertEqual(self.mem[self.cpu.stack_pointer], 10)
 
 
 class TestGoto(TestStatements):
@@ -64,7 +67,8 @@ class TestGoto(TestStatements):
         }
         """
         self.evaluate(source)
-        self.assertEqual(int(self.mem[self.cpu.stack_pointer]), 1)
+        self.assert_base_element(ConstantExpression(1, IntegerType()))
+        # self.assertEqual(int(self.mem[self.cpu.stack_pointer]), 1)
 
     def test_goto_into_nested(self):
         source = """
@@ -82,7 +86,8 @@ class TestGoto(TestStatements):
         }
         """
         self.evaluate(source)
-        self.assertEqual(int(self.mem[self.cpu.stack_pointer]), 0)
+        self.assert_base_element(ConstantExpression(0, IntegerType()))
+        # self.assertEqual(int(self.mem[self.cpu.stack_pointer]), 0)
 
     def test_goto_out_of_nested(self):
         source = """
@@ -102,4 +107,5 @@ class TestGoto(TestStatements):
         }
         """
         self.evaluate(source)
-        self.assertEqual(int(self.mem[self.cpu.stack_pointer]), 1)
+        self.assert_base_element(ConstantExpression(1, IntegerType()))
+        # self.assertEqual(int(self.mem[self.cpu.stack_pointer]), 1)

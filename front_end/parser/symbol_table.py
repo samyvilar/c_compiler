@@ -26,7 +26,7 @@ class SymbolTable(object):
         # declaration if any.
 
         if isinstance(value, Declaration) and key in self:
-             # either function definition, definition or declaration.
+            # either function definition, definition or declaration or constant_expression(for enums) ...
             # check for consistency.
             if isinstance(self[key], Declaration) and declaration(self[key]) == declaration(value):
                 if type(self[key]) is Declaration:  # if previous is declaration pop it and insert new either def or dec
@@ -35,9 +35,7 @@ class SymbolTable(object):
                 raise ValueError('{l} inconsistent def/dec with previous at {a}'.format(l=loc(value), a=loc(self[key])))
 
         if key in self:
-            raise ValueError('{l} Duplicate Symbol {s} previous at {at}'.format(
-                l=loc(key), s=key, at=loc(self[key])
-            ))
+            raise ValueError('{l} Duplicate Symbol {s} previous at {at}'.format(l=loc(key), s=key, at=loc(self[key])))
         self.stack[-1][key] = value
 
     def __getitem__(self, item):  # search all frames.
@@ -66,7 +64,7 @@ class SymbolTable(object):
     def pop(self, key):
         return self.stack[-1].pop(key)
 
-    def itervalues(self):
+    def itervalues(self):  # iterates over current frame ...
         return self.stack[-1].itervalues()
 
 

@@ -1,6 +1,7 @@
 __author__ = 'samyvilar'
 
-from sequences import peek, consume
+from utils.rules import rules
+from utils.sequences import peek, consume
 from front_end.loader.locations import loc
 from front_end.tokenizer.parser import get_line
 from front_end.tokenizer.tokens import TOKENS, IDENTIFIER, KEYWORD
@@ -134,7 +135,7 @@ def if_not_def_block(token_seq, macros, preprocess, include_dirs):
 
 
 def if_block(token_seq, macros, preprocess, include_dirs):
-    for token in if_block.rules[peek(token_seq)](token_seq, macros, preprocess, include_dirs):
+    for token in rules(if_block)[peek(token_seq)](token_seq, macros, preprocess, include_dirs):
         yield token
     _ = error_if_not_value(token_seq, TOKENS.PENDIF)
 if_block.rules = {

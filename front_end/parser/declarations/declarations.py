@@ -3,7 +3,7 @@ __author__ = 'samyvilar'
 from types import NoneType
 from itertools import starmap, product, chain, repeat
 
-from sequences import peek, consume, flatten, takewhile
+from utils.sequences import peek, consume, flatten, takewhile
 from logging_config import logging
 from front_end.loader.locations import loc, EOFLocation
 from front_end.tokenizer.tokens import TOKENS

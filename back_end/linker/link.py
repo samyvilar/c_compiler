@@ -16,7 +16,7 @@ from back_end.emitter.c_types import size
 
 from front_end.parser.types import void_pointer_type
 
-from back_end.virtual_machine.instructions.architecture import halt, Byte, Double, Instruction
+from back_end.virtual_machine.instructions.architecture import halt, Byte, Double, Instruction, referenced_obj
 from back_end.virtual_machine.instructions.architecture import Address, Offset, operns, RelativeJump, Integer
 
 from back_end.emitter.declarations.declaration import declaration
@@ -44,9 +44,9 @@ def static(instrs, symbol_table=None, libraries=()):
     symbol_table = SymbolTable() if symbol_table is None else symbol_table
     references = {}
     for instr in instrs:
-        for o in operns(instr):
-            if isinstance(getattr(o, 'obj', None), Reference):
-                references[o.obj.name] = o
+        for o in operns(instr, ()):
+            if isinstance(referenced_obj(o, None), Reference):
+                references[referenced_obj(o).name] = o
         yield instr
 
     for ref_name in ifilterfalse(lambda n, table=symbol_table: n in table, references.iterkeys()):
@@ -157,8 +157,8 @@ def resolve(instrs, symbol_table):
     # resolve all references ... replace Address(obj=Reference(symbol_name)) by Address(obj=instr)
     references = []
     for instr in instrs:
-        for o in operns(instr):
-            if isinstance(getattr(o, 'obj', None), Reference):
+        for o in operns(instr, ()):
+            if isinstance(referenced_obj(o, None), Reference):
                 references.append(o)
         yield instr
 
@@ -189,7 +189,7 @@ def set_addresses(instrs, addresses=None):  # assign addresses ...
         if type(instr) is Address and type(instr.obj) not in {int, long}:
             references.append((instr, instr, None))
 
-        for operand_index, o in enumerate(operns(instr)):
+        for operand_index, o in enumerate(operns(instr, ())):
             if isinstance(o, (Address, Offset)) and type(o.obj) not in {int, long}:
                 references.append((instr, o, operand_index))
 
@@ -209,13 +209,14 @@ def set_addresses(instrs, addresses=None):  # assign addresses ...
 
     for instr, operand, operand_index in references:
         if isinstance(operand, Offset):
-            operand.obj = operand.obj.address - (instr.address + (2 * word_size
-                                                                  if isinstance(instr, RelativeJump) else 0))
+            operand.obj = operand.obj.address - (
+                instr.address + (2 * word_size if isinstance(instr, RelativeJump) else 0)
+            )
         else:
             operand.obj = operand.obj.address
 
         # Update instruction operand ...
         if isinstance(instr, Instruction):
-            instr[operand_index] = Address(operand.obj, loc(operand))
+            instr[operand_index] = operand.__class__(operand.obj, loc(operand))
 
 

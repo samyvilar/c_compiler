@@ -1,7 +1,7 @@
 __author__ = 'samyvilar'
 
 from itertools import izip_longest
-from sequences import peek, consume
+from utils.sequences import peek, consume
 from front_end.loader.locations import loc, EOFLocation
 from front_end.tokenizer.tokens import TOKENS, IDENTIFIER
 
@@ -19,7 +19,7 @@ from front_end.errors import error_if_not_type, error_if_not_value
 def subscript_oper(tokens, symbol_table, primary_exp, expression_func):
     location, _ = loc(consume(tokens)), error_if_not_type(c_type(primary_exp), PointerType)
     exp = expression_func(tokens, symbol_table)
-    # array subscripts must be of Integral Type.
+    # subscript exprs must be of Integral Type.
     _, _ = error_if_not_value(tokens, TOKENS.RIGHT_BRACKET), error_if_not_type(c_type(exp), IntegralType)
     return ArraySubscriptingExpression(primary_exp, exp, c_type(c_type(primary_exp))(location), location)
 
@@ -85,7 +85,9 @@ def dot_oper(tokens, symbol_table, primary_exp, expression_func):
     location, _ = loc(consume(tokens)), error_if_not_type(c_type(primary_exp), StructType)
     member = error_if_not_type(consume(tokens, EOFLocation), IDENTIFIER)
     if member not in c_type(primary_exp):
-        raise ValueError('{l} struct does not contain member {member}'.format(member=member, l=loc(member)))
+        raise ValueError('{l} {t} does not contain member {member}'.format(
+            t=c_type(c_type(primary_exp)), member=member, l=loc(member)
+        ))
     return ElementSelectionExpression(
         primary_exp, member, c_type(c_type(primary_exp).members[member])(loc(member)), loc(member)
     )

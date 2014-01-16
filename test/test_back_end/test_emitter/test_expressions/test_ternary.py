@@ -1,6 +1,7 @@
 __author__ = 'samyvilar'
 
 from test.test_back_end.test_emitter.test_statements.test_compound import TestStatements
+from front_end.parser.ast.expressions import ConstantExpression, IntegerType
 
 
 class TestTernary(TestStatements):
@@ -13,7 +14,7 @@ class TestTernary(TestStatements):
         }
         '''
         self.evaluate(code)
-        self.assertEqual(self.mem[self.cpu.stack_pointer], 0)
+        self.assert_base_element(ConstantExpression(0, IntegerType()))
 
     def test_ternary_false(self):
         code = '''
@@ -25,4 +26,4 @@ class TestTernary(TestStatements):
         }
         '''
         self.evaluate(code)
-        self.assertEqual(self.mem[self.cpu.stack_pointer], 1)
+        self.assert_base_element(ConstantExpression(1, IntegerType()))

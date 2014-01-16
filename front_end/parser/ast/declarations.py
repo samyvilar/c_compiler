@@ -2,6 +2,7 @@ __author__ = 'samyvilar'
 
 from front_end.loader.locations import loc, LocationNotSet
 
+from utils import get_attribute_func
 from front_end.parser.types import CType, c_type, safe_type_coercion
 from front_end.parser.ast.general import Node, EmptyNode
 from front_end.parser.ast.expressions import ConstantExpression, TypedNode
@@ -126,12 +127,5 @@ class AbstractDeclarator(TypedNode):
         raise TypeError
 
 
-__required__ = object()
-
-
-def name(obj, argument=__required__):
-    return getattr(obj, 'name') if argument is __required__ else getattr(obj, 'name', argument)
-
-
-def initialization(obj, argument=__required__):
-    return getattr(obj, 'initialization') if argument is __required__ else getattr(obj, 'initialization', argument)
+name = get_attribute_func('name')
+initialization = get_attribute_func('initialization')

@@ -1,11 +1,12 @@
 __author__ = 'samyvilar'
 
+
 from itertools import chain, imap, izip_longest
 from collections import Iterable, deque
 
-__iterators__ = {}
+from utils import __required__
 
-__required__ = object()
+__iterators__ = {}
 terminal = object()
 
 
@@ -39,7 +40,7 @@ def exhaust(iterator):
 
 def takewhile(func, value_stream):
     value_stream = iter(value_stream)
-    func = func or (lambda _: True)
+    func = func or (lambda _: _)
     while func(peek(value_stream)):
         yield consume(value_stream)
 
@@ -70,7 +71,7 @@ def permute_case(s, index=0):
     )) or (s and (s, s.upper())) or (s,)
 
 
-default_last_object = object()
+default_last_object = __required__
 
 
 def all_but_last(values, assert_last=default_last_object, location=''):
@@ -80,4 +81,4 @@ def all_but_last(values, assert_last=default_last_object, location=''):
         temp = v
 
     if assert_last is not default_last_object and not isinstance(temp, assert_last):
-        raise ValueError('{l}Expected but got {g}'.format(l=location + ' ', g=temp))
+        raise ValueError('{l} Expected but got {g}'.format(l=location, g=temp))

@@ -4,11 +4,11 @@ import inspect
 
 from collections import defaultdict
 from itertools import chain, imap, izip, repeat, ifilter, starmap
-from sequences import takewhile, peek, consume
+from utils.sequences import takewhile, peek, consume, __required__
 from back_end.emitter.object_file import Reference
 import back_end.virtual_machine.instructions.architecture as Architecture
-from back_end.virtual_machine.instructions.architecture import operns, Allocate, Pass, Address, Offset, Operand
-from back_end.virtual_machine.instructions.architecture import Instruction
+from back_end.virtual_machine.instructions.architecture import operns, opern, Allocate, Pass, Operand
+from back_end.virtual_machine.instructions.architecture import Instruction, referenced_obj
 from back_end.virtual_machine.instructions.architecture import Pop, Push, LoadRegister, Dup, copy_instruction as copy_i
 from front_end.loader.locations import loc
 
@@ -30,8 +30,8 @@ def replace_instr(old_instr, new_instr):
         raise ValueError('We are replacing an old instruction {i} with {n} twice!'.format(i=old_instr, n=new_instr))
 
     if id(old_instr) in set(imap(id, new_instructions.itervalues())):
-        # replacing new_instruction again so we need to update previous references
-        # to this new instruction instead of the old one ...
+        # replacing new_instruction again so we need to update previous references with
+        # this new instruction instead of the old one ...
         # get all the instructions that where referencing the older instruction ...
         for orig, prev_new_instr in ifilter(
                 lambda item: id(item[1]) == id(old_instr),
@@ -39,8 +39,6 @@ def replace_instr(old_instr, new_instr):
         ):
             new_instructions[orig] = new_instr
         removed_instrs.append(old_instr)
-
-        #raise ValueError('We are replacing a new instruction {i} twice new: {n}'.format(i=old_instr, n=new_instr))
 
     elif id(old_instr) != id(new_instr):
         new_instructions[id(old_instr)] = new_instr
@@ -52,8 +50,8 @@ def copy_instruction(current_instr):
 
     # check if the new instruction is referencing a symbol ...
     for new_operand, old_operand in izip(
-            ifilter(lambda o: isinstance(getattr(o, 'obj', None), Reference), operns(new_instr)),
-            ifilter(lambda o: isinstance(getattr(o, 'obj', None), Reference), operns(current_instr))
+            ifilter(lambda o: isinstance(referenced_obj(o, None), Reference), operns(new_instr, ())),
+            ifilter(lambda o: isinstance(referenced_obj(o, None), Reference), operns(current_instr, ()))
     ):
         if id(new_operand) != id(old_operand):
             new_references[id(new_operand)] = old_operand
@@ -61,17 +59,14 @@ def copy_instruction(current_instr):
     return new_instr
 
 
-__omitted__ = object()
-
-
-def get_new_instr(addr_operand, default=__omitted__):
-    if isinstance(getattr(addr_operand, 'obj', None), Reference) and id(addr_operand) in new_references:
+def get_new_instr(addr_operand, default=__required__):
+    if isinstance(referenced_obj(addr_operand, None), Reference) and id(addr_operand) in new_references:
         # replace Reference by instruction
         default = addr_operand.obj = new_references[id(addr_operand)].obj
         assert not isinstance(new_references[id(addr_operand)].obj, Reference)
 
     new_instr = new_instructions.get(id(addr_operand.obj), default)
-    if new_instr is __omitted__:
+    if new_instr is __required__:
         raise ValueError('No entry for instruction {i}'.format(i=addr_operand.obj))
     return new_instr
 
@@ -84,18 +79,18 @@ def allocation(instrs):
         replace allocate 1 with POP, which only requires a single address translation vs 2 (instr, oprn) for allocate.
     """
     allocations = tuple(takewhile(
-        lambda instr: isinstance(instr, Allocate) and isinstance(operns(instr)[0], (int, long)),
+        lambda instr: isinstance(instr, Allocate) and isinstance(opern(instr), (int, long)),
         instrs
     ))
 
     if not allocations:  # Operand must be non-primitive type (Address) ... must wait for its value.
         yield consume(instrs)
     else:
-        total = sum(imap(lambda instr: int(operns(instr)[0]), allocations))
+        total = sum(imap(long, imap(opern, allocations)))
 
         if total:  # non-zero allocates changes the state of the stack.
             if len(allocations) == 1:  # if single allocation, replace with faster Pop if removing single value
-                new_instr = Pop(loc(allocations[0])) if operns(allocations[0])[0] == 1 else allocations[0]
+                new_instr = Pop(loc(allocations[0])) if opern(allocations[0]) == 1 else allocations[0]
             else:
                 new_instr = Allocate(loc(allocations[0]), total)
             for alloc_instr in allocations:
@@ -145,7 +140,7 @@ first_level_optimizations.update(chain(
         (Pass, remove_pass)
     ),
     izip(
-        ifilter(
+        ifilter(  # Get all classes that load a value on to the stack ...
             lambda obj: inspect.isclass(obj) and issubclass(obj, (Push, LoadRegister)),
             starmap(getattr, izip(repeat(Architecture), dir(Architecture)))
         ),
@@ -157,8 +152,8 @@ first_level_optimizations.update(chain(
 def update_instruction_references(instrs):
     references = []
     for instr in instrs:
-        for index, operand in enumerate(operns(instr)):
-            if isinstance(operand, (Address, Offset)) and isinstance(operand.obj, (Operand, Reference, Instruction)):
+        for index, operand in enumerate(operns(instr, ())):
+            if isinstance(referenced_obj(operand, None), (Operand, Reference, Instruction)):
                 references.append(operand)
         yield instr
 
@@ -176,9 +171,6 @@ def optimize(instrs, rules=zero_level_optimizations):
 
     return update_instruction_references(
         chain.from_iterable(
-            imap(
-                lambda i: rules[type(i)](instrs),
-                _peek(instrs)
-            )
+            imap(lambda i: rules[type(i)](instrs), _peek(instrs))
         )
     )

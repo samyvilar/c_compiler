@@ -12,7 +12,7 @@ except ImportError as e:
 
 from itertools import chain, izip, starmap, repeat
 
-from sequences import peek, takewhile
+from utils.sequences import peek, takewhile
 
 from front_end.loader.locations import loc, Location, EOFLocation
 import front_end.loader.load as loader

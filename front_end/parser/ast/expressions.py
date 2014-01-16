@@ -2,6 +2,7 @@ __author__ = 'samyvilar'
 
 from itertools import izip
 
+from utils import get_attribute_func
 from front_end.loader.locations import loc, LocationNotSet
 from front_end.tokenizer.tokens import TOKENS
 
@@ -36,7 +37,7 @@ class TypedNode(Node):
 
 class Expression(TypedNode):
     def __eq__(self, other):
-        return all((super(Expression, self).__eq__(other), lvalue(self) == lvalue(other)))
+        return all((super(Expression, self).__eq__(other), lvalue(self, False) == lvalue(other, False)))
 
 
 class ExpressionNode(Expression):
@@ -105,7 +106,7 @@ class FalseExpression(ConstantExpression):
 
 class IdentifierExpression(ExpressionNode):
     def __init__(self, name, ctype, location=LocationNotSet):
-        self.name, self.lvalue = name, lvalue(ctype)
+        self.name, self.lvalue = name, lvalue(ctype, False)
         super(IdentifierExpression, self).__init__(name, ctype, location)
 
 
@@ -181,13 +182,13 @@ class PrefixExpression(UnaryExpression):
 
 class DereferenceExpression(PrefixExpression):
     def __init__(self, exp, ctype, location=LocationNotSet):
-        self.lvalue = lvalue(ctype)
+        self.lvalue = lvalue(ctype, False)
         super(DereferenceExpression, self).__init__(TOKENS.STAR, exp, ctype, location)
 
 
 class ArraySubscriptingExpression(PostfixExpression):
     def __init__(self, primary_exp, subscript_expression, ctype, location=LocationNotSet):
-        self.lvalue = lvalue(ctype)
+        self.lvalue = lvalue(ctype, False)
         super(ArraySubscriptingExpression, self).__init__(
             primary_exp,
             TOKENS.LEFT_BRACKET + TOKENS.RIGHT_BRACKET,
@@ -213,7 +214,7 @@ class FunctionCallExpression(PostfixExpression):
 
 class ElementSelection(PostfixExpression):
     def __init__(self, primary_exp, oper, member, ctype, location=LocationNotSet):
-        self.lvalue = lvalue(ctype)
+        self.lvalue = lvalue(ctype, False)
         super(ElementSelection, self).__init__(primary_exp, oper, member, ctype, location)
 
 
@@ -279,21 +280,8 @@ class PostfixDecrementExpression(DecrementExpression):
     pass
 
 
-def oper(exp):
-    return getattr(exp, 'oper')
-
-
-def exp(exp):
-    return getattr(exp, 'exp')
-
-
-def lvalue(exp):
-    return getattr(exp, 'lvalue', False)
-
-
-def right_exp(exp):
-    return getattr(exp, 'right_exp')
-
-
-def left_exp(exp):
-    return getattr(exp, 'left_exp')
+oper = get_attribute_func('oper')
+exp = get_attribute_func('exp')
+lvalue = get_attribute_func('lvalue')
+right_exp = get_attribute_func('right_exp')
+left_exp = get_attribute_func('left_exp')

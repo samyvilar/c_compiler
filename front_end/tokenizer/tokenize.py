@@ -1,7 +1,7 @@
 __author__ = 'samyvilar'
 
 from itertools import ifilterfalse
-from sequences import peek
+from utils.sequences import peek
 from front_end.tokenizer.parser import get_directives
 from front_end.tokenizer.tokens import IGNORE
 

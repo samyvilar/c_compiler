@@ -1,34 +1,25 @@
 __author__ = 'samyvilar'
 
 from itertools import chain, izip, repeat
-
-from sequences import peek, takewhile
-
 from types import NoneType
 
+from utils.sequences import peek, takewhile
 from back_end.emitter.stack_state import Stack
-
 from front_end.loader.locations import loc
-
 import front_end.parser.ast.declarations as declarations
 import front_end.parser.ast.statements as statements
 import front_end.parser.ast.expressions as expressions
 from front_end.parser.types import c_type, FunctionType, VoidType
 from front_end.parser.symbol_table import SymbolTable, push, pop
-
-
 from back_end.emitter.statements.iteration import iteration_statement
 from back_end.emitter.statements.jump import jump_statement, label_statement
 from back_end.emitter.statements.selection import selection_statement
 from back_end.emitter.expressions.expression import expression
 from back_end.emitter.expressions.cast import cast
-
 from back_end.emitter.stack_state import stack_allocation
 from back_end.virtual_machine.instructions.architecture import allocate, Pass, Address, relative_jump, Byte, Offset
 from back_end.virtual_machine.instructions.architecture import push as push_instr
-
 from back_end.emitter.c_types import size, binaries, bind_load_address_func
-
 from back_end.emitter.object_file import Data, Code
 
 

@@ -1,7 +1,7 @@
 __author__ = 'samyvilar'
 
 from back_end.virtual_machine.instructions.architecture import ids
-from back_end.virtual_machine.instructions.architecture import Not, ConvertToInteger, ConvertToFloat
+from back_end.virtual_machine.instructions.architecture import Not, ConvertTo, ConvertToFloatFrom
 from back_end.virtual_machine.legacy.instructions.stack import __pop, _push
 
 
@@ -21,6 +21,6 @@ def unary_instrs(instr, cpu, mem):
     _push(unary_instrs.rules[instr](__pop(instr, cpu, mem), cpu, mem), cpu, mem)
 unary_instrs.rules = {
     ids[Not]: _not,
-    ids[ConvertToFloat]: _convert_to_float,
-    ids[ConvertToInteger]: _convert_to_int,
+    ids[ConvertToFloatFrom]: _convert_to_float,
+    ids[ConvertTo]: _convert_to_int,
 }

@@ -1,22 +1,18 @@
 __author__ = 'samyvilar'
 
 import os
-
-from sequences import peek, consume, takewhile
 from collections import defaultdict
 from itertools import chain
 
+from utils.sequences import peek, consume, takewhile
 from front_end.preprocessor import logger
 from front_end.preprocessor.conditional import if_block
-
 from front_end.loader.load import load
 from front_end.tokenizer.tokenize import tokenize
 from front_end.tokenizer.parser import get_line
 from front_end.tokenizer.tokens import TOKENS, STRING, IDENTIFIER, IGNORE, KEYWORD
-
 from front_end.loader.locations import loc, EOFLocation
 from front_end.preprocessor.macros import ObjectMacro, FunctionMacro
-
 from front_end.errors import error_if_not_type, error_if_not_value, error_if_not_empty
 
 

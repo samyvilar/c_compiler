@@ -4,7 +4,7 @@ from itertools import chain, imap
 
 from front_end.loader.locations import loc, LocationNotSet
 
-from sequences import reverse, all_but_last
+from utils.sequences import reverse, all_but_last
 
 from front_end.parser.ast.declarations import name
 from front_end.parser.ast.expressions import PostfixIncrementExpression, PostfixDecrementExpression, left_exp, right_exp
@@ -18,13 +18,11 @@ from back_end.virtual_machine.instructions.architecture import Address, add, set
 from back_end.virtual_machine.instructions.architecture import Pass, multiply, is_load, Load, Offset
 from back_end.virtual_machine.instructions.architecture import set_base_stack_pointer, allocate, relative_jump
 from back_end.virtual_machine.instructions.architecture import absolute_jump, push
-from back_end.virtual_machine.instructions.architecture import set_base_stack_pointer, set_stack_pointer
+from back_end.virtual_machine.instructions.architecture import set_stack_pointer
 from back_end.virtual_machine.instructions.architecture import load_base_stack_pointer
 from back_end.emitter.c_types import size, size_extended, struct_member_offset, function_operand_type_sizes
 
 from back_end.virtual_machine.instructions.architecture import postfix_update
-
-default_last_object = object()
 
 
 def inc_dec(expr, symbol_table, expression_func):
@@ -76,16 +74,14 @@ def push_frame(
         omit_pointer_for_return_value=False,
 ):
     return chain(
-        load_base_stack_pointer(location),
-
+        load_base_stack_pointer(location),  # save previous base stack pointer ...
         arguments_instrs,
-
         # Pointer to where to store return values, if applicable (ie non-zero return size)...
         () if omit_pointer_for_return_value else
         add(
-            # calculate pointer for ret value, excluding previous pointers ...
+            # calculate pointer for ret value, excluding base pointer ...
             load_stack_pointer(location),
-            push((total_size_of_arguments + (2 * size(void_pointer_type))), location),
+            push((total_size_of_arguments + size(void_pointer_type)), location),
             location
         )
     )
@@ -95,7 +91,9 @@ def pop_frame(location=LocationNotSet, total_size_of_arguments=0, omit_pointer_f
     # return pop_frame_instr(location)  # method 1 requires special instruction that has to manage blocks
 
     # method 2 (5 instructions LoadBaseStackPtr, Push, Add, SetStackPtr, SetBaseStackPtr)
-    # method 2 seems to be faster even though it has an extra instruction compare to method 3, not really sure why ...
+    # method 2 seems to be faster even though it has an extra instruction compare to method 3,
+    # not really sure why ... probably because the optimizer is removing some of them
+
     return set_base_stack_pointer(
         set_stack_pointer(
             add(
@@ -155,7 +153,7 @@ def function_call(expr, symbol_table, expression_func):
         allocate(function_operand_type_sizes(c_type(expr)), l),
         push_frame(
             # Push arguments in reverse order (right to left) ...
-            chain.from_iterable(reverse(expression_func(a, symbol_table, expression_func) for a in right_exp(expr))),
+            chain.from_iterable(reverse(expression_func(e, symbol_table, expression_func) for e in right_exp(expr))),
             location=l,
             total_size_of_arguments=total_size_of_arguments,
             omit_pointer_for_return_value=omit_pointer_for_return_value
@@ -244,7 +242,6 @@ def element_section_pointer(expr, symbol_table, expression_func):
         loc(expr),
         load_instrs=expression_func(left_exp(expr), symbol_table, expression_func)
     )
-
 
 
 def postfix_expression(expr, symbol_table, expression_func):

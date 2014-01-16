@@ -1,6 +1,7 @@
 __author__ = 'samyvilar'
 
 from front_end.parser.ast.declarations import Extern
+from utils import get_attribute_func
 
 
 class Symbol(object):
@@ -25,10 +26,9 @@ class Reference(object):
     def __init__(self, symbol_name):
         self.name = symbol_name
 
+binaries = get_attribute_func('binaries')
+size = get_attribute_func('size')
 
-def binaries(symbol):
-    return getattr(symbol, 'binaries')
 
-
-def size(symbol):
-    return getattr(symbol, 'size')
+def is_reference(obj):
+    return isinstance(obj, Reference)

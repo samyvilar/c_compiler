@@ -5,8 +5,6 @@
 #include "kernel.h"
 #include "sys_call_ids.h"
 
-#define bit(index) (((word_type)1 << index))
-
 #define NUMBER_OF_FILE_NODES_PER_BLOCK 256
 
 file_node_type
@@ -21,8 +19,8 @@ word_type available_file_nodes = NUMBER_OF_FILE_NODES_PER_BLOCK;
         (_dest_ptr = recycled), (recycled = _next_obj(recycled));   \
     else if (_available)                                            \
         _dest_ptr = (_block + --_available);                        \
-    else                                                           \
-    {                                                              \
+    else                                                            \
+    {                                                               \
         _block = malloc(_quantity * sizeof(*_dest_ptr));            \
         _available = _quantity - 1;                                 \
         _dest_ptr = (_block + _available);                          \
@@ -37,20 +35,20 @@ word_type available_file_nodes = NUMBER_OF_FILE_NODES_PER_BLOCK;
         _files = next_file_node(_files);                    \
 }
 
-// decomment if planning to use ...
+// de-comment if planning to use ...
 //const word_type _instr_sizes_[256] = {INSTRUCTION_SIZES};
 //const char *_instr_names_[256] = {INSTRUCTION_NAMES};
 
 INLINE_FUNC_SIGNATURE(evaluate)
 {
     register word_type
-        *_stack_pointer = (word_type *)stack_pointer(cpu),
-        *_instr_pointer = (word_type *)instr_pointer(cpu),
-        *_base_pointer = (word_type *)base_pointer(cpu);
+        _stack_pointer = stack_pointer(cpu),
+        _base_pointer = base_pointer(cpu),
+        _instr_pointer = instr_pointer(cpu);
 
     word_type
-        *_initial_stack_pointer = _stack_pointer,
-        *_initial_base_pointer = _base_pointer;
+        _initial_stack_pointer = _stack_pointer,
+        _initial_base_pointer = _base_pointer;
     
     register word_type _flags = flags(cpu);
     
@@ -74,17 +72,18 @@ INLINE_FUNC_SIGNATURE(evaluate)
 
     FILE *file;
     
-    #define pop(sp) *++sp
-    #define push(sp, value) *sp-- = value
-        
-    #define peek(sp) *(sp + 1)
-    #define update(sp, value) peek(sp) = value
-        
-    #define instr_operand(ip) *ip++
+    #define PTR_UPDATE_MAGNITUDE WORD_SIZE
+    #define INCREMENT_POINTER(ptr) (ptr += PTR_UPDATE_MAGNITUDE)
+    #define DECREMENT_POINTER(ptr) (ptr -= PTR_UPDATE_MAGNITUDE)
     
-    #define BINARY_OPERATION(_o_) ((++_stack_pointer), (peek(_stack_pointer) _o_##= *_stack_pointer))
+    #define pop(sp) (*(word_type *)INCREMENT_POINTER(sp))
+    #define push(sp, value) ((*(word_type *)sp = value), DECREMENT_POINTER(sp))
         
-    #define FLOATING_BINARY_OPERATION(_o_) ((++_stack_pointer), (*(float_type *)(_stack_pointer + 1) _o_##= *(float_type *)_stack_pointer))
+    #define peek(sp) (*(word_type *)((word_type)sp + WORD_SIZE))
+    #define update(sp, value) peek(sp) = value
+    
+    #define BINARY_OPERATION(_o_) ((INCREMENT_POINTER(_stack_pointer)), (peek(_stack_pointer) _o_##= *(word_type *)_stack_pointer))
+    #define FLOATING_BINARY_OPERATION(_o_) (INCREMENT_POINTER(_stack_pointer), (*(float_type *)(_stack_pointer + WORD_SIZE) _o_##= *(float_type *)_stack_pointer))
     
     #define update_cpu(cpu)                                         \
         set_base_pointer(cpu, (word_type)_base_pointer);            \
@@ -101,18 +100,24 @@ INLINE_FUNC_SIGNATURE(evaluate)
         #pragma clang diagnostic pop
     #endif
     
-    #define done() evaluate_instr(offsets, *_instr_pointer++)
+    #define done() evaluate_instr(offsets, pop(_instr_pointer))
+    #define instr_operand pop
 
-    evaluate_instr(offsets, *_instr_pointer++);
+    evaluate_instr(offsets, *(word_type *)_instr_pointer); // start execution ...
     
-    get_label(PASS): done();
+    get_label(PASS):
+        done();
     
     get_label(PUSH):
         push(_stack_pointer, instr_operand(_instr_pointer));
         done();
     
+    get_label(POP):
+        INCREMENT_POINTER(_stack_pointer);
+        done();
+
     #define LOAD_REGISTER(reg) push(_stack_pointer, (word_type)reg)
-    #define SET_REGISTER(reg) reg = (word_type *)pop(_stack_pointer)
+    #define SET_REGISTER(reg) reg = pop(_stack_pointer)
     
     get_label(LOAD_STACK_POINTER):
         // The standard does not dictate which operand (during a binary expression) is first evaluated only the end result is guaranteed
@@ -131,8 +136,8 @@ INLINE_FUNC_SIGNATURE(evaluate)
         #endif
     
         #if defined(__GNUC__) && !defined(__clang__) && !defined(__INTEL_COMPILER)
-            *_stack_pointer = (word_type)_stack_pointer;
-            --_stack_pointer;
+            *(word_type *)_stack_pointer = (word_type)_stack_pointer;
+            DECREMENT_POINTER(_stack_pointer);
         #else
             push(_stack_pointer, (word_type)_stack_pointer);
         #endif
@@ -144,21 +149,27 @@ INLINE_FUNC_SIGNATURE(evaluate)
         done();
     
     get_label(SET_STACK_POINTER):
-        _stack_pointer = (word_type *)*(_stack_pointer + 1);        
+        _stack_pointer = *(word_type *)((word_type)_stack_pointer + WORD_SIZE);
         done();
     
     get_label(ALLOCATE):
         _stack_pointer += instr_operand(_instr_pointer);
         done();
-    
-    
+
     #define number_of_elements operand_1
     #define source_addr temp
     #define dest_addr operand_0
     get_label(DUP):
         number_of_elements = instr_operand(_instr_pointer);
-        source_addr = _stack_pointer + number_of_elements; // src
+        source_addr = (word_type *)_stack_pointer + number_of_elements; // src
         while (number_of_elements--) push(_stack_pointer, *source_addr--);
+        done();
+    
+    get_label(SWAP):
+        number_of_elements = instr_operand(_instr_pointer);
+        source_addr = (word_type *)_stack_pointer + number_of_elements; // offset
+        dest_addr = source_addr + number_of_elements; // other values ...
+        while (number_of_elements--) (operand_2 = *dest_addr), (*dest_addr-- = *source_addr), (*source_addr-- = operand_2);
         done();
     
     get_label(LOAD):
@@ -167,40 +178,23 @@ INLINE_FUNC_SIGNATURE(evaluate)
         while (number_of_elements--) push(_stack_pointer, *--source_addr);
         done();
     
-    get_label(POP):
-        ++_stack_pointer;
-        done();
-    
     get_label(SET):
         number_of_elements = instr_operand(_instr_pointer);
         dest_addr = (word_type *)pop(_stack_pointer);
-        source_addr = _stack_pointer;
-        while (number_of_elements--) *dest_addr++ = pop(source_addr);
+        source_addr = (word_type *)_stack_pointer;
+        while (number_of_elements--) *dest_addr++ = *++source_addr;
         done();
     
     get_label(POSTFIX_UPDATE):
-        #define update_value number_of_elements
-        update_value = instr_operand(_instr_pointer);  // get update value
-        source_addr = (word_type *)pop(_stack_pointer);
-        push(_stack_pointer, *source_addr);
-        *source_addr += update_value;
-        #undef update_value
+        update(
+            _stack_pointer, // replace address with value ...
+            *(word_type *)(source_addr = (word_type *)peek(_stack_pointer))  // copy address for update ...
+        );
+        *source_addr += instr_operand(_instr_pointer); // update value ..
         done();
-    
-    get_label(SWAP):
-        number_of_elements = instr_operand(_instr_pointer);
-        source_addr = _stack_pointer + number_of_elements; // offset
-        dest_addr = source_addr + number_of_elements; // other values ...
-        while (number_of_elements--)
-        {
-            operand_2 = *dest_addr;
-            *dest_addr-- = *source_addr;
-            *source_addr-- = operand_2;
-        }
-        done();
-        #undef number_of_elements
-        #undef source_addr
-        #undef dest_addr
+    #undef number_of_elements
+    #undef source_addr
+    #undef dest_addr
     
     
     get_label(LOAD_BASE_STACK_POINTER):
@@ -256,30 +250,29 @@ INLINE_FUNC_SIGNATURE(evaluate)
         done();
     
     get_label(COMPARE):
-        #define DEFAULT_CARRY_BORROW_FLAGS (bit(NON_CARRY_BORROW_FLAG_INDEX) | bit(NON_ZERO_NON_CARRY_BORROW_FLAG_INDEX))
-        #define DEFAULT_MOST_SIGNIFICANT_BIT_FLAGS (bit(NON_MOST_SIGNIFICANT_BIT_FLAG_INDEX) | bit(NON_ZERO_NON_MOST_SIGNIFICANT_BIT_FLAG_INDEX))
-        #define ZERO_RELATED_FLAGS (bit(ZERO_CARRY_BORROW_FLAG_INDEX) | bit(ZERO_MOST_SIGNIFICANT_BIT_FLAG_INDEX))
-        #define NON_ZERO_RELATED_FLAGS (bit(NON_ZERO_NON_CARRY_BORROW_FLAG_INDEX) | bit(NON_ZERO_NON_MOST_SIGNIFICANT_BIT_FLAG_INDEX))
+        #define DEFAULT_CARRY_BORROW_FLAGS MASK(NON_CARRY_BORROW_FLAG_INDEX, NON_ZERO_NON_CARRY_BORROW_FLAG_INDEX)
+        #define DEFAULT_MOST_SIGNIFICANT_BIT_FLAGS MASK(NON_MOST_SIGNIFICANT_BIT_FLAG_INDEX, NON_ZERO_NON_MOST_SIGNIFICANT_BIT_FLAG_INDEX)
+        #define ZERO_RELATED_FLAGS MASK(ZERO_CARRY_BORROW_FLAG_INDEX, ZERO_MOST_SIGNIFICANT_BIT_FLAG_INDEX)
+        #define NON_ZERO_RELATED_FLAGS MASK(NON_ZERO_NON_CARRY_BORROW_FLAG_INDEX, NON_ZERO_NON_MOST_SIGNIFICANT_BIT_FLAG_INDEX)
     
-        ++_stack_pointer;
-        operand_2 = ~(word_type)((operand_1 = peek(_stack_pointer) - *_stack_pointer) == 0) + 1;
+        INCREMENT_POINTER(_stack_pointer);
+        operand_2 = ~(word_type)((operand_1 = peek(_stack_pointer) - *(word_type *)_stack_pointer) == 0) + 1; // 0 ==> 0, 1 ==> 0xFFFF...
         _flags = (
-            bit(NON_ZERO_FLAG_INDEX) // assume non-zero
+            MASK(NON_ZERO_FLAG_INDEX) // assume non-zero
             |
             // calculate carry borrow flags, (set non_carry or shift setting carry borrow inverting non-carry-*) ...
-            (DEFAULT_CARRY_BORROW_FLAGS << (*_stack_pointer > peek(_stack_pointer)))
+            (DEFAULT_CARRY_BORROW_FLAGS << (*(word_type *)_stack_pointer > peek(_stack_pointer)))
             |
             // calculate most significant bit flag, (set non_msb or shift setting msb inverting non-msb-*) ...
             (DEFAULT_MOST_SIGNIFICANT_BIT_FLAGS << (word_type)(operand_1 >= MSB_MASK(word_type)))
-        )
-            ^ // calculate Non-Zero-And-* flags ...
-        (operand_2 & NON_ZERO_RELATED_FLAGS);
+        ) ^ (operand_2 & NON_ZERO_RELATED_FLAGS) // calculate Non-Zero-And-* flags ...
+        ;
         // calculate ZERO_FALG, ZERO_OR_CARRY_BORROW_FLAG, ZERO_OR_MOST_SIGNIFICANT_BIT_FLAG
         // in this case we are checking our previous NonZero assumption,
         // if it was wrong adding will invert it, setting the adjacing ZeroFlag
         // or leaves it be if indeed the solution is non-zero ....
-        _flags += (operand_2 & (ZERO_RELATED_FLAGS | bit(NON_ZERO_FLAG_INDEX)));
-        ++_stack_pointer;
+        _flags += (operand_2 & (ZERO_RELATED_FLAGS | MASK(NON_ZERO_FLAG_INDEX)));
+        INCREMENT_POINTER(_stack_pointer);
         done();
     
     get_label(COMPARE_FLOAT):
@@ -289,12 +282,13 @@ INLINE_FUNC_SIGNATURE(evaluate)
         // 0 => 0, 1 => 0xFFFFFFFFF
         operand_1 = ~(word_type)(((float_temp = word_as_float(operand_1) - word_as_float(operand_2))) == 0.0) + 1;
         _flags = (
-                  bit(NON_ZERO_FLAG_INDEX)
-                  |
-                  (DEFAULT_MOST_SIGNIFICANT_BIT_FLAGS << (float_temp < 0.0))  // set msb related flags ...
-                  ) ^ (operand_1 & bit(NON_ZERO_NON_MOST_SIGNIFICANT_BIT_FLAG_INDEX));
+              MASK(NON_ZERO_FLAG_INDEX)
+              |
+              (DEFAULT_MOST_SIGNIFICANT_BIT_FLAGS << (float_temp < 0.0))  // set msb related flags ...
+              ) ^ (operand_1 & MASK(NON_ZERO_NON_MOST_SIGNIFICANT_BIT_FLAG_INDEX))
+        ;
         // NON_CARRY_BORROW_FLAG_INDEX is used to check for >= (it needs to be set if the ZeroFlag is set)
-        _flags += (operand_1 & (ZERO_RELATED_FLAGS | bit(NON_CARRY_BORROW_FLAG_INDEX) | bit(NON_ZERO_FLAG_INDEX)));
+        _flags += (operand_1 & (ZERO_RELATED_FLAGS | MASK(NON_CARRY_BORROW_FLAG_INDEX, NON_ZERO_FLAG_INDEX)));
         done();
     
     get_label(ADD):
@@ -375,55 +369,51 @@ INLINE_FUNC_SIGNATURE(evaluate)
         update(_stack_pointer, ~peek(_stack_pointer));
         done();
     
+    #define _jump(_ip, value, _o_) evaluate_instr(offsets, *(word_type *)(_ip _o_ (value)))
+    #define relative_jump(_ip, magnitude) _jump(_ip, ((magnitude) + WORD_SIZE), +=) // evaluate_instr(offsets, *(word_type *)(_ip += (magnitude) + WORD_SIZE))
+    #define absolute_jump(_ip, addr) _jump(_ip, addr, =)
     get_label(ABSOLUTE_JUMP):
-        _instr_pointer = (word_type *)pop(_stack_pointer);
-        done();
+        absolute_jump(_instr_pointer, pop(_stack_pointer));
     
-    get_label(RELATIVE_JUMP):
-        _instr_pointer += *_instr_pointer + 1;
-        done();
+    get_label(RELATIVE_JUMP): // All jumps now assume that the pointers are numeric types ...
+        relative_jump(_instr_pointer, instr_operand(_instr_pointer));
     
     get_label(JUMP_TRUE):
-        _instr_pointer += ((pop(_stack_pointer) != 0) * *_instr_pointer) + 1;
-        done();
+        relative_jump(_instr_pointer, ((pop(_stack_pointer) != 0) * instr_operand(_instr_pointer)));
 
     get_label(JUMP_FALSE):
-        _instr_pointer += ((pop(_stack_pointer) == 0) * *_instr_pointer) + 1;
-        done();
+        relative_jump(_instr_pointer, ((pop(_stack_pointer) == 0) * instr_operand(_instr_pointer)));
     
     get_label(JUMP_TABLE):  // JumpTable implemeneted as binary search ... (it assumes values are sorted ...)
-        #define ptr_to_values temp
-        #define ptr_to_current_median_value operand_0
-        #define number_of_values_remaining operand_1
-        #define value operand_2
-        #define number_of_values *_instr_pointer
-        #define default_offset *(_instr_pointer - 1)
-        
-        number_of_values_remaining = pop(_instr_pointer);
-        ptr_to_values = (_instr_pointer + 1); // addr 1 to acount for number_of_values operand
+        // With initial operand being the default offset followed by the number of values to comare against ...
+        #define ptr_to_values                   temp
+        #define ptr_to_current_median_value     operand_0
+        #define number_of_values_remaining      operand_1
+        #define value                           operand_2
+        #define default_offset                  operand_3
+        #define number_of_values                (*(word_type *)((word_type)_instr_pointer + WORD_SIZE))
+    
         value = pop(_stack_pointer);
-        
+        default_offset = instr_operand(_instr_pointer);
+        number_of_values_remaining = number_of_values;
+        ptr_to_values = (word_type *)((word_type)_instr_pointer + 2*WORD_SIZE); //  acount for default_offset, number_of_values operand
+    
         while (number_of_values_remaining)
         {
-            // cut the search space in half.
-            ptr_to_current_median_value = ptr_to_values + (number_of_values_remaining >>= 1);
+            ptr_to_current_median_value = ptr_to_values + (number_of_values_remaining >>= 1); // cut the search space in half.
             check_median_value:
                 if (value == *ptr_to_current_median_value)
-                {
-                    _instr_pointer += *(ptr_to_current_median_value + number_of_values);
-                    done();
-                }
+                    relative_jump(_instr_pointer, *(ptr_to_current_median_value + number_of_values));
             
             if ((value > *ptr_to_current_median_value) && number_of_values_remaining)  // the value we are seeking is greater than the median and we still have values to work with ...
             {
-                ptr_to_values = ++ptr_to_current_median_value;  // value must be in greater half, remove the lower half ...
+                ptr_to_values = ++ptr_to_current_median_value;  // value must be in greater half, remove lower half ...
                 if (--number_of_values_remaining) // if we haven't removed all the values continue ...
                     continue ;
                 goto check_median_value; // all values have being removed, check that the current value is the one we are seeking...
             }
         }
-        _instr_pointer += default_offset;
-        done();
+        relative_jump(_instr_pointer, default_offset); // could not locate value use default offset ...
         #undef ptr_to_values
         #undef ptr_to_current_median_value
         #undef value
@@ -431,19 +421,20 @@ INLINE_FUNC_SIGNATURE(evaluate)
         #undef number_of_values_remaining
     
     get_label(SYSTEM_CALL):
-        #define  _return_inline(value, ip, bp)   \
-            ip = (word_type *)*(bp + 1);         \
-            *(word_type *)*(bp + 2) = value
-        #define SYSTEM_CALL_ID(sys_call) ((unsigned char)sys_call)
+        #define  _return_inline(value, ip, bp)                          \
+            **(word_type **)((word_type)bp + 2*WORD_SIZE) = value;    \
+            absolute_jump(ip, *(word_type *)((word_type)bp + WORD_SIZE))
+
+        #define SYSTEM_CALL_ID(sys_call) ((unsigned char)sys_call) // assume we don't have have more than 256 system calls, TODO: check on that assumption ...
         switch ((unsigned char)pop(_stack_pointer))
         {
             default:
-                printf("Invalid System call " WORD_PRINTF_FORMAT "\n", *_stack_pointer);
+                printf("Invalid System call " WORD_PRINTF_FORMAT "\n", *(word_type *)_stack_pointer);
                 goto end;
                 
             case SYSTEM_CALL_ID(SYS_CALL_EXIT):
                 // void exit(int return_value);
-                operand_1 = *(_base_pointer + 2);  // get exit status code ...
+                operand_1 = *(word_type *)((word_type)_base_pointer + 2 * WORD_SIZE);  // get exit status code ...
                 // exit has void return type as such it does not have a pointer for a return value,
                 // it just contains the return address ...
                 
@@ -458,8 +449,8 @@ INLINE_FUNC_SIGNATURE(evaluate)
                 // reset stack and base_pointer to their initial values ...
                 _stack_pointer = _initial_stack_pointer;
                 _base_pointer = _initial_base_pointer;
-                *_stack_pointer = operand_1;  // set return value ...
-                goto end; // terminate sequence ...
+                *(word_type *)_stack_pointer = operand_1;  // set return value ...
+                goto end; // stop the machine ...
                 
             case SYSTEM_CALL_ID(SYS_CALL_OPEN):
                 #define file_path_ptr operand_0
@@ -469,10 +460,10 @@ INLINE_FUNC_SIGNATURE(evaluate)
                 #define file_path _str_buffer_0
                 #define file_mode _str_buffer_1
                 
-                _base_pointer += 2; // temporaly pop return address and pointer for return value ...
+                _base_pointer = (word_type)_base_pointer + 2*WORD_SIZE; // temporaly pop return address and pointer for return value ...
                 file_path_ptr = (word_type *)pop(_base_pointer);
                 mode_ptr = (word_type *)pop(_base_pointer);
-                _base_pointer -= 4; // reset it ...
+                _base_pointer = (word_type)_base_pointer - 4*WORD_SIZE; // reset it ...
                 
                 _file_id = (word_type)-1;
                 
@@ -521,11 +512,11 @@ INLINE_FUNC_SIGNATURE(evaluate)
                 #define buffer_ptr temp
                 #define number_of_bytes operand_2
                 
-                _base_pointer += 2;
+                _base_pointer = (word_type)_base_pointer + 2*WORD_SIZE;
                 _file_id = pop(_base_pointer);
                 buffer_ptr = (word_type *)pop(_base_pointer);
                 number_of_bytes = pop(_base_pointer);
-                _base_pointer -= 5;  // reset it ...
+                _base_pointer = (word_type)_base_pointer - 5*WORD_SIZE;  // reset it ...
                 
                 _temp = _opened_files;
                 _file_node_inline(_temp, _file_id);

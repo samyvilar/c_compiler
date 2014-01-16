@@ -1,4 +1,5 @@
 
+# CC = /Users/samyvilar/Developer/gcc_4.7.2/bin/gcc
 CC = gcc
 flags = -Wall -Ofast -mtune=native -march=native
 
@@ -11,14 +12,6 @@ build:
 		$(CC) $(flags) -c -fPIC $(virtual_memory).c $(cpu).c
 		$(CC) -shared -o libvm.so $(cpu).o $(virtual_memory).o
         
-build-clang:
-		clang $(flags) -c -Wno-initializer-overrides -fPIC $(virtual_memory).c $(cpu).c
-		clang -shared -o libvm.so $(cpu).o $(virtual_memory).o
-
-test-clang-cpu: build-clang
-		clang $(flags) test_cpu.c -L. -lvm -o test_cpu
-		time ./test_cpu
-		rm test_cpu
 clean:
 		rm *.o
 		rm libvm.so
@@ -29,6 +22,17 @@ test-cpu:
 		$(CC) $(flags) test_cpu.c -L. -lvm -o test_cpu
 		time ./test_cpu
 		rm test_cpu
+
+
+build-clang:
+		clang $(flags) -c -Wno-initializer-overrides -fPIC $(virtual_memory).c $(cpu).c
+		clang -shared -o libvm.so $(cpu).o $(virtual_memory).o
+
+test-clang-cpu: build-clang
+		clang $(flags) test_cpu.c -L. -lvm -o test_cpu
+		time ./test_cpu
+		rm test_cpu
+
 
 UNAME_S := $(shell uname -s)
 ifeq ($(UNAME_S),Linux)

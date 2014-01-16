@@ -10,11 +10,14 @@ from front_end.parser.ast.expressions import ConstantExpression, exp, CastExpres
 
 from front_end.parser.types import CharType, ShortType, IntegerType, LongType, FloatType, DoubleType, VoidType, EnumType
 from front_end.parser.types import StructType, PointerType, ArrayType, c_type, StringType, VAListType, void_pointer_type
-from front_end.parser.types import UnionType
+from front_end.parser.types import UnionType, integer_type, double_type
 
 from back_end.virtual_machine.instructions.architecture import Integer, Double, Pass, Byte
+from back_end.virtual_machine.instructions.architecture import Half, Quarter, OneEighth, DoubleHalf
 
 from back_end.emitter.cpu import word_size
+
+from utils.rules import rules
 
 
 def struct_size(ctype):
@@ -30,7 +33,7 @@ def array_size(ctype):
 
 
 def numeric_type(ctype):
-    return numeric_type.rules[type(ctype)]
+    return rules(numeric_type)[type(ctype)]
 numeric_type.rules = {  # Virtual Machine is word based, all non-composite types are 1 word, 64 bits.
     CharType: word_size,
     ShortType: word_size,
@@ -46,9 +49,9 @@ numeric_type.rules = {  # Virtual Machine is word based, all non-composite types
 
 
 def machine_types(_type):
-    return machine_types.rules[type(_type)]
+    return rules(machine_types)[type(_type)]
 machine_types.rules = {
-    Integer: numeric_type.rules[IntegerType],
+    Integer: rules(numeric_type)[IntegerType],
     Pass: word_size
 }
 
@@ -56,13 +59,14 @@ machine_types.rules = {
 def size(ctype, overrides=()):
     if type(ctype) in overrides:
         return overrides[type(ctype)]
-    return size.rules[type(ctype)](ctype)
+    return rules(size)[type(ctype)](ctype)
 size.rules = {                          # all non-composite types are 1 word (except for Enum ...), 64 bits.
     StructType: struct_size,
     UnionType: union_size,
     ArrayType: array_size,
     StringType: array_size,
-    VAListType: lambda _: 0
+    VAListType: lambda _: 0,
+    ConstantExpression: lambda cexp: size(c_type(cexp))
 }
 size.rules.update(chain(
     izip(numeric_type.rules, repeat(numeric_type)),
@@ -79,17 +83,28 @@ function_operand_type_sizes = lambda ctype: size(ctype, overrides={
     VoidType: 0
 })
 
+machine_integral_types = {
+    CharType: OneEighth,
+    ShortType: Quarter,
+    IntegerType: Half,
+    LongType: Integer,
+    PointerType: Integer,
+
+    FloatType: DoubleHalf,
+    DoubleType: Double,
+}
+
 
 def integral_const(const_exp):
-    yield Integer(getattr(const_exp, 'exp', 0), loc(const_exp))
+    yield machine_integral_types[type(c_type(const_exp, integer_type))](exp(const_exp, 0), loc(const_exp))
 
 
 def numeric_const(const_exp):
-    yield Double(getattr(const_exp, 'exp', 0.0), loc(const_exp))
+    yield machine_integral_types[type(c_type(const_exp, double_type))](exp(const_exp, 0.0), loc(const_exp))
 
 
 def array_const(const_exp):
-    if isinstance(getattr(const_exp, 'exp', None), Iterable):
+    if isinstance(exp(const_exp, None), Iterable):
         bins = (binaries(value) for value in exp(const_exp))
     elif isinstance(const_exp, EmptyExpression):
         assert isinstance(c_type(const_exp), ArrayType)
@@ -101,7 +116,7 @@ def array_const(const_exp):
 
 
 def struct_const(const_exp):
-    if isinstance(getattr(const_exp, 'exp', None), Iterable):
+    if isinstance(exp(const_exp, None), Iterable):
         bins = (binaries(value) for value in exp(const_exp))
     else:
         assert isinstance(const_exp, StructType)
@@ -110,7 +125,7 @@ def struct_const(const_exp):
 
 
 def union_const(const_exp):
-    if isinstance(getattr(const_exp, 'exp', None), Iterable):
+    if isinstance(exp(const_exp, None), Iterable):
         # initialize union expression add any remaining default values if initializing to a smaller type then largest
         bins = chain(
             (binaries(value) for value in exp(const_exp)),
@@ -132,16 +147,17 @@ def def_binaries(definition):
 
 
 def const_exp_binaries(const_exp):
-    if type(const_exp) in const_exp_binaries.rules:
-        return const_exp_binaries.rules[type(const_exp)](const_exp)
+    if type(const_exp) in rules(const_exp_binaries):
+        return rules(const_exp_binaries)[type(const_exp)](const_exp)
 
-    return const_exp_binaries.rules[type(c_type(const_exp))](const_exp)
+    return rules(const_exp_binaries)[type(c_type(const_exp))](const_exp)
 const_exp_binaries.rules = {
     CharType: integral_const,
     ShortType: integral_const,
     IntegerType: integral_const,
     LongType: integral_const,
     PointerType: integral_const,
+
     FloatType: numeric_const,
     DoubleType: numeric_const,
 
@@ -164,7 +180,7 @@ def compound_literal(expr):
 
 
 def binaries(obj):
-    return binaries.rules[type(obj)](obj)
+    return rules(binaries)[type(obj)](obj)
 binaries.rules = {
     Declaration: dec_binaries,
     Definition: def_binaries,

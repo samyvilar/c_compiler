@@ -47,7 +47,7 @@ def continue_statement(stmnt, symbol_table, stack, *_):
 def return_instrs(location):
     return absolute_jump(
         load_instr(
-            add(load_base_stack_pointer(location), push(size(char_type), location), location),
+            load_base_stack_pointer(location),
             size(void_pointer_type),
             location
         ),
@@ -67,11 +67,7 @@ def return_statement(stmnt, symbol_table, *_):
         cast(expression(exp(stmnt), symbol_table), c_type(exp(stmnt)), return_type, loc(stmnt)),
         set_instr(
             load_instr(
-                add(
-                    load_base_stack_pointer(loc(stmnt)),
-                    push(size(void_pointer_type) + size(char_type), loc(stmnt)),
-                    loc(stmnt)
-                ),
+                add(load_base_stack_pointer(loc(stmnt)), push(size(void_pointer_type), loc(stmnt)), loc(stmnt)),
                 size(void_pointer_type),
                 loc(stmnt)
             ),
@@ -94,20 +90,18 @@ def update_stack(source_stack_pointer, target_stack_pointer, location):
 def goto_statement(stmnt, symbol_table, stack, *_):
     labels, gotos = symbol_table['__ LABELS __'], symbol_table['__ GOTOS __']
 
-    if stmnt.label in labels:  # Label previously defined either in current or previous scope ...
+    if stmnt.label in labels:  # Label previously defined either in current or previous scope ... nothing to do ...
         instr, stack_pointer = labels[stmnt.label]
         instrs = chain(
             update_stack(stack_pointer, stack.stack_pointer, loc(stmnt)),
-            (RelativeJump(loc(stmnt), Offset(instr, loc(stmnt))),)
+            relative_jump(Offset(instr, loc(stmnt)), loc(stmnt))
         )
-    else:  # Label has yet to be defined ...
-        # _load_sp, _push, _add, _set_st = manually_allocate(Address(None, loc(stmnt)))
-        # Allocate negates the amount since it calls add
-        # TODO, update allocate so it doesn't negate but calls slightly slower sub
-
+    else:
+        # Label has yet to be defined ...
         # Basically we need to update the relative jump and the amount to which we need to update the stack ...
-        alloc_instr = Allocate(loc(stmnt), Address(Integer(0), loc(stmnt)))
-        jump_instr = RelativeJump(loc(stmnt), Offset(Integer(0), loc(stmnt)))
+        # TODO: use a better approach, we can't use Address since it'll be translated ...
+        alloc_instr = Allocate(loc(stmnt), Offset(Integer(0), loc(stmnt)))
+        jump_instr = RelativeJump(loc(stmnt), Offset(None, loc(stmnt)))
 
         gotos[stmnt.label].append((alloc_instr, jump_instr, stack.stack_pointer))
         instrs = (alloc_instr, jump_instr)
@@ -124,9 +118,9 @@ def label_statement(stmnt, symbol_table, stack, statement_func):
     # update all previous gotos referring to this lbl
     for alloc_instr, rel_jump_instr, goto_stack_pointer in gotos[name(stmnt)]:
         # TODO: bug! set_address uses obj.address.
-        alloc_instr[0].obj.address = stack.stack_pointer - goto_stack_pointer
+        alloc_instr[0].obj.address = alloc_instr.address + (stack.stack_pointer - goto_stack_pointer)
+
         rel_jump_instr[0].obj = instr
-        # rel_jump_instr[0].obj.address = rel_jump_instr[0].obj
     del gotos[name(stmnt)][:]
 
     return chain((instr,), statement_func(stmnt.statement, symbol_table, stack))

@@ -1,6 +1,7 @@
 __author__ = 'samyvilar'
 
 from test.test_back_end.test_emitter.test_statements.test_compound import TestStatements
+from front_end.parser.ast.expressions import ConstantExpression, IntegerType
 
 
 class TestWhile(TestStatements):
@@ -13,7 +14,7 @@ class TestWhile(TestStatements):
         }
         """
         super(TestWhile, self).evaluate(source)
-        self.assertEqual(int(self.mem[self.cpu.stack_pointer]), 0)
+        self.assert_base_element(ConstantExpression(0, IntegerType()))
 
     def test_true_while_loop(self):
         source = """
@@ -24,7 +25,7 @@ class TestWhile(TestStatements):
         }
         """
         super(TestWhile, self).evaluate(source)
-        self.assertEqual(self.mem[self.cpu.stack_pointer], 10)
+        self.assert_base_element(ConstantExpression(10, IntegerType()))
 
     def test_compound_while_loop(self):
         source = """
@@ -39,7 +40,8 @@ class TestWhile(TestStatements):
         }
         """
         super(TestWhile, self).evaluate(source)
-        self.assertEqual(int(self.mem[self.cpu.stack_pointer]), 10)
+        self.assert_base_element(ConstantExpression(10, IntegerType()))
+        # self.assertEqual(int(self.mem[self.cpu.stack_pointer]), 10)
 
 
 class TestDoWhile(TestStatements):
@@ -53,7 +55,8 @@ class TestDoWhile(TestStatements):
         }
         """
         super(TestDoWhile, self).evaluate(source)
-        self.assertEqual(int(self.mem[self.cpu.stack_pointer]), 10)
+        self.assert_base_element(ConstantExpression(10, IntegerType()))
+        # self.assertEqual(int(self.mem[self.cpu.stack_pointer]), 10)
 
     def test_true_do_while_loop(self):
         source = """
@@ -65,7 +68,8 @@ class TestDoWhile(TestStatements):
         }
         """
         super(TestDoWhile, self).evaluate(source)
-        self.assertEqual(self.mem[self.cpu.stack_pointer], 10)
+        self.assert_base_element(ConstantExpression(10, IntegerType()))
+        # self.assertEqual(self.mem[self.cpu.stack_pointer], 10)
 
     def test_compound_do_while_loop(self):
         source = """
@@ -78,7 +82,8 @@ class TestDoWhile(TestStatements):
         }
         """
         super(TestDoWhile, self).evaluate(source)
-        self.assertEqual(self.mem[self.cpu.stack_pointer], 10)
+        self.assert_base_element(ConstantExpression(10, IntegerType()))
+        # self.assertEqual(self.mem[self.cpu.stack_pointer], 10)
 
 
 class TestFor(TestStatements):
@@ -91,7 +96,8 @@ class TestFor(TestStatements):
         }
         """
         super(TestFor, self).evaluate(source)
-        self.assertEqual(int(self.mem[self.cpu.stack_pointer]), 10)
+        self.assert_base_element(ConstantExpression(10, IntegerType()))
+        # self.assertEqual(int(self.mem[self.cpu.stack_pointer]), 10)
 
     def test_true_for_loop(self):
         source = """
@@ -101,7 +107,8 @@ class TestFor(TestStatements):
         }
         """
         super(TestFor, self).evaluate(source)
-        self.assertEqual(self.mem[self.cpu.stack_pointer], 10)
+        self.assert_base_element(ConstantExpression(10, IntegerType()))
+        # self.assertEqual(self.mem[self.cpu.stack_pointer], 10)
 
     def test_compound_for_loop(self):
         source = """
@@ -115,4 +122,5 @@ class TestFor(TestStatements):
         }
         """
         super(TestFor, self).evaluate(source)
-        self.assertEqual(self.mem[self.cpu.stack_pointer], 0)
+        self.assert_base_element(ConstantExpression(0, IntegerType()))
+        # self.assertEqual(self.mem[self.cpu.stack_pointer], 0)

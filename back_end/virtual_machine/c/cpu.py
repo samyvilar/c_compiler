@@ -4,28 +4,36 @@ __author__ = 'samyvilar'
 import os
 import sys
 
+from itertools import imap
+
 from ctypes import c_ulonglong, c_uint, Structure, POINTER, CDLL, CFUNCTYPE, byref, c_int, c_char_p, c_void_p
-from ctypes import c_float, c_double, cast, sizeof, addressof, pointer
+from ctypes import c_float, c_double, cast, sizeof, addressof, pointer, c_ushort, c_ubyte
 from ctypes import pythonapi, py_object
 from struct import pack, unpack
 
 from back_end.virtual_machine.instructions.architecture import Double, Address, operns
-from back_end.virtual_machine.instructions.architecture import Allocate, Dup, Swap, Load, Set
+from back_end.virtual_machine.instructions.architecture import Allocate, Dup, Swap, Load, Set, Offset
 
 from logging_config import logging
 
 logger = logging.getLogger('virtual_machine')
 
-word_type, word_format = c_ulonglong, 'Q'
-float_type, float_format = c_double, 'd'
-word_size = 8
+sorted_word_types, sorted_float_types = (c_ulonglong, c_uint, c_ushort, c_ubyte), (c_double, c_float)
+word_type, half_word_type, quarter_word_type, one_eighth_word_type = sorted_word_types
+word_format, half_word_format, quarter_word_format, one_eighth_word_format = 'Q', 'I', 'H', 'B'
+word_size, half_word_size, quarter_word_size, one_eighth_word_size = imap(
+    sizeof, (c_ulonglong, c_uint, c_ushort, c_ubyte)
+)
+
+float_type, half_float_type = sorted_float_types
+float_format, half_float_format = 'd', 'f'
 
 
 try:
     libvm = CDLL(os.path.join(os.path.dirname(__file__), 'libvm.so'))
 except OSError as er:
     logger.warning(er)
-    logger.warning("Could not load C virtual machine, please run make or make build-icc at back_end/virtual_machine/c")
+    logger.warning("Could not load C virtual machine, please run `make` or `make build-icc` back_end/virtual_machine/c")
     raise ImportError
 
 
@@ -37,12 +45,6 @@ class CPU(Structure):
                 ('base_pointer', word_type),
                 ('instr_pointer', word_type),
                 ('flags', word_type)]
-
-    def __init__(self):
-        super(CPU, self).__init__()
-        self.stack_pointer = word_type(-1)
-        self.base_pointer = word_type(-1)
-        self.frames = None
 
 
 virtual_memory_type = word_type
@@ -70,13 +72,6 @@ class kernel_type(Structure):
     pass
 FUNC_SIGNATURE = CFUNCTYPE(None, POINTER(CPU), POINTER(virtual_memory_type), POINTER(kernel_type))
 kernel_type._fields_ = [('calls', 256 * POINTER(FUNC_SIGNATURE)), ('opened_files', POINTER(file_node_type))]
-
-# kernel_type *new_kernel(FUNC_SIGNATURE((*sys_calls[256])), file_node_type *opened_files, virtual_memory_type *mem)
-#libvm.new_kernel.argtypes = [POINTER(FUNC_SIGNATURE), POINTER(file_node_type)]
-#libvm.new_kernel.argtypes = [256 * POINTER(FUNC_SIGNATURE), POINTER(file_node_type), POINTER(virtual_memory_type)]
-#libvm.new_kernel.restype = POINTER(kernel_type)
-#libvm.new_file_node.argtypes = [POINTER(virtual_memory_type), word_type, c_void_p, POINTER(file_node_type)]
-#libvm.new_file_node.restype = POINTER(file_node_type)
 
 libvm.fdopen.argtypes = [c_int, c_char_p]
 libvm.fdopen.restype = c_void_p
@@ -114,68 +109,31 @@ class Kernel(object):
                 )
             )
             self.c_kernel_p.contents.opened_files = pointer(self.file_node_objects[-1])
-            # libvm.new_file_node(
-            #     None,
-            #     word_type(file_id),
-            #     PyFile_AsFile(file_obj),
-            #     # libvm.fdopen(c_int(file_obj.fileno()), c_char_p(file_obj.mode)),
-            #     self.c_kernel_p.contents.opened_files
-            # )
-
 libvm.evaluate.argtypes = [POINTER(CPU), POINTER(virtual_memory_type), POINTER(kernel_type)]
-
-# libvm.new_virtual_memory.argtypes = []
-# libvm.new_virtual_memory.restype = POINTER(virtual_memory_type)
-#
-# libvm._set_word_.argtypes = [POINTER(virtual_memory_type), word_type, word_type]
-# libvm._get_word_.argtypes = [POINTER(virtual_memory_type), word_type]
-# libvm._get_word_.restype = word_type
-
-
-# class VirtualMemory(object):
-#     def __init__(self, factory_type=None, c_virtual_memory_pointer=None):
-#         self.factory_type = factory_type or word_type
-#         self.c_vm_p = c_virtual_memory_pointer or libvm.new_virtual_memory()
-#         self.code = {}
-#
-#     def __setitem__(self, key, value):
-#         self.code[key] = value
-#         if isinstance(value, Double):
-#             value = unpack(word_format, pack(float_format, float(value)))[0]
-#         libvm._set_word_(self.c_vm_p, self.factory_type(key), self.factory_type(value))
-#
-#     def __getitem__(self, item):
-#         return libvm._get_word_(self.c_vm_p, self.factory_type(item))
-#
-#
-# def c_evaluate(cpu, mem, os=None):
-#     libvm.evaluate(
-#         byref(cpu),
-#         mem.c_vm_p,
-#         os and os.c_kernel_p or libvm.new_kernel(c_void_p(), c_void_p(), c_void_p())
-#     )
-
-
 libvm.allocate_entire_physical_address_space.argtypes = []
 libvm.allocate_entire_physical_address_space.restype = POINTER(word_type)
 
 
+# Allocate entire virtual memory space so it can be shared across multiple uses ...
 shared_c_physical_memory_pointer = libvm.allocate_entire_physical_address_space()
 
 
 class VirtualMemory(object):
     def __init__(self, factory_type=None, c_physical_memory_pointer=None):
         self.factory_type = factory_type or word_type
-        self.c_vm_p = c_physical_memory_pointer or libvm.allocate_entire_physical_address_space()
+        self.c_vm_p = c_physical_memory_pointer or shared_c_physical_memory_pointer
         self.start_of_physical_addr = cast(self.c_vm_p, c_void_p).value
+
         self.end_of_physical_addr = \
-            self.start_of_physical_addr + ((vm_number_of_addressable_words - 1) * sizeof(self.factory_type))
+            self.start_of_physical_addr + (vm_number_of_addressable_words * sizeof(self.factory_type))
+
         if self.start_of_physical_addr == -1 or self.start_of_physical_addr == 0:
             raise ValueError('{l} Failed to pre-allocate entire virtual address space ...')
-        self.code = {}
-        self.start_of_virtual_addr = vm_number_of_addressable_words
 
-        self.pushed_addresses = {}
+        self.code = {}
+        self.start_of_virtual_addr = 0
+
+        self.addresses = {}
         self.instrs_word_operands = {}
 
     def __setitem__(self, key, value):
@@ -185,13 +143,14 @@ class VirtualMemory(object):
 
         self.code[key] = value  # record instructions in python for debugging purposes ...
         if isinstance(value, Double):
-            value = unpack(word_format, pack(float_format, float(value)))[0]
+            value = unpack(word_format, pack(float_format, float(value)))[0]  # re-interpret floats as machine words ...
 
-        if isinstance(value, (Allocate, Dup, Swap, Load, Set)):  # this machine counts in words ... we need to update
+        if isinstance(value, (Dup, Swap, Load, Set)):  # this instrs count in words ... we need to update ...
             self.instrs_word_operands[key] = value
 
+        # keep track of address since they need to be translated from virtual to phys
         if isinstance(value, Address):
-            self.pushed_addresses[key] = value
+            self.addresses[key] = value
 
         cast(self.start_of_physical_addr + key, POINTER(word_type))[0] = self.factory_type(value)
 
@@ -206,19 +165,21 @@ def c_evaluate(cpu, mem, os=None):
     cpu.instr_pointer = mem.start_of_physical_addr
     cpu.base_pointer = cpu.stack_pointer = mem.end_of_physical_addr
 
-    for v_addr, instr in mem.pushed_addresses.iteritems():  # translate all virtual addresses ...
-        if isinstance(instr, Address):
-            mem[v_addr] = mem.start_of_physical_addr + instr.obj
+    for v_addr, addr in mem.addresses.iteritems():  # translate all virtual addresses ...
+        mem[v_addr] = mem.start_of_physical_addr + addr.obj
 
     for virtual_addr, instr in mem.instrs_word_operands.iteritems():  # update operands since machine will use word
         mem[virtual_addr + word_size] = long(operns(instr)[0])/word_size
 
-    libvm.evaluate(
-        byref(cpu),
-        mem.c_vm_p,
-        (os and os.c_kernel_p) or Kernel().c_kernel_p
-    )
+    if os is None:
+        os = Kernel()
+
+    libvm.evaluate(byref(cpu), mem.c_vm_p, os.c_kernel_p)
 
     cpu.instr_pointer = cpu.instr_pointer
     cpu.base_pointer = cpu.base_pointer
     cpu.stack_pointer = cpu.stack_pointer
+
+
+def base_element(cpu, mem, element_size):
+    return mem[cpu.base_pointer - element_size]

@@ -1,6 +1,7 @@
 __author__ = 'samyvilar'
 
 from test.test_back_end.test_emitter.test_statements.test_compound import TestStatements
+from front_end.parser.ast.expressions import ConstantExpression, IntegerType
 
 
 class TestSelectionStatements(TestStatements):
@@ -13,7 +14,8 @@ class TestSelectionStatements(TestStatements):
         }
         """
         self.evaluate(source)
-        self.assertEqual(int(self.mem[self.cpu.stack_pointer]), 0)
+        self.assert_base_element(ConstantExpression(0, IntegerType()))
+        # self.assertEqual(int(self.mem[self.cpu.stack_pointer]), 0)
 
     def test_else_statement(self):
         source = """
@@ -26,7 +28,8 @@ class TestSelectionStatements(TestStatements):
         }
         """
         self.evaluate(source)
-        self.assertEqual(int(self.mem[self.cpu.stack_pointer]), 0)
+        self.assert_base_element(ConstantExpression(0, IntegerType()))
+        # self.assertEqual(int(self.mem[self.cpu.stack_pointer]), 0)
 
     def test_else_if_statement(self):
         source = """
@@ -41,7 +44,8 @@ class TestSelectionStatements(TestStatements):
         }
         """
         self.evaluate(source)
-        self.assertEqual(int(self.mem[self.cpu.stack_pointer]), 1)
+        self.assert_base_element(ConstantExpression(1, IntegerType()))
+        # self.assertEqual(int(self.mem[self.cpu.stack_pointer]), 1)
 
     def test_switch_statement(self):
         source = """
@@ -72,7 +76,8 @@ class TestSelectionStatements(TestStatements):
         }
         """
         self.evaluate(source)
-        self.assertEqual(int(self.mem[self.cpu.stack_pointer]), 12)
+        self.assert_base_element(ConstantExpression(12, IntegerType()))
+        # self.assertEqual(int(self.mem[self.cpu.stack_pointer]), 12)
 
     def test_switch_statement_declarations(self):
         code = """
@@ -115,7 +120,8 @@ class TestSelectionStatements(TestStatements):
         }
         """
         self.evaluate(code)
-        self.assertEqual(int(self.mem[self.cpu.stack_pointer]), 46)
+        self.assert_base_element(ConstantExpression(46, IntegerType()))
+        # self.assertEqual(int(self.mem[self.cpu.stack_pointer]), 46)
 
     def test_nested_switch_statement(self):
         code = """
@@ -140,5 +146,6 @@ class TestSelectionStatements(TestStatements):
         }
         """
         self.evaluate(code)
-        self.assertEqual(int(self.mem[self.cpu.stack_pointer]), 9)
+        self.assert_base_element(ConstantExpression(9, IntegerType()))
+        # self.assertEqual(int(self.mem[self.cpu.stack_pointer]), 9)
 

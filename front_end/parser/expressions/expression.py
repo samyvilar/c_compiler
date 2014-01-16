@@ -3,7 +3,7 @@ __author__ = 'samyvilar'
 from collections import defaultdict
 from itertools import product, imap, chain, izip, repeat
 
-from sequences import peek, consume
+from utils.sequences import peek, consume
 from front_end.loader.locations import loc, EOFLocation
 from front_end.tokenizer.tokens import TOKENS, IDENTIFIER, CONSTANT, CHAR, INTEGER, FLOAT, STRING, HEXADECIMAL, OCTAL
 from front_end.tokenizer.tokens import long_long_suffix, long_suffix, unsigned_suffix, suffix
@@ -265,7 +265,7 @@ def primary_expression(tokens, symbol_table):   #: IDENTIFIER | constant | '(' e
         _ = error_if_not_value(tokens, TOKENS.RIGHT_PARENTHESIS)
         return exp
 
-    raise ValueError('{l} Could not parse primary_expression, expected IDENTIFIER, CONSTANT, ( got {token}'.format(
+    raise ValueError('{l} Could not parse primary_expression, expected IDENTIFIER, CONSTANT, `(` got {token}'.format(
         l=loc(peek(tokens, EOFLocation)), token=peek(tokens, '')
     ))
 
@@ -327,15 +327,17 @@ def unary_expression(tokens, symbol_table):
         return unary_expression.rules[peek(tokens)](tokens, symbol_table, exp_func)
 
     return postfix_expression(tokens, symbol_table)
-unary_expression.rules = defaultdict(lambda: unary.no_rule_found)
-unary_expression.rules.update(chain(
-    izip(unary.unary_operator.rules, repeat(unary.unary_operator)),
-    (
-        (TOKENS.PLUS_PLUS, unary.increment_decrement),
-        (TOKENS.MINUS_MINUS, unary.increment_decrement),
-        (TOKENS.SIZEOF, unary.size_of),
+unary_expression.rules = defaultdict(
+    lambda: unary.no_rule_found,
+    chain(
+        izip(unary.unary_operator.rules, repeat(unary.unary_operator)),
+        (
+            (TOKENS.PLUS_PLUS, unary.increment_decrement),
+            (TOKENS.MINUS_MINUS, unary.increment_decrement),
+            (TOKENS.SIZEOF, unary.size_of),
+        )
     )
-))
+)
 
 
 @reduce_expression

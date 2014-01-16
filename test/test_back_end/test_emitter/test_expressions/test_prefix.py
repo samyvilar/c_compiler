@@ -1,6 +1,8 @@
 __author__ = 'samyvilar'
 
 from test.test_back_end.test_emitter.test_statements.test_compound import TestStatements
+from front_end.parser.ast.expressions import ConstantExpression
+from front_end.parser.types import IntegerType
 
 
 class TestPrefix(TestStatements):
@@ -13,7 +15,7 @@ class TestPrefix(TestStatements):
         }
         """
         self.evaluate(source)
-        self.assertEqual(int(self.mem[self.cpu.stack_pointer]), 0)
+        self.assert_base_element(ConstantExpression(0, IntegerType()))
 
     def test_decrement(self):
         source = """
@@ -24,7 +26,7 @@ class TestPrefix(TestStatements):
         }
         """
         self.evaluate(source)
-        self.assertEqual(int(self.mem[self.cpu.stack_pointer]), 0)
+        self.assert_base_element(ConstantExpression(0, IntegerType()))
 
     def test_address_of(self):
         source = """
@@ -35,7 +37,7 @@ class TestPrefix(TestStatements):
         }
         """
         self.evaluate(source)
-        self.assertEqual(int(self.mem[self.cpu.stack_pointer]), 0)
+        self.assert_base_element(ConstantExpression(0, IntegerType()))
 
     def test_dereference(self):
         source = """
@@ -46,7 +48,7 @@ class TestPrefix(TestStatements):
         }
         """
         self.evaluate(source)
-        self.assertEqual(int(self.mem[self.cpu.stack_pointer]), 9)
+        self.assert_base_element(ConstantExpression(9, IntegerType()))
 
     def test_minus(self):
         source = """
@@ -56,7 +58,7 @@ class TestPrefix(TestStatements):
         }
         """
         self.evaluate(source)
-        self.assertEqual(int(self.mem[self.cpu.stack_pointer]), 10)
+        self.assert_base_element(ConstantExpression(10, IntegerType()))
 
     def test_plus(self):
         source = """
@@ -66,7 +68,7 @@ class TestPrefix(TestStatements):
         }
         """
         self.evaluate(source)
-        self.assertEqual(int(self.mem[self.cpu.stack_pointer]), 10)
+        self.assert_base_element(ConstantExpression(10, IntegerType()))
 
     def test_not(self):
         source = """
@@ -76,7 +78,7 @@ class TestPrefix(TestStatements):
         }
         """
         self.evaluate(source)
-        self.assertEqual(self.mem[self.cpu.stack_pointer], 0)
+        self.assert_base_element(ConstantExpression(0, IntegerType()))
 
     def test_bitwise_not(self):
         source = """
@@ -86,4 +88,4 @@ class TestPrefix(TestStatements):
         }
         """
         self.evaluate(source)
-        self.assertEqual(self.mem[self.cpu.stack_pointer], 9)
+        self.assert_base_element(ConstantExpression(9, IntegerType()))

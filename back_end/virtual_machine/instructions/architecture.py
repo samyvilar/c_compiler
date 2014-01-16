@@ -1,19 +1,16 @@
 __author__ = 'samyvilar'
 
 from types import NoneType
-
-from collections import defaultdict
 from itertools import izip, chain, ifilter, imap
 
 from math import log
 
 from front_end.loader.locations import LocationNotSet, loc
+from utils import get_attribute_func
 
-ids = defaultdict()
-
-
-def operns(obj):
-    return getattr(obj, 'operands', ())
+ids = {}
+operns = get_attribute_func('operands')
+opern = lambda instr: operns(instr)[0]
 
 
 class Instruction(object):  # No operand instruction.
@@ -51,8 +48,6 @@ class Operand(object):
     def __iter__(self):
         yield self
 
-
-class Integer(Operand):
     def __int__(self):
         return int(self.value)
 
@@ -60,13 +55,29 @@ class Integer(Operand):
         return long(self.value)
 
     def __str__(self):
-        return 'Integer ' + str(self.value)
+        return self.__class__.__name__ + ' ' + str(self.value)
 
     def __float__(self):
         return float(self.value)
 
 
-Byte = Integer
+class Integer(Operand):
+    pass
+
+
+class Half(Operand):
+    pass
+
+
+class Quarter(Operand):
+    pass
+
+
+class OneEighth(Operand):
+    pass
+
+
+Byte = OneEighth
 
 
 class Reference(Integer):
@@ -81,6 +92,9 @@ class Reference(Integer):
         return self.__class__.__name__ + ' ' + str(self.obj)
 
 
+referenced_obj = get_attribute_func('obj')
+
+
 class Address(Reference):  # Address is a special operand since it can take other instructions or labels as operands
     pass
 
@@ -90,17 +104,11 @@ class Offset(Reference):  # similar to Address but mainly used for relative jump
 
 
 class Double(Operand):
-    def __float__(self):
-        return float(self.value)
+    pass
 
-    def __long__(self):
-        return long(self.value)
 
-    def __int__(self):
-        return int(self.value)
-
-    def __str__(self):
-        return 'Double ' + str(self.value)
+class DoubleHalf(Operand):
+    pass
 
 
 class WideInstruction(Instruction):  # Instruction with a single operand
@@ -161,11 +169,31 @@ class Add(Associative):
     pass
 
 
+class AddHalf(Associative):
+    pass
+
+
+class AddQuarter(Associative):
+    pass
+
+
+class AddOneEighth(Associative):
+    pass
+
+
 class Subtract(Binary):
     pass
 
 
-class Compare(Binary):
+class SubtractHalf(Binary):
+    pass
+
+
+class SubtractQuarter(Binary):
+    pass
+
+
+class SubtractOneEighth(Binary):
     pass
 
 
@@ -173,11 +201,63 @@ class Multiply(Associative):
     pass
 
 
+class MultiplyHalf(Associative):
+    pass
+
+
+class MultiplyQuarter(Associative):
+    pass
+
+
+class MultiplyOneEighth(Associative):
+    pass
+
+
 class Divide(Binary):
     pass
 
 
+class DivideHalf(Binary):
+    pass
+
+
+class DivideQuarter(Binary):
+    pass
+
+
+class DivideOneEight(Binary):
+    pass
+
+
+class Compare(Binary):
+    pass
+
+
+class CompareHalf(Binary):
+    pass
+
+
+class CompareQuarter(Binary):
+    pass
+
+
+class CompareOneEighth(Binary):
+    pass
+
+
 class Mod(Binary):
+    pass
+
+
+class ModHalf(Binary):
+    pass
+
+
+class ModQuarter(Binary):
+    pass
+
+
+class ModOneEighth(Binary):
     pass
 
 
@@ -189,7 +269,31 @@ class ShiftLeft(BitWise, Binary):
     pass
 
 
+class ShiftLeftHalf(BitWise, Binary):
+    pass
+
+
+class ShiftLeftQuarter(BitWise, Binary):
+    pass
+
+
+class ShiftLeftOneEighth(BitWise, Binary):
+    pass
+
+
 class ShiftRight(BitWise, Binary):
+    pass
+
+
+class ShiftRightHalf(BitWise, Binary):
+    pass
+
+
+class ShiftRightQuarter(BitWise, Binary):
+    pass
+
+
+class ShiftRightOneEighth(BitWise, Binary):
     pass
 
 
@@ -197,11 +301,47 @@ class Or(BitWise, Associative):
     pass
 
 
+class OrHalf(BitWise, Associative):
+    pass
+
+
+class OrQuarter(BitWise, Associative):
+    pass
+
+
+class OrOneEighth(BitWise, Associative):
+    pass
+
+
 class Xor(BitWise, Associative):
     pass
 
 
+class XorHalf(BitWise, Associative):
+    pass
+
+
+class XorQuarter(BitWise, Associative):
+    pass
+
+
+class XorOneEighth(BitWise, Associative):
+    pass
+
+
 class And(BitWise, Associative):
+    pass
+
+
+class AndHalf(BitWise, Associative):
+    pass
+
+
+class AndQuarter(BitWise, Associative):
+    pass
+
+
+class AndOneEighth(BitWise, Associative):
     pass
 
 
@@ -213,6 +353,18 @@ class Not(BitWise, Unary):
     pass
 
 
+class NotHalf(BitWise, Unary):
+    pass
+
+
+class NotQuarter(BitWise, Unary):
+    pass
+
+
+class NotOneEighth(BitWise, Unary):
+    pass
+
+
 class NumericBinary(Numeric):
     pass
 
@@ -221,11 +373,15 @@ class AddFloat(NumericBinary):
     pass
 
 
+class AddFloatHalf(NumericBinary):
+    pass
+
+
 class SubtractFloat(NumericBinary):
     pass
 
 
-class CompareFloat(NumericBinary):
+class SubtractFloatHalf(NumericBinary):
     pass
 
 
@@ -233,7 +389,23 @@ class MultiplyFloat(NumericBinary):
     pass
 
 
+class MultiplyFloatHalf(NumericBinary):
+    pass
+
+
 class DivideFloat(NumericBinary):
+    pass
+
+
+class DivideFloatHalf(NumericBinary):
+    pass
+
+
+class CompareFloat(NumericBinary):
+    pass
+
+
+class CompareFloatHalf(NumericBinary):
     pass
 
 
@@ -253,7 +425,31 @@ class JumpFalse(RelativeJump):
     pass
 
 
+class JumpFalseHalf(RelativeJump):
+    pass
+
+
+class JumpFalseQuarter(RelativeJump):
+    pass
+
+
+class JumpFalseOneEighth(RelativeJump):
+    pass
+
+
 class JumpTrue(RelativeJump):
+    pass
+
+
+class JumpTrueHalf(RelativeJump):
+    pass
+
+
+class JumpTrueQuarter(RelativeJump):
+    pass
+
+
+class JumpTrueOneEighth(RelativeJump):
     pass
 
 
@@ -295,6 +491,18 @@ class JumpTable(RelativeJump, VariableLengthInstruction):
             self.operands[key] = value
         else:
             self.cases[self.key_indices[key]] = value
+
+
+class JumpTableHalf(JumpTable):
+    pass
+
+
+class JumpTableQuarter(JumpTable):
+    pass
+
+
+class JumpTableOneEighth(JumpTable):
+    pass
 
 
 class LoadRegister(Instruction):
@@ -391,7 +599,31 @@ class Push(WideInstruction):
     pass
 
 
+class PushHalf(WideInstruction):
+    pass
+
+
+class PushQuarter(WideInstruction):
+    pass
+
+
+class PushOneEighth(WideInstruction):
+    pass
+
+
 class Pop(Instruction):
+    pass
+
+
+class PopHalf(Instruction):
+    pass
+
+
+class PopQuarter(Instruction):
+    pass
+
+
+class PopOneEighth(Instruction):
     pass
 
 
@@ -417,7 +649,19 @@ class PostfixUpdate(WideInstruction):
     pass
 
 
-class ConvertToFloat(Instruction):
+class ConvertToFloatFrom(Instruction):
+    pass
+
+
+class ConvertToFloatFromHalf(Instruction):
+    pass
+
+
+class ConvertToFloatFromQuarter(Instruction):
+    pass
+
+
+class ConvertToFloatFromOneEighth(Instruction):
     pass
 
 
@@ -425,7 +669,95 @@ class ConvertToFloatFromUnsigned(Instruction):
     pass
 
 
-class ConvertToInteger(Instruction):
+class ConvertToFloatFromUnsignedHalf(Instruction):
+    pass
+
+
+class ConvertToFloatFromUnsignedQuarter(Instruction):
+    pass
+
+
+class ConvertToFloatFromUnsignedOneEighth(Instruction):
+    pass
+
+
+class ConvertTo(Instruction):  # from float to Integer
+    pass
+
+
+class ConvertToFromHalf(Instruction):  # (half, quarter, one_eighth) => Integer
+    pass
+
+
+class ConvertToFromQuarter(Instruction):
+    pass
+
+
+class ConvertToFromOneEighth(Instruction):
+    pass
+
+
+class ConvertToHalfFrom(Instruction):  # Integer => (half, quarter, one_eighth)
+    pass
+
+
+class ConvertToQuarterFrom(Instruction):
+    pass
+
+
+class ConvertToOneEighthFrom(Instruction):
+    pass
+
+
+class ConvertToQuarterFromHalf(Instruction):  # half => (quarter, one_eighth)
+    pass
+
+
+class ConvertToOneEighthFromHalf(Instruction):
+    pass
+
+
+class ConvertToHalfFromQuarter(Instruction):  # quarter => (half, one_eighth)
+    pass
+
+
+class ConvertToOneEighthFromQuarter(Instruction):
+    pass
+
+
+class ConvertToQuarterFromOneEighth(Instruction):  # one_eighth => (quarter, half)
+    pass
+
+
+class ConvertToHalfFromOneEighth(Instruction):
+    pass
+
+
+class ConvertToFromHalfDouble(Instruction):
+    pass
+
+
+class ConvertToHalf(Instruction):
+    pass
+
+
+class ConvertToHalfFromHalfDouble(Instruction):
+    pass
+
+
+class ConvertToQuarter(Instruction):
+    pass
+
+
+class ConvertToQuarterFromHalfDouble(Instruction):
+    pass
+
+
+class ConvertToOneEighth(Instruction):
+    pass
+
+
+class ConvertToOneEighthFromHalfDouble(Instruction):
     pass
 
 
@@ -437,106 +769,167 @@ class SystemCall(Instruction):
     pass
 
 
-class Call(WideInstruction):
-    pass
-
-
-class Return(WideInstruction):
-    pass
-
-
 ids.update({
-    Halt: 255,
+    Push:                                   2,
+    Load:                                   3,
+    PostfixUpdate:                          4,
+    Dup:                                    5,
+    Swap:                                   6,
+    LoadBaseStackPointer:                   7,
+    LoadStackPointer:                       8,
+    Allocate:                               9,
+    Compare:                                10,
+    Add:                                    11,
+    Multiply:                               12,
+    Mod:                                    13,
+    ShiftLeft:                              14,
+    Or:                                     15,
+    Xor:                                    16,
+    Not:                                    17,
+    AddFloat:                               18,
+    MultiplyFloat:                          19,
+    AbsoluteJump:                           20,
+    JumpFalse:                              21,
+    JumpTable:                              22,
+    ConvertToFloatFrom:                     23,
+    ConvertToFloatFromUnsigned:             24,
+    RelativeJump:                           25,
+    LoadZeroFlag:                           30,   # ==
+    LoadCarryBorrowFlag:                    31,  # <, unsigned
+    LoadMostSignificantBitFlag:             32,  # < signed
+    LoadNonZeroNonCarryBorrowFlag:          33,  # > unsigned
+    LoadNonZeroNonMostSignificantBitFlag:   34,  # > signed
 
-    Push: 2,
-    Pop: 254,
-    Load: 3,
-    Set: 252,
+    AddHalf:                                35,
+    AddQuarter:                             36,
+    AddOneEighth:                           37,
 
-    PostfixUpdate: 4,
+    SubtractHalf:                           38,
+    SubtractQuarter:                        39,
+    SubtractOneEighth:                      40,
 
-    Dup: 5,
-    Swap: 6,
+    MultiplyHalf:                           41,
+    MultiplyQuarter:                        42,
+    MultiplyOneEighth:                      43,
 
-    LoadBaseStackPointer: 7,
-    SetBaseStackPointer: 249,
-    LoadStackPointer: 8,
-    SetStackPointer: 248,
+    DivideHalf:                             44,
+    DivideQuarter:                          45,
+    DivideOneEight:                         46,
 
-    LoadInstructionPointer: 246,
+    ModHalf:                                47,
+    ModQuarter:                             48,
+    ModOneEighth:                           49,
 
-    Allocate: 9,
+    Pass:                                   50,
 
-    Compare: 10,
-    CompareFloat: 243,
+    OrHalf:                                 51,
+    OrQuarter:                              52,
+    OrOneEighth:                            53,
 
-    Add: 11,
-    Subtract: 245,
+    XorHalf:                                54,
+    XorQuarter:                             55,
+    XorOneEighth:                           56,
+
+    AndHalf:                                57,
+    AndQuarter:                             58,
+    AndOneEighth:                           59,
+
+    NotHalf:                                60,
+    NotQuarter:                             61,
+    NotOneEighth:                           62,
+
+    PushHalf:                               63,
+    PushQuarter:                            64,
+    PushOneEighth:                          65,
+
+    PopHalf:                                66,
+    PopQuarter:                             67,
+    PopOneEighth:                           68,
+
+    ConvertToFloatFromHalf:                 69,
+    ConvertToFloatFromQuarter:              70,
+    ConvertToFloatFromOneEighth:            71,
+    ConvertToFloatFromUnsignedHalf:         72,
+    ConvertToFloatFromUnsignedQuarter:      73,
+    ConvertToFloatFromUnsignedOneEighth:    74,
+
+    ConvertToFromHalfDouble:                75,
+    ConvertToHalf:                          76,
+    ConvertToHalfFromHalfDouble:            77,
+    ConvertToQuarter:                       78,
+    ConvertToQuarterFromHalfDouble:         79,
+    ConvertToOneEighth:                     80,
+    ConvertToOneEighthFromHalfDouble:       81,
+
+    CompareHalf:                            82,
+    CompareQuarter:                         83,
+    CompareOneEighth:                       84,
+    CompareFloatHalf:                       85,
+
+    ConvertToFromHalf:                      86,  # (half, quarter, one_eighth) => Integer
+    ConvertToFromQuarter:                   87,
+    ConvertToFromOneEighth:                 88,
+    ConvertToHalfFrom:                      89,  # Integer => (half, quarter, one_eighth)
+    ConvertToQuarterFrom:                   90,
+    ConvertToOneEighthFrom:                 91,
+    ConvertToQuarterFromHalf:               92,  # half => (quarter, one_eighth)
+    ConvertToOneEighthFromHalf:             93,
+    ConvertToHalfFromQuarter:               94,  # quarter => (half, one_eighth)
+    ConvertToOneEighthFromQuarter:          95,
+    ConvertToHalfFromOneEighth:             96,  # one_eighth => (half, quarter)
+    ConvertToQuarterFromOneEighth:          97,
+
+    ShiftLeftHalf:                          98,
+    ShiftLeftQuarter:                       99,
+    ShiftLeftOneEighth:                     100,
+    ShiftRightHalf:                         101,
+    ShiftRightQuarter:                      102,
+    ShiftRightOneEighth:                    103,
+
+    JumpTrueHalf:                           104,
+    JumpTrueQuarter:                        105,
+    JumpTrueOneEighth:                      106,
+    JumpFalseHalf:                          107,
+    JumpFalseQuarter:                       108,
+    JumpFalseOneEighth:                     109,
+    JumpTableHalf:                          110,
+    JumpTableQuarter:                       111,
+    JumpTableOneEighth:                     112,
+
+    DivideFloatHalf:                        124,
+    MultiplyFloatHalf:                      125,
+    SubtractFloatHalf:                      126,
+    AddFloatHalf:                           127,
 
 
-    Multiply: 12,
-    Divide: 244,
-
-    Mod: 13,
-
-    ShiftLeft: 14,
-    ShiftRight: 242,
-
-    Or: 15,
-    And: 241,
-    Xor: 16,
-    Not: 17,
-
-    AddFloat: 18,
-    SubtractFloat: 238,
-    MultiplyFloat: 19,
-    DivideFloat: 237,
-
-    AbsoluteJump: 20,
-    JumpFalse: 21,
-    JumpTrue: 235,
-    JumpTable: 22,
-    RelativeJump: 25,
-
-    ConvertToFloat: 23,
-    ConvertToFloatFromUnsigned: 24,
-    ConvertToInteger: 233,
-
-    LoadZeroFlag: 30,   # ==
-
-    LoadCarryBorrowFlag: 31,  # <, unsigned
-    LoadMostSignificantBitFlag: 32,  # < signed
-    LoadNonZeroNonCarryBorrowFlag: 33,  # > unsigned
-    LoadNonZeroNonMostSignificantBitFlag: 34,  # > signed
 
 
-    LoadZeroMostSignificantBitFlag: 222,  # signed <=
-    LoadZeroCarryBorrowFlag: 223,  # unsigned <=
-
-    LoadNonCarryBorrowFlag: 225,  # unsigned >=
-    LoadNonMostSignificantBitFlag: 224,  # signed >=
-
-    LoadNonZeroFlag: 226,   # !=
-
-    Pass: 50,
-
-    Call: 127,
-    Return: 129,
-
-    SystemCall: 128,
+    SystemCall:                             221,
+    LoadZeroMostSignificantBitFlag:         222,  # signed <=
+    LoadZeroCarryBorrowFlag:                223,  # unsigned <=
+    LoadNonMostSignificantBitFlag:          224,  # signed >=
+    LoadNonCarryBorrowFlag:                 225,  # unsigned >=
+    LoadNonZeroFlag:                        226,   # !=
+    ConvertTo:                              233,
+    JumpTrue:                               235,
+    DivideFloat:                            237,
+    SubtractFloat:                          238,
+    And:                                    241,
+    ShiftRight:                             242,
+    CompareFloat:                           243,
+    Divide:                                 244,
+    Subtract:                               245,
+    LoadInstructionPointer:                 246,
+    SetStackPointer:                        248,
+    SetBaseStackPointer:                    249,
+    Set:                                    252,
+    Pop:                                    254,
+    Halt:                                   255,
 })
 
 
 def postfix_update(addr, amount, location):
     return chain(addr, (PostfixUpdate(location, amount),))
-
-
-def call(address, location):
-    yield Call(location, address)
-
-
-def ret(return_size, location):
-    yield Return(location, return_size)
 
 
 def load_instruction_pointer(location):
@@ -642,7 +1035,7 @@ class instruction(Instruction):  # represents an instruction iterator ...
 
 class push_constant(single_iteration):
     def __init__(self, value, location):
-        assert isinstance(value, (int, long, float, Integer, Double))  # safe guard against bad API call ..
+        assert isinstance(value, (int, long, float, Integer, Double))  # safe guard against bad API call ...
         self.value = value
         self.location = location
 
@@ -692,7 +1085,7 @@ class arithmetic_operator(instruction):
     def __iter__(self):
         if all(imap(is_immediate_push, self.operands)) and hasattr(self, 'operator'):
             opern = self.operands[0]
-            assert len(set(imap(type, self.operands))) == 1  # safe-guard against mixing types ...
+            assert len(set(imap(type, self.operands))) == 1  # safe guard against mixing types ...
             return iter(
                 push(
                     self.func(  # apply python operator on operands converted to python types ...
@@ -705,6 +1098,13 @@ class arithmetic_operator(instruction):
             )
 
         return chain(chain.from_iterable(self.operands), (self.instr_type(self.location),))
+
+
+class unary(arithmetic_operator, Unary):
+    func = staticmethod(lambda oper, operands: oper(next(iter(operands))))
+
+    def __init__(self, operand, location):
+        super(unary, self).__init__(operand, location=location)
 
 
 class binary(arithmetic_operator, Binary):
@@ -726,10 +1126,6 @@ class binary(arithmetic_operator, Binary):
     @right_operand.setter
     def right_operand(self, value):
         self.operands = (self.left_operand, value)
-
-
-def operand_location(instr):
-    return operns(instr)[0], loc(instr)
 
 
 class identity(binary):
@@ -790,7 +1186,6 @@ class right_identity(identity):
         if is_immediate_push(self.right_operand) and \
            get_immediate_pushed_value(self.right_operand) == self.identity_value:
                 return iter(self.left_operand)
-
         return super(right_identity, self).__iter__()
 
 
@@ -837,6 +1232,32 @@ class one_identity(left_one_identity, right_one_identity):
     pass
 
 
+class convert_to_right_shift(binary):
+    def __iter__(self):
+        if is_immediate_push(self.right_operand):
+            operand, l = get_immediate_pushed_value(self.right_operand), loc(self.right_operand)
+            if operand and not ((operand - 1) & operand):
+                return iter(shift_right(self.left_operand, push(push_integral.core_type(log(operand, 2)), l), l))
+        return super(convert_to_right_shift, self).__iter__()
+
+
+class convert_to_left_shift(binary):  # converts constant multiplication to faster left shifts ...
+    def __iter__(self):
+        assert isinstance(self, Associative)  # safe-guard against non-associative instructions (-, /)
+        if is_immediate_push(self.right_operand):
+            operand, l = get_immediate_pushed_value(self.right_operand), loc(self.right_operand)
+            if operand and not ((operand - 1) & operand):  # is operand a non-zero power of 2
+                return iter(shift_left(self.left_operand, push(push_integral.core_type(log(operand, 2)), l), l))
+
+        if is_immediate_push(self.left_operand):
+            operand, l = get_immediate_pushed_value(self.left_operand), loc(self.left_operand)
+            if operand and not((operand - 1) & operand):
+                return iter(shift_left(self.right_operand, push(push_integral.core_type(log(operand, 2)), l), l))
+            self.left_operand = push(operand, l)
+
+        return super(convert_to_left_shift, self).__iter__()
+
+
 class add(single_iteration, zero_identity, associative, Add):
     operator = '__add__'
 
@@ -853,26 +1274,6 @@ class subtract_float(single_iteration, right_zero_identity, SubtractFloat):
     operator = '__sub__'
 
 
-class convert_to_left_shift(binary):  # converts constant multiplication to faster left shifts ...
-    def __iter__(self):
-        assert isinstance(self, Associative)  # safe-guard against non-associative instructions (-, /)
-        if is_immediate_push(self.right_operand):
-            operand, location = get_immediate_pushed_value(self.right_operand), loc(self.right_operand)
-            if operand and not ((operand - 1) & operand):  # is operand a non-zero power of 2
-                return iter(shift_left(self.left_operand, push(
-                    push_integral.core_type(log(operand, 2)), location
-                ), location))
-
-        if is_immediate_push(self.left_operand):
-            operand, location = get_immediate_pushed_value(self.left_operand), loc(self.left_operand)
-            if operand and not((operand - 1) & operand):
-                return iter(shift_left(self.right_operand, push(
-                    push_integral.core_type(log(operand, 2)), location), location))
-            self.left_operand = push(operand, location)
-
-        return super(convert_to_left_shift, self).__iter__()
-
-
 class multiply(single_iteration, one_identity, associative, convert_to_left_shift, Multiply):
     operator = '__mul__'
 
@@ -881,21 +1282,7 @@ class multiply_float(single_iteration, one_identity, associative, MultiplyFloat)
     operator = '__mul__'
 
 
-class convert_to_right_shift(binary):
-    def __iter__(self):
-        if is_immediate_push(self.right_operand):
-            operand, location = get_immediate_pushed_value(self.right_operand), loc(self.right_operand)
-            if operand and not ((operand - 1) & operand):
-                return iter(shift_right(
-                    self.left_operand,
-                    push(push_integral.core_type(log(operand, 2)), location),
-                    location
-                ))
-
-        return super(convert_to_right_shift, self).__iter__()
-
-
-class divide(single_iteration, right_one_identity, Divide):
+class divide(single_iteration, right_one_identity, convert_to_right_shift, Divide):
     operator = '__div__'
 
 
@@ -927,22 +1314,15 @@ class and_bitwise(single_iteration, negative_one_identity, associative, And):
     operator = '__and__'
 
 
-class unary(arithmetic_operator, Unary):
-    func = staticmethod(lambda oper, operands: oper(next(iter(operands))))
-
-    def __init__(self, operand, location):
-        super(unary, self).__init__(operand, location=location)
-
-
 class not_bitwise(single_iteration, unary, Not):
     operator = '__invert__'
 
 
-class convert_to_float(single_iteration, unary, ConvertToFloat):
+class convert_to_float(single_iteration, unary, ConvertToFloatFrom):
     operator = '__float__'
 
 
-class convert_to_int(single_iteration, unary, ConvertToInteger):
+class convert_to_int(single_iteration, unary, ConvertTo):
     operator = '__' + push_integral.core_type.__name__ + '__'
 
 
@@ -1015,8 +1395,8 @@ def jump_false(instrs, address, location):
         operand, location = get_immediate_pushed_value(instrs), loc(instrs)
         if operand == 0:  # if operand is a constant 0, just use relative_jump instead.
             return relative_jump(address, location)
-        return ()  # otherwise omit instruction all together
-    return chain(instrs, (JumpFalse(location, address),))
+        return ()  # if non-zero omit instruction all together
+    return chain(instrs, (JumpFalse(location, address),))  # otherwise do nothing ...
 
 
 def jump_true(instrs, address, location):
@@ -1024,8 +1404,8 @@ def jump_true(instrs, address, location):
         operand, location = get_immediate_pushed_value(instrs), loc(instrs)
         if operand == 0:  # if operand is zero omit instruction all together
             return ()
-        return relative_jump(address, location)  # otherwise just replace with relative jump
-    return chain(instrs, (JumpTrue(location, address),))
+        return relative_jump(address, location)  # if non-zero operand replace with relative jump
+    return chain(instrs, (JumpTrue(location, address),))  # otherwise do nothing ...
 
 
 def relative_jump(address, location):
@@ -1051,7 +1431,7 @@ def copy_instruction(instr):
     if isinstance(instr, VariableLengthInstruction):
         return instr.__class__(loc(instr), map(copy_operand, operns(instr)))
     if isinstance(instr, WideInstruction):
-        return instr.__class__(loc(instr), copy_operand(operns(instr)[0]))
+        return instr.__class__(loc(instr), copy_operand(opern(instr)))
     if isinstance(instr, Instruction):
         return instr.__class__(loc(instr))
     raise ValueError('Expected an instruction got {g}'.format(g=instr))
@@ -1063,10 +1443,6 @@ def compare(l_instr, r_instr, location, flags=()):
 
 def compare_floats(l_instr, r_instr, location, flags=()):
     return chain(l_instr, r_instr, (CompareFloat(location),), chain.from_iterable(flags))
-
-
-def value(obj):
-    return getattr(obj, 'value', obj)
 
 
 class logical(binary):
@@ -1129,14 +1505,6 @@ class logical_and(single_iteration, logical, And):  # it needs to reference an i
 
 
 class logical_or(single_iteration, logical, Or):
-    def apply(self):
-        return push(
-            push_integral.core_type(
-                bool(value(operns(next(self.left_operand))[0]) or value(operns(next(self.right_operand))[0]))
-            ),
-            self.location
-        )
-
     def __iter__(self):
         if is_immediate_push(self.left_operand) and is_immediate_push(self.right_operand):
             return iter(

@@ -11,8 +11,10 @@ from front_end.parser.symbol_table import SymbolTable
 
 from back_end.emitter.emit import emit
 from back_end.linker.link import executable, set_addresses, resolve
-from back_end.emitter.cpu import CPU, VirtualMemory, evaluate
+from back_end.emitter.cpu import CPU, VirtualMemory, evaluate, base_element
+from back_end.emitter.c_types import size, exp
 
+from front_end.parser.ast.expressions import ConstantExpression, IntegerType
 
 from back_end.loader.load import load
 
@@ -30,6 +32,9 @@ class TestDeclarations(TestCase):
 
         evaluate(self.cpu, self.mem)
 
+    def assert_base_element(self, element):
+        self.assertEqual(base_element(self.cpu, self.mem, size(element)), exp(element))
+
 
 class TestDefinitions(TestDeclarations):
     def test_definition(self):
@@ -42,10 +47,11 @@ class TestDefinitions(TestDeclarations):
         int main()
         {
             b[2] = 4;
-            return 0;
+            return b[2];
         }
         """
         self.evaluate(code)
+        self.assert_base_element(ConstantExpression(4, IntegerType()))
 
     def test_static_definitions(self):
         code = """
@@ -91,7 +97,7 @@ class TestDefinitions(TestDeclarations):
         }
         """
         self.evaluate(code)
-        self.assertEqual(self.mem[self.cpu.stack_pointer], 1)
+        self.assert_base_element(ConstantExpression(1, IntegerType()))
 
 
 class TestInitializer(TestDeclarations):
@@ -106,7 +112,8 @@ class TestInitializer(TestDeclarations):
         }
         """
         self.evaluate(code)
-        self.assertEqual(1, self.mem[self.cpu.stack_pointer])
+        self.assert_base_element(ConstantExpression(1, IntegerType()))
+        # self.assertEqual(1, self.mem[self.cpu.stack_pointer])
 
     def test_local_initializer(self):
         code = """
@@ -119,7 +126,8 @@ class TestInitializer(TestDeclarations):
         }
         """
         self.evaluate(code)
-        self.assertEqual(1, self.mem[self.cpu.stack_pointer])
+        self.assert_base_element(ConstantExpression(1, IntegerType()))
+        # self.assertEqual(1, self.mem[self.cpu.stack_pointer])
 
     def test_global_union_initializer(self):
         code = """
@@ -131,4 +139,5 @@ class TestInitializer(TestDeclarations):
             }
             """
         self.evaluate(code)
-        self.assertEqual(1, self.mem[self.cpu.stack_pointer])
+        self.assert_base_element(ConstantExpression(1, IntegerType()))
+        # self.assertEqual(1, self.mem[self.cpu.stack_pointer])

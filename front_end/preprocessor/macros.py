@@ -3,7 +3,7 @@ __author__ = 'samyvilar'
 from itertools import izip_longest, chain, imap
 
 from front_end.loader.load import Str
-from sequences import peek, consume, takewhile
+from utils.sequences import peek, consume, takewhile
 from front_end.errors import error_if_not_value, error_if_not_type
 from front_end.loader.locations import loc, EOFLocation
 from front_end.tokenizer.tokens import TOKENS, IDENTIFIER, INTEGER, KEYWORD, STRING, IGNORE

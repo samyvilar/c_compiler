@@ -1,6 +1,6 @@
 __author__ = 'samyvilar'
 
-from sequences import peek, consume
+from utils.sequences import peek, consume, terminal
 from front_end.loader.locations import loc, LocationNotSet
 
 
@@ -12,7 +12,6 @@ def error_if_empty(value_stream, location=LocationNotSet):
 
 
 def error_if_not_empty(value_stream, location=LocationNotSet):
-    terminal = object()
     value = peek(value_stream, terminal)
     if value is not terminal:
         raise ValueError('{l} Got {got} but expected nothing'.format(l=location or loc(value), got=value))

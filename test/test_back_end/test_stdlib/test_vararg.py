@@ -1,7 +1,7 @@
 __author__ = 'samyvilar'
 
 from test.test_back_end.test_stdlib.base import TestStdLib
-
+from front_end.parser.ast.expressions import ConstantExpression, IntegerType
 
 class TestVarArg(TestStdLib):
     def test_var_arg_function(self):
@@ -31,4 +31,5 @@ class TestVarArg(TestStdLib):
         }
         """
         self.evaluate(code)
-        self.assertEqual(self.mem[self.cpu.stack_pointer], 1)
+        self.assert_base_element(ConstantExpression(1, IntegerType()))
+        # self.assertEqual(self.mem[self.cpu.stack_pointer], 1)

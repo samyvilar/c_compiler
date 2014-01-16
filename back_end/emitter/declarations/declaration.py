@@ -28,13 +28,14 @@ def no_rule(dec, *_):
 
 
 def get_directives():
-    rules = defaultdict(lambda: no_rule)
-    rules.update({
-        Declaration: declaration,
-        Definition: definition,
-        FunctionDefinition: function_definition,
-    })
-    return rules
+    return defaultdict(
+        lambda: no_rule,
+        (
+            (Declaration, declaration),
+            (Definition, definition),
+            (FunctionDefinition, function_definition),
+        )
+    )
 
 
 def bind_load_instructions(obj):
@@ -72,7 +73,7 @@ def function_definition(dec, symbol_table):
     Function Call Convention:
         Allocate enough space on the stack for the return type.
 
-        Push a new Frame (saves (base, stack ptr))
+        Push a new Frame (saves (base & stack ptr))
         Push all parameters on the stack from right to left. (The values won't be pop but referenced on stack (+) ...)
         Calculate & Push pointer where to return value.
 
@@ -85,7 +86,7 @@ def function_definition(dec, symbol_table):
         (+offsets) for previous frame (-offset) for current frame ...
 
         Callee will place the return value in the specified pointer.
-        Caller Pops frame, and uses the set value.
+        Caller Pops frame, and uses the set (returned) value.
     """
     symbol = Code(name(dec), None, None, dec.storage_class, loc(dec))
     symbol_table[name(dec)] = bind_load_instructions(dec)  # bind load/reference instructions, add to symbol table.
@@ -96,9 +97,9 @@ def function_definition(dec, symbol_table):
         stack = Stack()  # Each function call has its own Frame which is nothing more than a stack.
 
         # Skip return address and pointer to return value ...
-        offset = 2 * size(void_pointer_type) + (
+        offset = size(void_pointer_type) + (
             # if function has zero return size then the return pointer will be omitted ...
-            size(void_pointer_type) if function_operand_type_sizes(c_type(c_type(dec))) else 0
+            size(void_pointer_type) * bool(function_operand_type_sizes(c_type(c_type(dec))))
         )
 
         for parameter in c_type(dec):

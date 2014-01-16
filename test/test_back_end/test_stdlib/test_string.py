@@ -1,6 +1,7 @@
 __author__ = 'samyvilar'
 
 from test.test_back_end.test_stdlib.base import TestStdLib
+from front_end.parser.ast.expressions import ConstantExpression, IntegerType
 
 
 class TestString(TestStdLib):
@@ -31,7 +32,8 @@ class TestString(TestStdLib):
         }}
         """.format(test_size=TestString.test_size)
         self.evaluate(code)
-        self.assertEqual(self.mem[self.cpu.stack_pointer], 1)
+        self.assert_base_element(ConstantExpression(1, IntegerType()))
+        # self.assertEqual(self.mem[self.cpu.stack_pointer], 1)
 
     def test_memmove(self):
         code = """
@@ -58,7 +60,8 @@ class TestString(TestStdLib):
         }}
         """.format(test_size=TestString.test_size)
         self.evaluate(code)
-        self.assertEqual(self.mem[self.cpu.stack_pointer], 1)
+        self.assert_base_element(ConstantExpression(1, IntegerType()))
+        # self.assertEqual(self.mem[self.cpu.stack_pointer], 1)
 
     def test_memmove_overlap(self):
         code = """
@@ -83,7 +86,8 @@ class TestString(TestStdLib):
         }}
         """.format(test_size=TestString.test_size)
         self.evaluate(code)
-        self.assertEqual(self.mem[self.cpu.stack_pointer], 1)
+        self.assert_base_element(ConstantExpression(1, IntegerType()))
+        # self.assertEqual(self.mem[self.cpu.stack_pointer], 1)
 
     def test_memcmp_equal(self):
         code = """
@@ -101,7 +105,8 @@ class TestString(TestStdLib):
         }}
         """.format(test_size=TestString.test_size)
         self.evaluate(code)
-        self.assertEqual(self.mem[self.cpu.stack_pointer], 1)
+        self.assert_base_element(ConstantExpression(1, IntegerType()))
+        # self.assertEqual(self.mem[self.cpu.stack_pointer], 1)
 
     def test_memcmp_less_than(self):
         code = """
@@ -117,7 +122,8 @@ class TestString(TestStdLib):
         }}
         """.format(test_size=TestString.test_size)
         self.evaluate(code)
-        self.assertEqual(self.mem[self.cpu.stack_pointer], 1)
+        self.assert_base_element(ConstantExpression(1, IntegerType()))
+        # self.assertEqual(self.mem[self.cpu.stack_pointer], 1)
 
     def test_memcmp_greater_than(self):
         code = """
@@ -133,7 +139,8 @@ class TestString(TestStdLib):
         }}
         """.format(test_size=TestString.test_size)
         self.evaluate(code)
-        self.assertEqual(self.mem[self.cpu.stack_pointer], 1)
+        self.assert_base_element(ConstantExpression(1, IntegerType()))
+        # self.assertEqual(self.mem[self.cpu.stack_pointer], 1)
 
     def test_memchr_located(self):
         code = """
@@ -150,7 +157,8 @@ class TestString(TestStdLib):
         }}
         """.format(test_size=TestString.test_size)
         self.evaluate(code)
-        self.assertEqual(self.mem[self.cpu.stack_pointer], 1)
+        self.assert_base_element(ConstantExpression(1, IntegerType()))
+        # self.assertEqual(self.mem[self.cpu.stack_pointer], 1)
 
     def test_memchr_not_located(self):
         code = """
@@ -166,7 +174,8 @@ class TestString(TestStdLib):
         }}
         """.format(test_size=TestString.test_size)
         self.evaluate(code)
-        self.assertEqual(self.mem[self.cpu.stack_pointer], 1)
+        self.assert_base_element(ConstantExpression(1, IntegerType()))
+        # self.assertEqual(self.mem[self.cpu.stack_pointer], 1)
 
     def test_memset(self):
         code = """
@@ -206,7 +215,8 @@ class TestString(TestStdLib):
         }
         """
         self.evaluate(code)
-        self.assertEqual(self.mem[self.cpu.stack_pointer], 1)
+        self.assert_base_element(ConstantExpression(1, IntegerType()))
+        # self.assertEqual(self.mem[self.cpu.stack_pointer], 1)
 
     def test_strcpy(self):
         code = """
@@ -236,7 +246,8 @@ class TestString(TestStdLib):
         }
         """
         self.evaluate(code)
-        self.assertEqual(self.mem[self.cpu.stack_pointer], 1)
+        self.assert_base_element(ConstantExpression(1, IntegerType()))
+        # self.assertEqual(self.mem[self.cpu.stack_pointer], 1)
 
     def test_strncpy(self):
         code = """
@@ -273,7 +284,8 @@ class TestString(TestStdLib):
         }
         """
         self.evaluate(code)
-        self.assertEqual(self.mem[self.cpu.stack_pointer], 1)
+        self.assert_base_element(ConstantExpression(1, IntegerType()))
+        # self.assertEqual(self.mem[self.cpu.stack_pointer], 1)
 
     def test_strcat(self):
         code = """
@@ -303,7 +315,8 @@ class TestString(TestStdLib):
         }
         """
         self.evaluate(code)
-        self.assertEqual(self.mem[self.cpu.stack_pointer], 1)
+        self.assert_base_element(ConstantExpression(1, IntegerType()))
+        # self.assertEqual(self.mem[self.cpu.stack_pointer], 1)
 
     def test_strncat(self):
         code = """
@@ -332,7 +345,8 @@ class TestString(TestStdLib):
         }
         """
         self.evaluate(code)
-        self.assertEqual(self.mem[self.cpu.stack_pointer], 1)
+        self.assert_base_element(ConstantExpression(1, IntegerType()))
+        # self.assertEqual(self.mem[self.cpu.stack_pointer], 1)
 
     def test_strcmp(self):
         code = """
@@ -352,7 +366,8 @@ class TestString(TestStdLib):
         }
         """
         self.evaluate(code)
-        self.assertEqual(int(self.mem[self.cpu.stack_pointer]), 1)
+        self.assert_base_element(ConstantExpression(1, IntegerType()))
+        # self.assertEqual(int(self.mem[self.cpu.stack_pointer]), 1)
 
     def test_strncmp(self):
         code = """
@@ -372,7 +387,8 @@ class TestString(TestStdLib):
         }
         """
         self.evaluate(code)
-        self.assertEqual(int(self.mem[self.cpu.stack_pointer]), 1)
+        self.assert_base_element(ConstantExpression(1, IntegerType()))
+        # self.assertEqual(int(self.mem[self.cpu.stack_pointer]), 1)
 
     def test_strchr(self):
         code = """
@@ -392,7 +408,8 @@ class TestString(TestStdLib):
         }
         """
         self.evaluate(code)
-        self.assertEqual(int(self.mem[self.cpu.stack_pointer]), 1)
+        self.assert_base_element(ConstantExpression(1, IntegerType()))
+        # self.assertEqual(int(self.mem[self.cpu.stack_pointer]), 1)
 
     def test_strcspn(self):
         code = """
@@ -412,7 +429,8 @@ class TestString(TestStdLib):
         }
         """
         self.evaluate(code)
-        self.assertEqual(int(self.mem[self.cpu.stack_pointer]), 1)
+        self.assert_base_element(ConstantExpression(1, IntegerType()))
+        # self.assertEqual(int(self.mem[self.cpu.stack_pointer]), 1)
 
     def test_strpbrk(self):
         code = """
@@ -432,7 +450,8 @@ class TestString(TestStdLib):
         }
         """
         self.evaluate(code)
-        self.assertEqual(int(self.mem[self.cpu.stack_pointer]), 1)
+        self.assert_base_element(ConstantExpression(1, IntegerType()))
+        # self.assertEqual(int(self.mem[self.cpu.stack_pointer]), 1)
 
     def test_strrchr(self):
         code = """
@@ -454,7 +473,8 @@ class TestString(TestStdLib):
         }
         """
         self.evaluate(code)
-        self.assertEqual(int(self.mem[self.cpu.stack_pointer]), 1)
+        self.assert_base_element(ConstantExpression(1, IntegerType()))
+        # self.assertEqual(int(self.mem[self.cpu.stack_pointer]), 1)
 
     def test_strspn(self):
         code = """
@@ -477,7 +497,8 @@ class TestString(TestStdLib):
         }
         """
         self.evaluate(code)
-        self.assertEqual(int(self.mem[self.cpu.stack_pointer]), 1)
+        self.assert_base_element(ConstantExpression(1, IntegerType()))
+        # self.assertEqual(int(self.mem[self.cpu.stack_pointer]), 1)
 
     def test_strstr(self):
         code = """
@@ -499,7 +520,8 @@ class TestString(TestStdLib):
         }
         """
         self.evaluate(code)
-        self.assertEqual(int(self.mem[self.cpu.stack_pointer]), 1)
+        self.assert_base_element(ConstantExpression(1, IntegerType()))
+        # self.assertEqual(int(self.mem[self.cpu.stack_pointer]), 1)
 
     def test_a_strtok(self):
         code = """
@@ -538,7 +560,8 @@ class TestString(TestStdLib):
         }
         """
         self.evaluate(code)
-        self.assertEqual(int(self.mem[self.cpu.stack_pointer]), 1)
+        self.assert_base_element(ConstantExpression(1, IntegerType()))
+        # self.assertEqual(int(self.mem[self.cpu.stack_pointer]), 1)
 
     def test_strlen(self):
         code = """
@@ -564,4 +587,5 @@ class TestString(TestStdLib):
         }
         """
         self.evaluate(code)
-        self.assertEqual(int(self.mem[self.cpu.stack_pointer]), 1)
+        self.assert_base_element(ConstantExpression(1, IntegerType()))
+        # self.assertEqual(int(self.mem[self.cpu.stack_pointer]), 1)

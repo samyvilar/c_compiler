@@ -1,6 +1,7 @@
 __author__ = 'samyvilar'
 
 from test.test_back_end.test_stdlib.base import TestStdLib
+from front_end.parser.ast.expressions import ConstantExpression, IntegerType
 
 
 class TestMalloc(TestStdLib):
@@ -34,7 +35,8 @@ class TestMalloc(TestStdLib):
         }
         """
         self.evaluate(source)
-        self.assertEqual(int(self.mem[self.cpu.stack_pointer]), 0)
+        self.assert_base_element(ConstantExpression(0, IntegerType()))
+        # self.assertEqual(int(self.mem[self.cpu.stack_pointer]), 0)
 
     def test_malloc_complex(self):
         source = """
@@ -88,4 +90,5 @@ class TestMalloc(TestStdLib):
         }
         """
         self.evaluate(source)
-        self.assertEqual(self.mem[self.cpu.stack_pointer], 0)
+        self.assert_base_element(ConstantExpression(0, IntegerType()))
+        # self.assertEqual(self.mem[self.cpu.stack_pointer], 0)

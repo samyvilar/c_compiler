@@ -1,13 +1,13 @@
 __author__ = 'samyvilar'
 
 from itertools import chain, izip, repeat
-from sequences import all_but_last
+from utils.sequences import all_but_last
 from front_end.loader.locations import loc
 from front_end.tokenizer.tokens import TOKENS
 from front_end.parser.ast.expressions import oper, left_exp, right_exp, AddressOfExpression, IdentifierExpression
 
 from front_end.parser.types import IntegralType, NumericType, c_type, base_c_type, unsigned, void_pointer_type
-from front_end.parser.types import PointerType, VoidType
+from front_end.parser.types import PointerType
 
 from back_end.emitter.expressions.cast import cast
 from back_end.virtual_machine.instructions.architecture import Load
@@ -40,11 +40,7 @@ from back_end.emitter.c_types import size_extended, size
 
 
 def calculate_pointer_offset(instrs, pointer_type, location):
-    return multiply_instr(
-        instrs,
-        push(size_extended(c_type(pointer_type)), location),
-        location,
-    )
+    return multiply_instr(instrs, push(size_extended(c_type(pointer_type)), location), location)
 
 
 def add(l_instrs, r_instrs, location, operand_types):
@@ -57,7 +53,7 @@ def add(l_instrs, r_instrs, location, operand_types):
         # left operand is index ...
         l_instrs = calculate_pointer_offset(l_instrs, operand_types[2], location)
 
-    return add.rules[base_c_type(max(operand_types[1:]))](l_instrs, r_instrs, location)
+    return add.rules[base_c_type(operand_types[0])](l_instrs, r_instrs, location)
 add.rules = {
     IntegralType: add_instr,
     NumericType: add_float_instr,
@@ -197,35 +193,6 @@ def not_equal(l_instrs, r_instrs, location, operand_types):  # 2 instructions (C
     return compare_numbers(l_instrs, r_instrs, location, operand_types, (load_non_zero_flag(location),))
 
 
-# def logical_and(l_instrs, r_instrs, location, _):
-#     false_instr = Pass(location)
-#     end_instr = Pass(location)
-#     return chain(
-#         jump_false(l_instrs, Address(false_instr, location), location),
-#         jump_false(r_instrs, Address(false_instr, location), location),
-#         push(1, location),
-#         relative_jump(Address(end_instr, location), location),
-#         (false_instr,),
-#         push(0, location),
-#         (end_instr,),
-#     )
-#
-#
-# def logical_or(l_instrs, r_instrs, location, _):
-#     true_expression = Pass(location)
-#     end_instr = Pass(location)
-#     return chain(
-#         jump_true(l_instrs, Address(true_expression, location), location),
-#         jump_true(r_instrs, Address(true_expression, location), location),
-#         push(0, location),
-#         relative_jump(Address(end_instr, location), location),
-#         (true_expression,),
-#         push(1, location),
-#         (end_instr,),
-#     )
-#     #return short_circuit_logical(l_instrs, r_instrs, jump_true, location, operand_types)
-
-
 def logical_operators(expr, symbol_table, expression_func):
     return logical_operators.rules[oper(expr)](
         expression_func(left_exp(expr), symbol_table, expression_func),
@@ -305,16 +272,6 @@ def patch_comp_left_instrs(instrs, location):
         size(void_pointer_type),
         location
     )
-    # value = next(instrs)
-    # for instr in instrs:
-    #     yield value
-    #     value = instr
-    # if isinstance(value, Load):
-    #     for i in dup(size(void_pointer_type), location):
-    #         yield i
-    #     yield value
-    # else:
-    #     raise ValueError('{l} Expected a load instruction got {g}!'.format(l=location, g=value))
 
 
 def patch_comp_assignment(instrs, expr_type, location):

@@ -1,6 +1,6 @@
 __author__ = 'samyvilar'
 
-from itertools import izip, imap, ifilter
+from itertools import izip, imap
 from collections import Iterable
 
 from logging_config import logging
@@ -8,6 +8,7 @@ from logging_config import logging
 from front_end.loader.locations import loc, LocationNotSet
 from front_end.tokenizer.tokens import TOKENS
 
+from utils import get_attribute_func
 
 logger = logging.getLogger('parser')
 
@@ -25,7 +26,9 @@ class CType(object):
 
     @c_type.setter
     def c_type(self, _c_type):
-        raise TypeError('{l} {c_type} is not a chained type, chained {to}'.format(c_type=self, to=_c_type, l=loc(self)))
+        raise TypeError('{l} {c_type} is not a chained type, chaining {to}'.format(
+            c_type=self, to=_c_type, l=loc(self)
+        ))
 
     @property
     def unsigned(self):
@@ -91,7 +94,7 @@ COMPOUND_OPERATIONS = {TOKENS.EQUAL} | COMPOUND_ARITHMETIC_OPERATIONS | COMPOUND
 FUNCTION_CALL_OPERATOR = TOKENS.LEFT_PARENTHESIS + TOKENS.RIGHT_PARENTHESIS
 SUBSCRIPT_OPERATOR = TOKENS.LEFT_BRACKET + TOKENS.RIGHT_BRACKET
 MEMBER_ACCESS_OPERATOR = TOKENS.DOT
-MEMBER_ACCESS_THROUGH_POINTER = TOKENS.ARROW
+MEMBER_ACCESS_THROUGH_POINTER_OPERATOR = TOKENS.ARROW
 
 
 class NumericType(ConcreteType):
@@ -348,14 +351,14 @@ class StructType(CompositeType):
         CompositeType.members.fset(self, _members)
         # Unfortunately the only way to get the setter of Parent class is to look for it manually :( ...
         # (without explicitly using the base class Name ...)
-        # sub_classes = iter(self.__class__.mro())
+        # sub_classes = iter(self.__class__.mro()[1:])
         # _ = next(sub_classes)  # skip current class or infinite recursion ..
         # next(ifilter(lambda cls: hasattr(cls, 'members'), sub_classes)).members.fset(self, _members)
         if _members is not None:
             self._offsets = dict(imap(reversed, enumerate(_members)))
 
 
-class UnionType(StructType):
+class UnionType(StructType):  # Unfortunately
     pass
 
 
@@ -389,34 +392,11 @@ void_pointer_type = PointerType(VoidType(LocationNotSet), LocationNotSet)
 char_array_type = ArrayType(CharType(LocationNotSet), None, LocationNotSet)
 
 
-__required__ = object()
-
-
-def c_type(obj, argument=__required__):
-    return getattr(obj, 'c_type') if argument is __required__ else getattr(obj, 'c_type')
-
-
 def base_c_type(ctype):
     assert isinstance(ctype, NumericType)
     if isinstance(ctype, IntegralType):
         return IntegralType
     return NumericType
-
-
-def incomplete(obj):
-    return getattr(obj, 'incomplete')
-
-
-def unsigned(obj):
-    return getattr(obj, 'unsigned')
-
-
-def const(obj, argument=__required__):
-    return getattr(obj, 'const') if argument is __required__ else getattr(obj, 'const', False)
-
-
-def volatile(obj, argument=__required__):
-    return getattr(obj, 'volatile') if argument is __required__ else getattr(obj, 'volatile', argument)
 
 
 def set_core_type(base_type, fundamental_type):
@@ -425,5 +405,9 @@ def set_core_type(base_type, fundamental_type):
     base_type.c_type = fundamental_type
 
 
-def supported_operators(ctype):
-    return ctype.supported_operations
+c_type = get_attribute_func('c_type')
+unsigned = get_attribute_func('unsigned')
+const = get_attribute_func('const')
+volatile = get_attribute_func('volatile')
+supported_operators = get_attribute_func('supported_operations')
+incomplete = get_attribute_func('incomplete')

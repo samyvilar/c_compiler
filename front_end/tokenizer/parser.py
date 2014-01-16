@@ -2,7 +2,8 @@ __author__ = 'samyvilar'
 
 from itertools import chain, izip, repeat, imap
 
-from sequences import peek, consume, takewhile
+from utils.rules import rules
+from utils.sequences import peek, consume, takewhile
 
 from front_end.loader.locations import loc, EOFLocation
 from front_end.tokenizer.tokens import TOKENS, SYMBOL, KEYWORD, IDENTIFIER, FLOAT, INTEGER, STRING, CHAR, WHITESPACE
@@ -14,7 +15,7 @@ from front_end.tokenizer.tokens import SINGLE_LINE_COMMENT, MULTI_LINE_COMMENT
 from front_end.errors import error_if_not_value
 
 
-def get_line(values):  # get all the tokens on the current line, being that preprocessor work on a line-by-line basis
+def get_line(values):  # get all the tokens on the current line, being that preprocessor works on a line-by-line basis
     return takewhile(lambda token, line_number=loc(peek(values, EOFLocation)).line_number:
                      loc(token).line_number == line_number, values)
 
@@ -95,11 +96,11 @@ def suffix(char_stream):
     return ''.join(takewhile(lambda c: c in letters, char_stream))
 
 
-def number(char_stream):
+def number(char_stream, hexadecimal_chars={'x', 'X'}):
     initial_char, _digits = '', digits
     if peek(char_stream) == '0':
         initial_char = consume(char_stream)
-        if peek(char_stream, '') in {'x', 'X'}:
+        if peek(char_stream, '') in hexadecimal_chars:
             initial_char += consume(char_stream)
             _digits = hexadecimal_digits
     return initial_char + ''.join(takewhile(lambda char: char in _digits, char_stream))
@@ -165,7 +166,7 @@ def keyword_or_identifier(char_stream, location):
 
 
 def parse(char_stream):
-    return parse.rules[peek(char_stream)](char_stream, loc(peek(char_stream)))
+    return rules(parse)[peek(char_stream)](char_stream, loc(peek(char_stream)))
 parse.rules = dict(chain(
     izip(digits, repeat(number_literal)),
     izip(letters, repeat(keyword_or_identifier)),
