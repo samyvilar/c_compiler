@@ -10,34 +10,42 @@ except ImportError as _:
     import pickle
 
 from front_end.loader.locations import loc
-from front_end.parser.symbol_table import SymbolTable
+from utils.symbol_table import SymbolTable
 from back_end.emitter.object_file import Data, Reference
 from back_end.emitter.c_types import size
 
 from front_end.parser.types import void_pointer_type
 
 from back_end.virtual_machine.instructions.architecture import halt, Byte, Double, Instruction, referenced_obj
-from back_end.virtual_machine.instructions.architecture import Address, Offset, operns, RelativeJump, Integer
+from back_end.virtual_machine.instructions.architecture import Address, Offset, operns, RelativeJump, Word, Pass
 
 from back_end.emitter.declarations.declaration import declaration
 from back_end.emitter.statements.statement import statement
-from front_end.parser.ast.declarations import Declaration, name
+from back_end.emitter.expressions.expression import expression
+
+from front_end.parser.ast.declarations import Declaration, name, Extern
 from front_end.parser.ast.expressions import FunctionCallExpression, IdentifierExpression
 from front_end.parser.types import IntegerType, FunctionType, c_type
 
 
-def insert(symbol, symbol_table):
-    if symbol.binaries:  # definition
-        symbol_table[symbol.name] = symbol
-    else:
-        if isinstance(symbol, Data) and not symbol.storage_class:  # declaration.
-            # C coalesces multiple declarations across multiple files as long as they don't have a storage class
-            if symbol.name in symbol_table:  # only keep largest.
-                if symbol.size > symbol_table[symbol.name].size:
-                    _ = symbol_table.pop(symbol.name)
-                    symbol_table[symbol.name] = symbol
-            else:
-                symbol_table[symbol.name] = symbol
+def insert_definition(symbol, symbol_table):
+    _ = symbol.name in symbol_table and not symbol.binaries and isinstance(symbol_table[symbol.name], Data) \
+        and symbol_table.pop(symbol.name)  # replace data declaration by definition
+    symbol_table[symbol.name] = symbol
+
+
+def insert_declaration(symbol, symbol_table):  # declarations ...
+    if isinstance(symbol, Data) and not isinstance(symbol.storage_class, Extern):  # insert non-extern declarations
+        if symbol.name not in symbol_table:
+            symbol_table[symbol.name] = symbol
+        else:  # C coalesces multiple declarations across multiple files ...
+            if symbol.size >= symbol_table[symbol.name].size:  # insert largest declaration ...
+                symbol_table[symbol.name] = (symbol_table.pop(symbol.name) or 1) and symbol
+    # Don't insert Code declarations unless they have have being defined (it has binaries)...
+
+
+def insert(symbol, symbol_table):  # insert definition if it has any binaries else insert as declaration ...
+    ((symbol.binaries and insert_definition) or insert_declaration)(symbol, symbol_table)
 
 
 def static(instrs, symbol_table=None, libraries=()):
@@ -49,7 +57,7 @@ def static(instrs, symbol_table=None, libraries=()):
                 references[referenced_obj(o).name] = o
         yield instr
 
-    for ref_name in ifilterfalse(lambda n, table=symbol_table: n in table, references.iterkeys()):
+    for ref_name in ifilterfalse(symbol_table.__contains__, references.iterkeys()):
         try:
             l = next(ifilter(lambda lib, ref_name=ref_name: ref_name in lib, libraries))
             for instr in static(binaries(l[ref_name], symbol_table), symbol_table, libraries):
@@ -69,19 +77,26 @@ def library(symbols, symbol_table=None):
         symbol.binaries = tuple(symbol.binaries)
     return symbol_table
 
+terminal = object()
+
 
 def binaries(symbol, symbol_table):
     insert(symbol, symbol_table)
-    for index, instr in enumerate(symbol.binaries):
-        if index == 0:
-            symbol.first_element = instr
-        yield instr
+    bins = iter(symbol.binaries)
+    first_element = next(bins, terminal)
+    if first_element is not terminal:
+        symbol.first_element = first_element
+        yield first_element
+        for instr in bins:
+            yield instr
 
 
 def set_binaries(symbol):
     assert not symbol.binaries and isinstance(symbol, Data)
-    symbol.first_element = Byte(0, loc(symbol))
-    symbol.binaries = chain((symbol.first_element,), (Byte(0, loc(symbol)) for _ in xrange(symbol.size - 1)))
+    instrs = starmap(Byte, repeat((0, loc(symbol)), symbol.size))
+    first_instr = next(instrs, terminal)
+    symbol.first_element = Pass(loc(symbol)) if first_instr is terminal else first_instr  # zero sized decl use Pass
+    symbol.binaries = chain((symbol.first_element,), instrs)
     return symbol.binaries
 
 
@@ -107,22 +122,15 @@ class Library(object):
         return self._source
 
 
-def executable(
-        symbols,
-        symbol_table=None,
-        entry_point=Declaration('main', FunctionType(IntegerType())),
-        library_dirs=(),
-        libraries=(),
-        linker=static
-):
-    symbol_table = SymbolTable() if symbol_table is None else symbol_table
-    location = '__SOP__'  # Start of Program
-    __end__ = Integer(0, location)
+default_entry_point = Declaration('main', FunctionType(IntegerType()))
 
-    libs = tuple(
-        Library(lib_file)
-        for lib_file in ifilter(os.path.isfile, starmap(os.path.join, product(library_dirs, libraries)))
-    )
+
+def executable(symbols, symbol_table=None, entry_point=default_entry_point, libraries=(), linker=static):
+    location = '__SOP__'  # Start of Program
+    symbol_table = SymbolTable() if symbol_table is None else symbol_table
+    __end__ = Word(0, location)
+    libs = tuple(imap(Library, libraries))
+
     symbols = chain(
         symbols,  # add heap pointer(s) ...
         (
@@ -132,10 +140,12 @@ def executable(
     )
 
     def declarations(symbol_table):
+        # iterate over all symbols withing symbol_table that do not have binaries (they should be declarations)
         for v in chain.from_iterable(imap(set_binaries, ifilterfalse(lambda s: s.binaries, symbol_table.itervalues()))):
-            yield v   # declarations ....
+            yield v   # emit default binaries for declarations ...
 
-    st = {}
+    # inject declaration into temp symbol_table to generate entry point function call instructions ...
+    st = {'__ expression __': expression}
     _ = declaration(entry_point, st)
     instr_seq = chain(
         statement(  # call entry point ...
@@ -195,7 +205,7 @@ def set_addresses(instrs, addresses=None):  # assign addresses ...
 
             # replace immutable int type by mutable type.
             if type(o) in {int, long}:
-                o = Integer(o, loc(instr))
+                o = Word(o, loc(instr))
                 instr[operand_index] = o
             elif type(o) is float:
                 o = Double(o, loc(instr))

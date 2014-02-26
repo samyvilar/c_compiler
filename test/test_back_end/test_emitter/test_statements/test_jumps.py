@@ -3,6 +3,7 @@ __author__ = 'samyvilar'
 from test.test_back_end.test_emitter.test_statements.test_compound import TestStatements
 from front_end.parser.ast.expressions import ConstantExpression, IntegerType
 
+
 class TestJump(TestStatements):
     def test_continue(self):
         source = """

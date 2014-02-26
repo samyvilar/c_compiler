@@ -1,13 +1,17 @@
 __author__ = 'samyvilar'
 
 
-from itertools import chain, imap, izip_longest
+from itertools import chain, imap, izip_longest, repeat, ifilterfalse
 from collections import Iterable, deque
 
 from utils import __required__
 
 __iterators__ = {}
 terminal = object()
+
+
+def peek_or_terminal(seq):
+    return peek(seq, terminal)
 
 
 def peek(seq, default=__required__):
@@ -36,6 +40,12 @@ def consume(seq, default=__required__):
 
 def exhaust(iterator):
     _ = deque(iterator, maxlen=0)
+
+
+def consume_all(*values):
+    for value in values:
+        for v in imap(consume, repeat(value)):
+            yield v
 
 
 def takewhile(func, value_stream):
@@ -74,11 +84,18 @@ def permute_case(s, index=0):
 default_last_object = __required__
 
 
+__terminal__ = object()
+
+
 def all_but_last(values, assert_last=default_last_object, location=''):
-    temp = next(values)
+    temp = next(values, __terminal__)
+
+    if temp is __terminal__ and not assert_last:
+        raise ValueError('{l} Expected at least {e} but got empty generator ...'.format(l=location, e=assert_last))
+
     for v in values:
         yield temp
         temp = v
 
     if assert_last is not default_last_object and not isinstance(temp, assert_last):
-        raise ValueError('{l} Expected but got {g}'.format(l=location, g=temp))
+        raise ValueError('{l} Expected {e} but got {g}'.format(l=location, e=assert_last, g=temp))

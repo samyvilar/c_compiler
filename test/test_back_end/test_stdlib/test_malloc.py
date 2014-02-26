@@ -22,8 +22,9 @@ class TestMalloc(TestStdLib):
 
             index = TEST_SIZE;
             temp = value;
+
             while (index--)
-                if (*temp++ != (1 - TEST_SIZE))
+                if (*temp++ != (unsigned char)(1 - TEST_SIZE))
                     return -2;
 
             free(value);
@@ -45,13 +46,13 @@ class TestMalloc(TestStdLib):
         #include <stdio.h>
 
         #define TEST_SIZE 20
-        #define MAX_BLOCK_SIZE 350
+        #define MAX_BLOCK_SIZE 256
 
         struct __block_type__ {int size; char value; unsigned char *address;};
 
         void randomly_initialize_block(struct __block_type__ *block)
         {
-            block->size = (rand() % MAX_BLOCK_SIZE);
+            block->size = (rand() & (MAX_BLOCK_SIZE - 1));
             block->value = (char)rand();
             block->address = malloc(block->size * sizeof(unsigned char));
             memset(block->address, block->value, block->size * sizeof(unsigned char));
@@ -60,20 +61,23 @@ class TestMalloc(TestStdLib):
         int main()
         {
             void *initial_heap_pointer = sbrk(0);  // record initial heap pointer ...
-
             struct __block_type__ allocated_blocks[TEST_SIZE];
             int test_size = TEST_SIZE;
 
+            size_t total_allocation_size = 0;
             while (test_size--) // randomly initialize all the blocks ...
+            {
                 randomly_initialize_block(&allocated_blocks[test_size]);
+                total_allocation_size += allocated_blocks[test_size].size;
+            }
 
             test_size = 2 * TEST_SIZE;
             int index;
             while (test_size--)  // randomly deallocate some of the blocks ...
             {
                 index = rand() % TEST_SIZE; // randomly pick a block ...
-                //free(allocated_blocks[index].address); // deallocate its content ...
-                // randomly_initialize_block(&allocated_blocks[index]);  // randomly re-initialize its content ...
+                free(allocated_blocks[index].address); // deallocate its content ...
+                randomly_initialize_block(&allocated_blocks[index]);  // randomly re-initialize its content ...
             }
 
 
@@ -82,7 +86,7 @@ class TestMalloc(TestStdLib):
             {   // check that free/malloc haven't corrupted any other blocks ...
                 for (index = 0; index < allocated_blocks[test_size].size; index++)
                     if (allocated_blocks[test_size].address[index] != allocated_blocks[test_size].value)
-                        {continue; }//return -1;
+                        return -1;
                     free(allocated_blocks[test_size].address);  // check was ok, so deallocate it ...
             }
 

@@ -195,8 +195,7 @@ void recycle_node(two_d_segment_tree_node_type *tree)
 }
 
 /* we only need two stacks. */
-static two_d_segment_tree_node_type
-        *stacks[2][100]              = {{NULL}}; /* common stack used among all the sub routines. */
+static two_d_segment_tree_node_type *stacks[2][100]; /* common stack used among all the sub routines. */
 
 static unsigned_word
         stack_indices[2] = {0};
@@ -640,7 +639,6 @@ void populate_second_d_segment_tree(two_d_segment_tree_node_type *tree)
         {
             set_y_axis(tree, create_balanced_tree(((rectlist *)interval_list(tree)), INTERVAL_LIST));
             intervals = interval_list(tree);
-
             while (intervals)
             {
                 /* Fractional Cascading will insert intervals without rectangles to build the second dimension tree.
@@ -1026,7 +1024,7 @@ int main()
         }
     }
     }
-
+     
     printf("End of tests\n");
     return 0;
 }

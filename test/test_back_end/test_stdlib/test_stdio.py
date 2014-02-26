@@ -3,6 +3,7 @@ __author__ = 'samyvilar'
 from test.test_back_end.test_stdlib.base import TestStdLib
 from back_end.emitter.cpu import Kernel, stdout_file_no, stdin_file_no, stderr_file_no
 from back_end.emitter.system_calls import CALLS
+from back_end.emitter.c_types import size, CharType, ArrayType
 from tempfile import TemporaryFile
 
 
@@ -35,7 +36,7 @@ class TestPrintf(TestStdLib):
             char *temp_1 = "World";
             printf("%s", temp);
             printf("%s%s", temp_1, "!");
-            return 0;
+            return temp[5] == 0;
         }
         """
         self.evaluate(code)
@@ -64,16 +65,16 @@ class TestPrintf(TestStdLib):
 
         int main()
         {
-            long value = 12412421345324;
+            long value = 12412421345324L;
+
             printf("(%li)", value);
             printf("(%ld)", 1152921504606846976L);
             printf("(%lld)(%li)", 0LL, 4770931718827366147L);
             printf(
                 "(%lu)(%llu)(%lo)(%llo)(%llx)(%llX)",
-                807023UL, 8736574736ULl, 06576374073l, 07743525251lL, 0x243fa8c1ell, 0XAB7A6LL
+                807023UL, 8736574736ULL, 06576374073l, 07743525251lL, 0x243fa8c1ell, 0XAB7A6LL
             );
             printf("(%llu)", -1LLU);
-
             return 0;
         }
         """
@@ -126,12 +127,12 @@ class TestPrintf(TestStdLib):
         {
             int value = 12321;
             printf("%o", value);
-            printf("%o%o", 3439, -2342);
+            printf(" %o %o ", 3439, -2342);
             return 0;
         }
         """
         self.evaluate(code)
-        self.assertEqual("30041655737777773332", self.stdout.read(),)
+        self.assertEqual("30041 6557 37777773332 ", self.stdout.read(),)
 
     def test_printf_pointer(self):
         code = """
@@ -157,8 +158,9 @@ class TestPrintf(TestStdLib):
 
             int main()
             {
-                printf("%llu %f %lu\n", foo.a, foo.b, sizeof(foo));
+                printf("%llu %f %lu", foo.a, foo.b, sizeof(foo));
                 return foo.b == 10.5;
             }
         """
         self.evaluate(code)
+        self.assertEqual("4622100592565682176 10.5 {s}".format(s=size(ArrayType(CharType(), 20))), self.stdout.read())

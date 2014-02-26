@@ -1,82 +1,76 @@
 __author__ = 'samyvilar'
 
-from types import NoneType
-from itertools import starmap, product, chain, repeat
+from itertools import ifilterfalse, imap, chain, repeat, takewhile, starmap
 
-from utils.sequences import peek, consume, flatten, takewhile
-from logging_config import logging
+from utils.sequences import peek, peek_or_terminal, consume, terminal
+from utils.rules import set_rules, rules
 from front_end.loader.locations import loc, EOFLocation
 from front_end.tokenizer.tokens import TOKENS
 
-from front_end.parser.symbol_table import SymbolTable, push, pop
+from utils.symbol_table import push, pop, SymbolTable
 
-from front_end.parser.ast.statements import CompoundStatement, FunctionDefinition
 from front_end.parser.ast.declarations import EmptyDeclaration, Declaration, Auto, Register, name
 from front_end.parser.ast.declarations import Extern, Definition, TypeDef
 from front_end.parser.ast.declarations import initialization
-from front_end.parser.ast.expressions import ConstantExpression, EmptyExpression, exp
+from front_end.parser.ast.statements import FunctionDefinition
+from front_end.parser.ast.expressions import Initializer, EmptyExpression, ConstantExpression, exp
 
 from front_end.parser.types import CType, StructType, set_core_type, c_type, FunctionType, VAListType, StringType
-from front_end.parser.types import ArrayType, CharType
+from front_end.parser.types import ArrayType
 
-from front_end.parser.declarations.declarators import declarator, storage_class_specifier
-from front_end.parser.declarations.declarators import type_specifier, specifier_qualifier_list
-
-from front_end.parser.expressions.expression import assignment_expression, cast_expression, initializer
-
-from front_end.errors import error_if_not_value
-
-logger = logging.getLogger('parser')
+from front_end.parser.expressions.initializer import parse_initializer, initializer_defaults
 
 
-def init_declarator(tokens, symbol_table, base_type=CType('')):
+from utils.errors import error_if_not_value, error_if_not_type, raise_error
+
+
+def _assignment_expression(tokens, symbol_table):
+    return symbol_table['__ assignment_expression __'](tokens, symbol_table)
+
+
+def _initializer_expression(tokens, symbol_table):
+    return symbol_table['__ initializer __'](tokens, symbol_table)
+
+
+def initializer_or_assignment_expression(tokens, symbol_table):
+    return rules(initializer_or_assignment_expression)[peek(tokens)](tokens, symbol_table)
+set_rules(initializer_or_assignment_expression, ((TOKENS.LEFT_BRACE, _initializer_expression),), _assignment_expression)
+
+
+def init_declarator(tokens, symbol_table, base_type=CType(''), storage_class=None):
     # : declarator ('=' assignment_expression or initializer)?
-    decl = declarator(tokens, symbol_table)
-    set_core_type(decl, base_type)
-    if peek(tokens, '') == TOKENS.EQUAL:
-        _ = consume(tokens)
-        decl = Definition(name(decl), c_type(decl), None, loc(decl), None)
+    decl = set_core_type(symbol_table['__ declarator __'](tokens, symbol_table), base_type)
+    if peek_or_terminal(tokens) == TOKENS.EQUAL and consume(tokens):
+        decl = Definition(name(decl), c_type(decl), EmptyExpression(c_type(decl)), loc(decl), storage_class)
         symbol_table[name(decl)] = decl  # we have to add it to the symbol table for things like `int a = a;`
-        assert not isinstance(c_type(decl), FunctionType)
-
-        if peek(tokens, '') == TOKENS.LEFT_BRACE:
-            expr = initializer(tokens, symbol_table, c_type(decl))
-            decl.initialization = (
-                all(starmap(isinstance, product(flatten(exp(expr)), (ConstantExpression,)))) and
-                ConstantExpression(exp(expr), c_type(expr), loc(expr))
-            ) or expr
-        else:
-            decl.initialization = assignment_expression(tokens, symbol_table, cast_expression)
-
-        ctype = c_type(decl.initialization)
-        if isinstance(c_type(decl), ArrayType) and isinstance(c_type(c_type(decl)), CharType) and \
-                isinstance(ctype, StringType):
-            decl.initialization = ConstantExpression(
-                [next(
-                    exp(decl.initialization),
-                    ConstantExpression(ord('\0'), CharType(loc(ctype)), loc(ctype)))
-                 for _ in xrange(len(c_type(decl)))],
-                ArrayType(CharType(loc(ctype)), len(c_type(decl)), loc(ctype)),
-                loc(decl.initialization)
+        expr = initializer_or_assignment_expression(tokens, symbol_table)
+        # if declaration is an array type and the expression is of string_type then convert to initializer for parsing
+        if isinstance(c_type(decl), ArrayType) and isinstance(c_type(expr), StringType):
+            expr = Initializer(
+                enumerate(exp(expr)), ArrayType(c_type(c_type(expr)), len(c_type(expr)), loc(expr)), loc(expr)
             )
+        decl.initialization = parse_initializer(expr, decl) if isinstance(expr, Initializer) else expr
     else:
-        decl = Declaration(name(decl), c_type(decl), loc(decl))
-        symbol_table[name(decl)] = decl
+        symbol_table[name(decl)] = decl = Declaration(name(decl), c_type(decl), loc(decl))
     return decl
 
 
-def init_declarator_list(tokens, symbol_table, base_type=CType('')):  # init_declarator (',' init_declarator)*
-    yield init_declarator(tokens, symbol_table, base_type=base_type)
-    while peek(tokens) == TOKENS.COMMA:
-        _ = consume(tokens)
-        yield init_declarator(tokens, symbol_table, base_type=base_type)
+def init_declarator_list(tokens, symbol_table, base_type=CType(''), storage_class=None):
+    return chain(   # init_declarator (',' init_declarator)*
+        (init_declarator(tokens, symbol_table, base_type=base_type, storage_class=storage_class),),
+        starmap(
+            init_declarator,
+            takewhile(
+                lambda i: peek(i[0]) == TOKENS.COMMA and consume(i[0]),
+                repeat((tokens, symbol_table, base_type, storage_class))
+            )
+        )
+    )
 
 
 def get_declaration_or_definition(decl, storage_class):
-    if initialization(decl) and isinstance(storage_class, Extern):
-        raise ValueError('{l} {ident} has both initialization expr and extern storage class'.format(
-            l=loc(decl), ident=name(decl),
-        ))
+    _ = initialization(decl) and isinstance(storage_class, Extern) and raise_error(
+        '{l} {ident} has both initialization expr and extern storage class'.format(l=loc(decl), ident=name(decl)))
 
     if isinstance(c_type(decl), (FunctionType, StructType)) and not name(decl) or isinstance(storage_class, Extern):
         return Declaration(name(decl), c_type(decl), loc(decl), storage_class)
@@ -86,88 +80,50 @@ def get_declaration_or_definition(decl, storage_class):
 
 def declarations(tokens, symbol_table):
     # storage_class_specifier? type_name? init_declarator_list (';' or compound_statement) # declaration
+    storage_class_specifier, specifier_qualifier_list, statement = imap(
+        symbol_table.__getitem__,
+        ('__ storage_class_specifier __', '__ specifier_qualifier_list __', '__ statement __')
+    )
     storage_class = storage_class_specifier(tokens, symbol_table)
     base_type = specifier_qualifier_list(tokens, symbol_table)
 
-    from front_end.parser.statements.compound import statement
-
-    if peek(tokens, '') == TOKENS.SEMICOLON:
+    expecting_token = TOKENS.SEMICOLON
+    if peek_or_terminal(tokens) == TOKENS.SEMICOLON:
         yield EmptyDeclaration(loc(consume(tokens)), storage_class)
-    elif peek(tokens, ''):
-        obj = None
-        for dec in init_declarator_list(tokens, symbol_table, base_type=base_type):
-            dec.storage_class = storage_class
-            if isinstance(storage_class, TypeDef):  # init_declarator_list adds the symbol as a decl to symbol_table
-                _ = symbol_table.pop(name(dec))
-                symbol_table[name(dec)] = c_type(dec)  # add the new symbol as a CType...
-                obj = TypeDef(name(dec), c_type(dec), loc(dec))
-            elif peek(tokens, '') == TOKENS.LEFT_BRACE:
-                push(symbol_table)
-                for arg in c_type(dec):  # add parameters to scope.
-                    if not isinstance(c_type(arg), VAListType):
-                        symbol_table[name(arg)] = arg
-                symbol_table['__ RETURN_TYPE __'] = c_type(c_type(dec))
-                obj = FunctionDefinition(dec, next(statement(tokens, symbol_table)))
-            else:
-                obj = dec
-            yield obj
-            if isinstance(obj, FunctionDefinition):
-                _ = pop(symbol_table)
-                break
-        _ = obj and not isinstance(obj, FunctionDefinition) and error_if_not_value(tokens, TOKENS.SEMICOLON)
-    else:
-        raise ValueError('{l} Expected `,` `=` `;` `{{` got {got}'.format(
+    elif peek_or_terminal(tokens) is terminal:
+        raise_error('{l} Expected TOKENS.COMMA TOKENS.EQUAL TOKENS.SEMICOLON TOKENS.LEFT_BRACE got `{got}`'.format(
             l=loc(peek(tokens, EOFLocation)), got=peek(tokens, '')
         ))
-
-
-# specific to compound_statements.
-def declaration(tokens, symbol_table):  # storage_class? type_specifier init_declarator_list ';'
-    for decl in declarations(tokens, symbol_table):
-        if isinstance(decl, FunctionDefinition):
-            raise ValueError('{l} Nested function definitions are not allowed.'.format(l=loc(decl)))
-        # Non Function declaration without storage class is set to auto
-        if type(decl) is Declaration and not isinstance(c_type(decl), FunctionType):
-            decl = Definition(
-                name(decl),
-                c_type(decl),
-                EmptyExpression(c_type(decl), loc(decl)),
-                loc(decl),
-                decl.storage_class or Auto(loc(decl))
-            )
-        yield decl
-
-
-def is_declaration(
-        tokens,
-        symbol_table,
-        rules=set(storage_class_specifier.rules) | set(type_specifier.rules) | {TOKENS.CONST, TOKENS.VOLATILE}
-):
-    return peek(tokens, '') in rules or isinstance(symbol_table.get(peek(tokens, ''), ''), CType)
+    else:
+        for dec in init_declarator_list(tokens, symbol_table, base_type=base_type, storage_class=storage_class):
+            dec.storage_class = storage_class
+            if isinstance(storage_class, TypeDef):  # init_declarator_list adds the symbol as a decl to symbol_table
+                symbol_table[name(dec)] = (symbol_table.pop(name(dec)) or 1) and c_type(dec)  # replace dec by ctype
+            elif peek_or_terminal(tokens) == TOKENS.LEFT_BRACE and not error_if_not_type(c_type(dec), FunctionType):
+                symbol_table = push(symbol_table)
+                symbol_table.update(chain(
+                    imap(
+                        lambda a: (name(a), a),  # add non variable list parameters to the symbol table ...
+                        ifilterfalse(lambda c: isinstance(c_type(c), VAListType), c_type(dec))
+                    ),
+                    (('__ RETURN_TYPE __', c_type(c_type(dec))), ('__ LABELS __', SymbolTable()))
+                ))
+                yield FunctionDefinition(dec, next(statement(tokens, symbol_table)))
+                expecting_token = (pop(symbol_table) or 1) and ''
+            else:
+                yield dec
+                expecting_token = TOKENS.SEMICOLON
+        _ = expecting_token and error_if_not_value(tokens, expecting_token)
 
 
 def external_declaration(tokens, symbol_table):
     #storage_class_specifier? type_specifier init_declarator_list (';' or compound_statement)
     for decl in declarations(tokens, symbol_table):
-        if decl and isinstance(decl.storage_class, (Auto, Register)):
-            raise ValueError('{l} declarations at file scope may not have {s} storage class'.format(
-                l=loc(decl), s=decl.storage_class
-            ))
-
-        if not isinstance(
-                initialization(decl, ConstantExpression(0, None)),
-                (NoneType, ConstantExpression, CompoundStatement)
-        ):
-            raise ValueError(
-                '{l} definition at file scope may only be initialized with constant expressions, got {g}'.format(
-                    l=loc(decl), g=initialization(decl)
-                )
-            )
+        _ = decl and isinstance(decl.storage_class, (Auto, Register)) and raise_error(
+            '{l} declarations at file scope may not have {s} storage class'.format(l=loc(decl), s=decl.storage_class)
+        )
         yield decl
 
 
-def translation_unit(tokens, symbol_table=None):  #: (external_declaration)*
-    symbol_table = symbol_table or SymbolTable()
-    return chain.from_iterable(
-        starmap(external_declaration, takewhile(lambda args: peek(args[0]), repeat((tokens, symbol_table))))
-    )
+def translation_unit(tokens, symbol_table):  #: (external_declaration)*
+    return chain.from_iterable(imap(external_declaration, takewhile(peek, repeat(tokens)), repeat(symbol_table)))

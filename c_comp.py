@@ -3,7 +3,12 @@ __author__ = 'samyvilar'
 
 import argparse
 import os
+import sys
 import inspect
+
+from itertools import imap, ifilter, product
+
+from collections import OrderedDict
 
 try:
     import cPickle as pickle
@@ -12,14 +17,15 @@ except ImportError as e:
 
 from itertools import chain, izip, starmap, repeat
 
-from utils.sequences import peek, takewhile
+from utils.sequences import peek, takewhile, peek_or_terminal, terminal, consume_all, exhaust
 
-from front_end.loader.locations import loc, Location, EOFLocation
+from front_end.loader.locations import loc, line_number, column_number, Location
+from front_end.tokenizer.tokens import IGNORE
 import front_end.loader.load as loader
 import front_end.tokenizer.tokenize as tokenizer
 import front_end.preprocessor.preprocess as preprocessor
 import front_end.parser.parse as parser
-from front_end.parser.symbol_table import SymbolTable
+from utils.symbol_table import SymbolTable
 import back_end.emitter.emit as emitter
 import back_end.linker.link as linker
 from back_end.loader.load import load as load_binaries
@@ -30,49 +36,41 @@ from back_end.virtual_machine.instructions.architecture import Instruction
 
 from back_end.emitter.optimizer.optimize import optimize, zero_level_optimizations, first_level_optimizations
 
+from utils.errors import error_if_not_value
+from utils.rules import identity
+
 import ovm
 
 
 def get_line(tokens):
-    return takewhile(
-        lambda t, line_number=loc(peek(tokens, EOFLocation)).line_number: loc(t).line_number == line_number, tokens
+    return iter(()) if peek_or_terminal(tokens) is terminal else takewhile(
+        lambda t, current_line_number=line_number(peek(tokens)): line_number(t) == current_line_number,
+        tokens
     )
 
 
-def get_lines(tokens):
-    while True:
-        yield loc(peek(tokens)).line_number, get_line(tokens)
-
-
-def format_line_tokens(tokens):
-    temp = ''
-    try:
-        prev_token = next(tokens)
-        temp += ' ' * (loc(prev_token).column_number - 1) + repr(prev_token)
-    except StopIteration as _:
-        return ''
-    for token in tokens:
-        if loc(prev_token).column_number + len(repr(prev_token)) != loc(token).column_number:
-            temp += ' '
-        temp += repr(token)
+def format_line(line):
+    prev_token = IGNORE(location=Location('', 0, 0))
+    for token in consume_all(line):
+        yield ' ' * (column_number(token) - (column_number(prev_token) + len(prev_token)))
+        yield repr(token)
         prev_token = token
-    return temp
+    yield os.linesep
+
+
+def format_token_seq(token_seq):
+    return chain.from_iterable(imap(format_line, imap(get_line, takewhile(peek, repeat(token_seq)))))
+
+
+def preprocess_file(input_file, include_dirs):
+    return preprocessor.preprocess(tokenizer.tokenize(loader.load(input_file)), include_dirs=include_dirs)
 
 
 def preprocess(files, include_dirs):
-    output = ''
-    for input_file in files:
-        tokens = preprocessor.preprocess(tokenizer.tokenize(loader.load(input_file)), include_dirs=include_dirs)
-        prev_line_number = loc(peek(tokens, Location('', 1, 1))).line_number - 1
-        for line_number, line in get_lines(tokens):
-            if line_number != prev_line_number + 1:
-                output += os.linesep
-            output += format_line_tokens(line) + os.linesep
-            prev_line_number = line_number
-    return output
+    return chain.from_iterable(imap(format_token_seq, imap(preprocess_file, files, repeat(include_dirs))))
 
 
-def symbols(file_name, include_dirs=(), optimizer=lambda _: _):
+def symbols(file_name, include_dirs=(), optimizer=identity):
     if isinstance(file_name, str) and os.path.splitext(file_name)[1] == '.o.p':
         with open(file_name) as file_obj:
             symbol_table = pickle.load(file_obj)
@@ -96,19 +94,19 @@ std_libraries = ['libc.p']
 std_symbols = system_calls.SYMBOLS
 
 
-def instrs(files, include_dirs=(), library_dirs=(), libraries=(), optimizer=lambda _: _):
+def instrs(files, include_dirs=(), libraries=()):
     symbol_table = SymbolTable()
-    return optimizer(
-        linker.resolve(
-            linker.executable(
-                chain(std_symbols.itervalues(), chain.from_iterable(starmap(symbols, izip(files, repeat(include_dirs))))),
-                symbol_table=symbol_table,
-                libraries=libraries,
-                library_dirs=library_dirs,
-                linker=linker.static,
+    return linker.resolve(
+        linker.executable(
+            chain(
+                std_symbols.itervalues(),
+                chain.from_iterable(starmap(symbols, izip(files, repeat(include_dirs))))
             ),
-            symbol_table
-        )
+            symbol_table=symbol_table,
+            libraries=libraries,
+            linker=linker.static,
+        ),
+        symbol_table
     )
 
 
@@ -139,9 +137,11 @@ def main():
                      help='Name of libraries to search for symbols')
 
     args = cli.parse_args()
-    args.Include += std_include_dirs
+    args.Include += std_include_dirs + list(set(imap(os.path.dirname, args.files)))
     args.Libraries += std_libraries_dirs
     args.libraries += std_libraries
+
+    libraries = ifilter(os.path.isfile, starmap(os.path.join, product(args.Libraries, args.libraries)))
 
     if args.optimize and args.optimize[0] == '1':
         optimizer = lambda instrs: optimize(instrs, first_level_optimizations)
@@ -149,27 +149,20 @@ def main():
         optimizer = lambda instrs: optimize(instrs, zero_level_optimizations)
 
     if args.preprocess:
-        print(preprocess(args.files, args.Include))
+        exhaust(imap(sys.stdout.write, preprocess(args.files, args.Include)))
+        # print(preprocess(args.files, args.Include))
     elif args.assembly:
-        mem = {}
-        load_binaries(
-            linker.set_addresses(
-                instrs(args.files, args.Include, args.Libraries, args.libraries, optimizer)
-            ),
-            mem
-        )
-        for addr, elem in mem.iteritems():
-            if isinstance(elem, Instruction):
-                print '{l}:{addr}: {elem}'.format(l=loc(elem), addr=addr, elem=elem)
+        mem = OrderedDict()
+        load_binaries(linker.set_addresses(optimizer(instrs(args.files, args.Include, libraries))), mem)
+        exhaust(imap(sys.stdout.write, imap(
+            lambda i: '{l}:{addr}: {elem}\n'.format(l=loc(i[1]), addr=i[0], elem=i[1]),
+            ifilter(lambda i: isinstance(i[1], Instruction), mem.iteritems())
+        )))
     elif args.compile:
         if args.output:
-            if len(args.output) != len(args.files):
-                raise ValueError('Expected {e} but got {g} output file names.'.format(
-                    e=len(args.files), g=len(args.output)
-                ))
-            output_files = args.output
+            output_files = error_if_not_value(repeat(len(args.output), 1), len(args.files)) and args.output
         else:
-            output_files = (os.path.splitext(file_name)[0] + '.o.p' for file_name in args.files)
+            output_files = imap('{0}.o.p'.format, imap(lambda f: os.path.splitext(f)[0], args.files))
 
         for input_file, output_file in izip(args.files, output_files):
             symbol_table = linker.library(symbols(input_file, args.Include, optimizer))
@@ -179,27 +172,21 @@ def main():
         symbol_table = SymbolTable()
         for input_file in args.files:
             symbol_table = linker.library(symbols(input_file, args.Include, optimizer), symbol_table)
-        if len(args.output) != 1:
-            raise ValueError('Need exactly one output archive name got {g}'.format(g=len(args.output)))
+        error_if_not_value(repeat(len(args.output), 1), 1)
         with open(args.output[0], 'wb') as file_obj:
             pickle.dump(symbol_table, file_obj)
     elif args.shared:
         raise NotImplementedError
     else:  # static linking ...
-        instructions = instrs(args.files, args.Include, args.Libraries, args.libraries, optimizer)
+        instructions = optimizer(instrs(args.files, args.Include, libraries))
+        error_if_not_value(repeat(len(args.output), 1), 1, Location(__name__, 182, ''))
 
-        if len(args.output) > 1:
-            raise ValueError('Cannot specify more than 1 output for binary got {g}'.format(
-                g=len(args.output)
-            ))
         if args.ovm:
             ovm.start(instructions)
         else:
-            instructions = tuple(instructions)
-
             file_output = args.output and args.output[0] or 'a.out.p'
             with open(file_output, 'wb') as file_obj:
-                pickle.dump(instructions, file_obj)
+                pickle.dump(tuple(instructions), file_obj)
 
 
 if __name__ == '__main__':

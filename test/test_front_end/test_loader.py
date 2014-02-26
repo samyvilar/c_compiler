@@ -17,8 +17,13 @@ also. ... \\
 empty.
 """
         new_char_array = source(test_input, '__TEST__')
-        self.assertEqual(''.join(new_char_array),
-                         '\nthis is a new lines\nthis is supposed to be a new line also. ... empty.\n')
+        self.assertEqual(
+            ''.join(new_char_array),
+"""
+this is a new lines
+this is supposed to be a new line also. ... empty.
+"""
+        )
         locations = \
             [('__TEST__', 1, 1)] + [
                 ('__TEST__', 2, index)

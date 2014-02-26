@@ -3,12 +3,14 @@
 #include <stdio.h>
 #include <stdarg.h>
 
-extern int __open__(const char *, const char *);  // returns file_id on success or -1 of failure.
-extern int __read__(int, char *, unsigned long long);  // returns the number of elements read on success or -1 on failure
-extern int  __write__(int, char *, unsigned long long);  // returns 0 on success or -1 on failure.
-extern int __close__(int);  // returns 0 on success or -1 on failure
-extern int __tell__(int);
-extern int __seek__(int, int, int);
+#define system_call_int_type long long
+
+extern system_call_int_type __open__(const char *, const char *);  // returns file_id on success or -1 of failure.
+extern system_call_int_type __read__(system_call_int_type, char *, unsigned system_call_int_type);  // returns the number of elements read on success or -1 on failure
+extern system_call_int_type __write__(system_call_int_type, char *, unsigned system_call_int_type);  // returns 0 on success or -1 on failure.
+extern system_call_int_type __close__(system_call_int_type);  // returns 0 on success or -1 on failure
+extern system_call_int_type __tell__(system_call_int_type);
+extern system_call_int_type __seek__(system_call_int_type, system_call_int_type, system_call_int_type);
 
 
 #define file_number(file) (file->_id)
@@ -33,11 +35,12 @@ extern int __seek__(int, int, int);
 
 FILE *fopen(const char *file_path, const char *mode)
 {
-    int file_id = __open__(file_path, mode);
+    system_call_int_type file_id = __open__(file_path, mode);
     if (file_id < 0)
         return NULL;
 
-    FILE *file = malloc(sizeof(FILE));
+    FILE *file = malloc(sizeof(FILE));  // rand() is opening file which is allocating buffer ...
+
     set_file_number(file, file_id);
     set_file_buffer_index(file, 0);
     set_file_state(file, ((*mode == 'a' || *mode == 'w') ? FILE_READY_FOR_WRITING : FILE_READY_FOR_READING));
@@ -46,14 +49,13 @@ FILE *fopen(const char *file_path, const char *mode)
 }
 
 size_t fread(void *dest, size_t size_of_element, size_t number_of_elements, FILE *file)
-{   return __read__(file_number(file), dest, size_of_element * number_of_elements);    }
+{   return __read__(file_number(file), dest, size_of_element * number_of_elements)/size_of_element; }
 
 
 size_t fwrite(const void *src, size_t size, size_t count, FILE *file)
 {
-    size_t total = size * count;
     unsigned char *source = src;
-    total /= sizeof(unsigned char);
+    size_t total = (size * count) / sizeof(unsigned char);
     while (total--)
         if (fputc(*source++, file) == EOF)
             return ((size * count) - (total + 1)) / count;
@@ -106,10 +108,8 @@ int fputc(int ch, FILE *file)
 
 int	fflush(FILE *file)
 {
-    if (file_state(file) != FILE_READY_FOR_WRITING || __write__(
-            file_number(file), file_buffer(file), file_buffer_index(file)
-        )
-    )
+    if (file_state(file) != FILE_READY_FOR_WRITING
+        || __write__(file_number(file), file_buffer(file), file_buffer_index(file)))
         return EOF;
 
     set_file_buffer_index(file, 0);
@@ -129,42 +129,38 @@ char *upper(char *src)
 
 static FILE stdout = {1, FILE_READY_FOR_WRITING};
 
-char *number_to_string(long long value, int base, char *dest, unsigned long long max_size)
-{
+char number_to_char_table[256] = {
+    [0 ... 255] = '?',
+    [0] = '0', [1] = '1', [2] = '2', [3] = '3', [4] = '4', [5] = '5', [6] = '6', [7] = '7', [8] = '8', [9] = '9',
+    [10] = 'a', [11] = 'b', [12] = 'c', [13] = 'd', [14] = 'e', [15] = 'f'
+};
 
-    if ((base < 2 || base > 36) && base != -10)
+char *number_to_string(long long signed_value, int base, char *dest, unsigned long long max_size)
+{                                       // base == -10 signals the value to be interpreted as an unsigned decimal
+    if ((base < 2 || base > 16) && (base != -10))  // if base is out range, then quit ...
         return NULL;
 
-    unsigned long long current = value;
     char *destination = dest;
-    if (value < 0)
+    unsigned long long value = signed_value; // interpret signed value as unsigned ...
+    if (base == 10 && signed_value < 0) // if working with base 10 and value is negative
     {
-        if (base == 10)
-        {
-            *destination++ = '-';
-            current = -1 * value;
-        }
-        else
-            current = max_size + value + 1;
+        value *= -1;
+        *destination++ = '-';
     }
+    if (base < 0)
+        base *= -1;
 
-    if (base == -10)  // printing unsigned number
-        base = 10;
-
-    #define digit_ch(__numb__) ((__numb__) + (((__numb__) < 10) ? '0' : ('a' - 10)))
-
-
-    while (current >= base)
+    value &= max_size;  // in case we are working with something smaller than long long (like int)
+    while (value >= base)
     {
-        *destination++ = digit_ch(current % base);
-        current /= base;
+        *destination++ = digit_ch(value % base);  // get least significant digit ...
+        value /= base;        // remove it ...
     }
-    *destination++ = digit_ch(current % base);
-    *destination-- = '\0';
-    #undef digit_ch
+    *destination++ = digit_ch(value % base);      // 0 <= current < base
+    *destination-- = '\0';   // terminate string, values are in reverse order ...
 
-    char ch, *temp = (*dest == '-') ? (dest + 1) : dest;  // swap values ..
-    while (destination > temp)
+    char ch, *temp = dest + (*dest == '-');  // skip initial '-' if it was set ...
+    while (destination > temp) // swap characters ...
     {
         ch = *destination;
         *destination-- = *temp;
@@ -172,7 +168,6 @@ char *number_to_string(long long value, int base, char *dest, unsigned long long
     }
 
     return dest;
-
 }
 
 char *float_to_string(double value, char *dest)
@@ -211,64 +206,51 @@ int printf(const char *format, ...)
 
     char temp[128];
     char *str;
-    int base = 10;
     unsigned long long int total = 0;
-
-    #define NUMERIC_CASES(default_type, func) \
-        case 'i': case 'd': total += _puts(func(va_arg(args, default_type), temp, 10)); break ; \
-        case 'X': total += _puts(upper(func(va_arg(args, unsigned default_type), temp, 16))); break ; \
-        case 'x': total += _puts(func(va_arg(args, unsigned default_type), temp, 16)); break ; \
-        case 'o': total += _puts(func(va_arg(args, unsigned default_type), temp, 8)); break ; \
-        case 'u': total += _puts(func(va_arg(args, unsigned default_type) , temp, -10)); break ; \
-        default: _error_unknown_specifier(*format); return total;
+    long long value, is_negative;
 
     #define _error_unknown_specifier(format) printf("Unknown Specifier found!"), exit(-1);
     #define _puts(values) fputs(values, &stdout)
-    while (*format)
-    {
-        if (*format == '%')
-        {
-            ++format;
-            if (!*format)
-                return -1;
 
-            switch (*format)
+
+    #define NUMERIC_CASES(default_type, func)                       \
+        case 'i': case 'd': total += _puts(func(va_arg(args, default_type), temp, 10)); break ;                           \
+        case 'u': total += _puts(func((unsigned long long)va_arg(args, unsigned default_type), temp, -10)); break ;        \
+        case 'X': total += _puts(upper(func((unsigned long long)va_arg(args, unsigned default_type), temp, 16))); break ; \
+        case 'x': total += _puts(func((unsigned long long)va_arg(args, unsigned default_type), temp, 16)); break ;        \
+        case 'o': total += _puts(func((unsigned long long)va_arg(args, unsigned default_type), temp, 8)); break ;         \
+        default: _error_unknown_specifier(*(format - 1)); return total;
+
+    while (*format)
+        if (*format == '%' && format++) // %*
+            switch (*format++)
             {
                 // lengths
                 case 'h':
-                    if (*++format == 'h') switch (*++format) { NUMERIC_CASES(char, itoa) }
-                    else switch (*format) { NUMERIC_CASES(short int, itoa) }
+                    if (*format == 'h' && format++) switch (*format++) { NUMERIC_CASES(char, itoa) } // %hh*
+                    else switch (*format++) { NUMERIC_CASES(short int, itoa) } // %h*
                     break ;
 
                 case 'l':
-                    if (*++format == 'l') switch (*++format) { NUMERIC_CASES(long long int, lltoa) }
-                    else switch (*format) { NUMERIC_CASES(long int, ltoa) }
+                    if (*format == 'l' && format++) switch (*format++) { NUMERIC_CASES(long long int, lltoa) } // %ll*
+                    else switch (*format++) { NUMERIC_CASES(long int, ltoa) } // %l*
                     break ;
 
                 // default specifiers no length ...
-                case '%': putchar(*format); ++total; break ;
-                case 'c': putchar(va_arg(args, int)); ++total; break ;
-                case 's':
-                    total += _puts(va_arg(args, char *)); break ;
-
-                case 'p': total += _puts("0x"); total += _puts(lltoa(va_arg(args, void *), temp, 16)); break ;
-
-                case 'F':
-                case 'f':
-                    total += _puts(float_to_string(va_arg(args, double), temp)); break ;
+                case '%': putchar('%'); total++;                                                        break ;
+                case 'c': putchar(va_arg(args, char)); total++;                                         break ;
+                case 's': total += _puts(va_arg(args, char *));                                         break ;
+                case 'p': total += _puts("0x"); total += _puts(lltoa(va_arg(args, void *), temp, 16));  break ;
+                case 'F': case 'f': total += _puts(float_to_string(va_arg(args, double), temp));        break ;
 
                 NUMERIC_CASES(int, itoa)
             }
-            #undef _puts
-            #undef NUMERIC_CASES
-            #undef _error_unknown_specifier
-
-        }
         else
-            putchar(*format), ++total;
+            putchar(*format++), total++;
 
-        ++format;
-    }
+    #undef _puts
+    #undef NUMERIC_CASES
+    #undef _error_unknown_specifier
 
     fflush(&stdout);
     return total;

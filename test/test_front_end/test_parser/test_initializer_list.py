@@ -15,12 +15,12 @@ from front_end.parser.parse import parse
 class TestInitializerList(TestCase):
     def test_basic_type_initializer(self):
         code = "int b = {1};"
-        expr = exp(next(parse(preprocess(tokenize(source(code))))).initialization)
+        expr = next(parse(preprocess(tokenize(source(code))))).initialization
         self.assertEqual(ConstantExpression(1, integer_type), expr[0])
 
     def test_default_basic_type_initializer(self):
         code = "int b = {};"
-        expr = exp(next(parse(preprocess(tokenize(source(code))))).initialization)
+        expr = next(parse(preprocess(tokenize(source(code))))).initialization
         self.assertEqual(EmptyExpression(integer_type), expr[0])
 
     def test_composite_initializer(self):
@@ -34,7 +34,7 @@ class TestInitializerList(TestCase):
             .values[1].sub[0] = 'a'
         };
         """
-        expr = exp(next(parse(preprocess(tokenize(source(code))))).initialization)
+        expr = next(parse(preprocess(tokenize(source(code))))).initialization
         a = expr[0]
         values = expr[1]
 
@@ -42,7 +42,7 @@ class TestInitializerList(TestCase):
         self.assertEqual(len(values), 10)
 
         a_expr = ConstantExpression(1, integer_type)
-        for e in imap(lambda e: e[0], a):
+        for e in imap(next, imap(lambda v: v.itervalues(), a.itervalues())):
             self.assertEqual(e, a_expr)
 
         self.assertEqual(values[0][0][0], ConstantExpression(-1, integer_type))

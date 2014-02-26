@@ -1,7 +1,7 @@
 __author__ = 'samyvilar'
 
 import sys
-from itertools import izip, repeat, chain, starmap, imap, product
+from itertools import izip, repeat, chain, starmap, imap, product, count
 from collections import defaultdict
 
 from struct import pack, unpack
@@ -14,7 +14,7 @@ from back_end.virtual_machine.instructions.architecture import Push, Pop, Halt, 
 from back_end.virtual_machine.instructions.architecture import Add, Subtract, Multiply, Divide, Mod
 from back_end.virtual_machine.instructions.architecture import AddFloat, SubtractFloat, MultiplyFloat, DivideFloat
 from back_end.virtual_machine.instructions.architecture import And, Or, Xor, Not, ShiftLeft, ShiftRight
-from back_end.virtual_machine.instructions.architecture import ConvertTo, ConvertToFloatFrom
+
 from back_end.virtual_machine.instructions.architecture import LoadZeroFlag, LoadMostSignificantBitFlag
 from back_end.virtual_machine.instructions.architecture import AbsoluteJump, LoadInstructionPointer, LoadCarryBorrowFlag
 from back_end.virtual_machine.instructions.architecture import RelativeJump, JumpTrue, JumpFalse, JumpTable
@@ -30,11 +30,76 @@ from back_end.virtual_machine.instructions.architecture import push_integral, pu
 
 logger = logging.getLogger('virtual_machine')
 
-word_size = 8
+bits_per_byte = 8
+
+word_names = tuple((p + 'word') for p in ('one_eighth_', 'quarter_', 'half_', ''))
+signed_word_names = tuple(imap('signed_'.__add__, word_names))
+float_names = 'half_float', 'float'
+
+word_type_sizes = dict(chain(
+    izip(word_names, imap(int(1).__lshift__, count())),
+    izip(signed_word_names, imap(int(1).__lshift__, count())),
+    izip(float_names, imap(int(1).__lshift__, count(2)))
+))
+
+
+def get_max_unsigned_word_type_value(word_byte_size, bits_per_byte=bits_per_byte):
+    return 1 << (bits_per_byte * word_byte_size)
+
+
+def get_max_signed_word_type_value(word_byte_size, bits_per_byte=bits_per_byte):
+    return 1 << (word_byte_size * bits_per_byte)
+
+
+def get_min_signed_word_type_value(word_byte_size, bits_per_byte=bits_per_byte):
+    return -1 << ((bits_per_byte * word_byte_size) - 1)
+
+
+def get_type_func(type_name):
+    def integral_word_type(integral_type_name):
+        def mod(operand_0, operand_1):
+            return operand_0 % operand_1
+
+        def mod_power_of_2(operand_0, operand_1):
+            # if operand is a power of 2 simply use faster bitwise_and operator ...
+            return operand_0 & (operand_1 - 1)
+
+        min_possible_value = 0
+        max_possible_value = get_max_unsigned_word_type_value(word_type_sizes[integral_type_name])
+        if 'signed' in integral_type_name:
+            min_possible_value = get_min_signed_word_type_value(word_type_sizes[integral_type_name])
+            max_possible_value = get_max_signed_word_type_value(word_type_sizes[integral_type_name])
+
+        mod_func = mod if max_possible_value - 1 & max_possible_value else mod_power_of_2
+
+        def word_type_func(
+                value,
+                min_possible_value=min_possible_value,
+                max_size=max_possible_value,
+                _mod_func=mod_func
+        ):
+            return min_possible_value + _mod_func(value, max_size)
+
+        return word_type_func
+
+    def float_type(_):
+        return float  # TODO: implement half_float_type (c float)
+
+    return (float_type if 'float' in type_name else integral_word_type)(type_name)
+
+word_type_factories = {_name_: get_type_func(_name_) for _name_ in word_type_sizes}
+
+for word_type_name in word_type_sizes:
+     # add sizes to module
+    setattr(sys.modules[__name__], word_type_name + '_size', word_type_sizes[word_type_name])
+    setattr(sys.modules[__name__], word_type_name + '_type', word_type_factories[word_type_name])
+
+# TODO: connect word_type(s) with machine_integral_type .......
 machine_integral_type = push_integral.core_type
 machine_real_type = push_real.core_type
-machine_types = (machine_integral_type, machine_real_type)
 
+
+machine_types = (machine_integral_type, machine_real_type)
 interpret_real_as_integral = lambda value: machine_integral_type(unpack('Q', pack('d', float(value)))[0])
 interpret_integral_as_real = lambda value: machine_real_type(unpack('d', pack('Q', float(value)))[0])
 
@@ -178,18 +243,18 @@ default_unary_implementations = {
     (machine_integral_type, Not): machine_integral_type.__invert__,
     (machine_real_type, Not): lambda operand: machine_integral_type.__invert__(interpret_real_as_integral(operand)),
 
-    (machine_integral_type, ConvertToFloatFrom): machine_real_type,
-    (machine_real_type, ConvertToFloatFrom): lambda operand: operand,
-
-    (machine_real_type, ConvertTo): machine_integral_type,
-    (machine_integral_type, ConvertTo): lambda operand: operand,
+    # (machine_integral_type, ConvertToFloatFrom): machine_real_type,
+    # (machine_real_type, ConvertToFloatFrom): lambda operand: operand,
+    #
+    # (machine_real_type, ConvertTo): machine_integral_type,
+    # (machine_integral_type, ConvertTo): lambda operand: operand,
 }
 
 
 def unary_arithmetic(instr, cpu, mem, implementations=None):
     operand = pop(cpu, mem)
     return (implementations or default_unary_implementations)[type(operand), type(instr)](operand)
-unary_arithmetic.rules = {Not, ConvertToFloatFrom, ConvertTo}
+unary_arithmetic.rules = {Not}  #, ConvertToFloatFrom, ConvertTo}
 
 
 def expr(instr, cpu, mem, _):
@@ -394,7 +459,11 @@ std_files = ((stdin_file_no, sys.stdin), (stdout_file_no, sys.stdout), (stderr_f
 
 try:
     from back_end.virtual_machine.c.cpu import c_evaluate as evaluate, CPU, Kernel, VirtualMemory, base_element
+    from back_end.virtual_machine.c.cpu import word_type, half_word_type, quarter_word_type, one_eighth_word_type
+    from back_end.virtual_machine.c.cpu import word_size, half_word_size, quarter_word_size, one_eighth_word_size
+    from back_end.virtual_machine.c.cpu import word_type_factories, word_type_sizes, pack_binaries
 except ImportError as er:
+
     class Kernel(object):
         def __init__(self, calls=None, open_files=std_files):
             self.calls = calls or {}
@@ -423,6 +492,12 @@ except ImportError as er:
     evaluate = evaluate
 
     def base_element(cpu, mem, _):
-        return mem[cpu.base_pointer - 1]
+        return mem[cpu.base_pointer]
+
+    def pack_binaries(*args):
+        for value in args[0]:
+            yield value
 
     logger.warning('Failed to import C implementations, reverting to Python')
+    print er
+    _ = 1

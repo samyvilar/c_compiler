@@ -14,7 +14,6 @@ from back_end.virtual_machine.instructions.architecture import Integer, Byte, Pu
 from back_end.virtual_machine.instructions.architecture import SystemCall as SysCallInstruction, push_integral
 
 from back_end.emitter.cpu import std_files, logger, Halt, word_size
-from back_end.emitter.c_types import function_operand_type_sizes
 
 __str__ = lambda ptr, mem, max_l=512: ''.join(imap(chr, takewhile(lambda byte: byte, __buffer__(ptr, max_l, mem))))
 __buffer__ = lambda ptr, count, mem: imap(mem.__getitem__, xrange(ptr, ptr + (count * word_size), word_size))
@@ -30,8 +29,8 @@ def __return__(value, cpu, mem, os, func_signature=FunctionType(IntegerType(SysC
 
 
 def argument_address(func_type, cpu, mem):
-    index = 2 * size(void_pointer_type) + (
-        size(void_pointer_type) if function_operand_type_sizes(c_type(c_type(func_type))) else 0
+    index = size(void_pointer_type) + (
+        size(void_pointer_type) if size(c_type(c_type(func_type)), overrides={VoidType: 0}) else 0
     )
 
     for ctype in imap(c_type, func_type):

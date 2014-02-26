@@ -1,108 +1,142 @@
 __author__ = 'samyvilar'
 
 import os
-from collections import defaultdict
-from itertools import chain
+from itertools import chain, izip, repeat
 
-from utils.sequences import peek, consume, takewhile
+from utils.sequences import peek, consume, takewhile, consume_all, peek_or_terminal
+from utils.rules import rules, set_rules, get_rule, identity
+
+from front_end.loader.locations import loc, EOFLocation, column_number
+
 from front_end.preprocessor import logger
 from front_end.preprocessor.conditional import if_block
 from front_end.loader.load import load
 from front_end.tokenizer.tokenize import tokenize
 from front_end.tokenizer.parser import get_line
-from front_end.tokenizer.tokens import TOKENS, STRING, IDENTIFIER, IGNORE, KEYWORD
-from front_end.loader.locations import loc, EOFLocation
+from front_end.tokenizer.tokens import TOKENS, STRING, IDENTIFIER, IGNORE, KEYWORD, filter_out_empty_tokens, empty_token
+
 from front_end.preprocessor.macros import ObjectMacro, FunctionMacro
-from front_end.errors import error_if_not_type, error_if_not_value, error_if_not_empty
+from front_end.preprocessor.macros import FunctionMacroArgument, FunctionMacroVariadicArgument
+
+from utils.symbol_table import SymbolTable, push, pop
+
+from utils.errors import error_if_not_type, error_if_not_value, error_if_not_empty, raise_error
 
 
-def INCLUDE(token_seq, macros, preprocess, include_dirs):
+def pop_macros(macros):
+    yield (pop(macros) or 1) and empty_token
+
+
+def string_file_path(token_seq, _):
+    return consume(token_seq)
+
+
+def identifier_file_path(token_seq, macros):
+    return macros.get(peek(token_seq), consume(token_seq), token_seq)
+
+
+def standard_lib_file_path(token_seq, _):
+    file_path = consume(token_seq) and ''.join(takewhile(TOKENS.GREATER_THAN.__ne__, token_seq))
+    _ = error_if_not_value(token_seq, TOKENS.GREATER_THAN)
+    return file_path
+
+
+def INCLUDE(token_seq, macros):
     line = get_line(token_seq)
-    _ = consume(line)
+    file_path = consume(line) and get_rule(INCLUDE, peek_or_terminal(line), hash_funcs=(type, identity))(line, macros)
     search_paths = (os.getcwd(),)
-    if isinstance(peek(line, None), STRING):
-        file_path = consume(line)
-    elif peek(line, '') == TOKENS.LESS_THAN:
-        _ = consume(line)
-        file_path = ''.join(takewhile(lambda token: token != TOKENS.GREATER_THAN, line))
-        _ = error_if_not_value(line, TOKENS.GREATER_THAN)
-        search_paths = chain(search_paths, include_dirs)
-    else:
-        raise ValueError('{l} Expected an IDENTIFIER, STRING or `<` got {g}'.format(
-            l=loc(peek(line, EOFLocation)),  g=peek(line, '')
-        ))
-    return preprocess(
-        tokenize(load(file_path, search_paths)), macros=macros, include_dirs=include_dirs
+    _ = error_if_not_empty(line)
+    return chain(
+        macros['__ preprocess __'](
+            tokenize(load(file_path, chain(macros['__ include_dirs __'], search_paths))),
+            macros
+        ),
     )
+set_rules(
+    INCLUDE,
+    (
+        (STRING, string_file_path),
+        izip((IDENTIFIER, KEYWORD), repeat(identifier_file_path)),
+        (TOKENS.LESS_THAN, standard_lib_file_path)
+    )
+)
 
 
-def DEFINE(token_seq, macros, *_):
+def _func_macro_arguments(line):
+    symbol_table = SymbolTable()
+    while peek(line, TOKENS.RIGHT_PARENTHESIS) != TOKENS.RIGHT_PARENTHESIS:
+        if peek(line) == TOKENS.ELLIPSIS:
+            arg = FunctionMacroVariadicArgument(IDENTIFIER('__VA_ARGS__', loc(consume(line))))
+        else:
+            arg = FunctionMacroArgument(error_if_not_type(consume(line, EOFLocation), (IDENTIFIER, KEYWORD)))
+            if peek_or_terminal(line) == TOKENS.ELLIPSIS:
+                arg = FunctionMacroVariadicArgument(IDENTIFIER(arg, loc(consume(line))))
+        symbol_table[arg] = arg     # check for duplicate argument name
+        yield arg       # if ok add to the rest ...
+        if isinstance(arg, FunctionMacroVariadicArgument):  # if variadic argument break ...
+            break
+        # consume expected comma if we don't see a right parenthesis ...
+        _ = peek(line, TOKENS.RIGHT_PARENTHESIS) != TOKENS.RIGHT_PARENTHESIS \
+            and error_if_not_value(line, TOKENS.COMMA, loc(arg))
+
+
+def _func_macro_definition(name, line):
+    arguments = tuple(_func_macro_arguments(line))  # defining function macro
+    _ = error_if_not_value(line, TOKENS.RIGHT_PARENTHESIS, loc(name))
+    return FunctionMacro(name, arguments, tuple(filter_out_empty_tokens(line)))
+
+
+def DEFINE(token_seq, macros):
     line = get_line(token_seq)
     define_token = consume(line)
     name = consume(line)
-    value = consume(line, default=IGNORE(''))
-    if value == TOKENS.LEFT_PARENTHESIS and loc(name).column_number + len(name) == loc(value).column_number:
-        arguments = []
-        while peek(line, '') != TOKENS.RIGHT_PARENTHESIS:
-            arguments.append(error_if_not_type(consume(line, EOFLocation), (IDENTIFIER, KEYWORD)))
-            _ = peek(token_seq, '') == TOKENS.COMMA and consume(token_seq)
-        _ = error_if_not_value(line, TOKENS.RIGHT_PARENTHESIS)
-        macro = FunctionMacro(name, arguments, tuple(line))
-    else:
-        macro = ObjectMacro(name, tuple(chain((value,), line)))
+    value = consume(line, default=IGNORE())
+    if value == TOKENS.LEFT_PARENTHESIS and column_number(name) + len(name) == column_number(value):
+        macro = _func_macro_definition(name, line)
+    else:  # object macro
+        macro = ObjectMacro(name, tuple(filter_out_empty_tokens(chain((value,), line))))
 
-    if name in macros:
-        logger.warning('{l} Redefining macro {name}'.format(l=loc(name), name=name))
+    _ = name in macros and macros.pop(name) and logger.warning('{0} Redefining macro {1}'.format(loc(name), name))
+
     macros[name] = macro
-    yield IGNORE('', loc(define_token))
+    yield IGNORE(location=loc(define_token))
 
 
-def UNDEF(token_seq, macros, *_):
+def UNDEF(token_seq, macros):
     line = get_line(token_seq)
-    _ = consume(line)
-    macro_name = error_if_not_type(consume(line, EOFLocation), IDENTIFIER)
-    error_if_not_empty(line)
-    _ = macros.pop(macro_name, None)
-    yield IGNORE('', loc(_))
-
-
-def IF(token_seq, macros, preprocess, include_dirs):
-    return if_block(token_seq, macros, preprocess, include_dirs)
+    macro_name = consume(line) and error_if_not_type(consume(line, EOFLocation), (IDENTIFIER, KEYWORD))
+    _ = macro_name in macros and macros.pop(macro_name)
+    _ = error_if_not_empty(line)
+    yield IGNORE(location=loc(macro_name))
 
 
 def WARNING(token_seq, *_):
     t = peek(token_seq)
     logger.warning('{l} warning: {m}'.format(l=loc(t), m=' '.join(get_line(token_seq))))
-    yield IGNORE('', loc(t))
+    yield IGNORE(location=loc(t))
 
 
 def ERROR(token_seq, *_):
     t = peek(token_seq)
-    raise ValueError('{l} error: {m}'.format(l=loc(t), m=' '.join(get_line(token_seq))))
+    raise_error('{l} error: {m}'.format(l=loc(t), m=' '.join(get_line(token_seq))))
 
 
-def directive(token_seq, macros, preprocess, include_dirs):
-    return directive.rules[peek(token_seq)](token_seq, macros, preprocess, include_dirs)
-directive.rules = {   # We don't want to create this dictionary every time the function gets called.
-    TOKENS.PINCLUDE: INCLUDE,
-    TOKENS.PDEFINE: DEFINE,
-    TOKENS.PUNDEF: UNDEF,
-
-    TOKENS.PIF: IF,
-    TOKENS.PIFDEF: IF,
-    TOKENS.PIFNDEF: IF,
-
-    TOKENS.PWARNING: WARNING,
-    TOKENS.PERROR: ERROR,
-}
+def expand_token(token_seq, macros):
+    return macros.get(peek(token_seq), consume(token_seq), token_seq)
 
 
-def default(token_seq, macros, *_):
-    token = consume(token_seq)
-    return macros.get(token, d=token, all_tokens=token_seq)
+def directive(token_seq, macros):
+    return rules(directive)[peek(token_seq)](token_seq, macros)
+set_rules(
+    directive,
+    (
+        (TOKENS.PINCLUDE, INCLUDE), (TOKENS.PDEFINE, DEFINE), (TOKENS.PUNDEF, UNDEF),
+        (TOKENS.PIF, if_block), (TOKENS.PIFDEF, if_block), (TOKENS.PIFNDEF, if_block),
+        (TOKENS.PWARNING, WARNING), (TOKENS.PERROR, ERROR),
+    ),
+    expand_token
+)
 
 
 def get_directives():
-    directives = defaultdict(lambda: default)
-    directives.update({rule: directive for rule in directive.rules})
-    return directives
+    return rules(directive)

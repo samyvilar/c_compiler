@@ -10,15 +10,15 @@
 typedef long long fpos_t;
 
 typedef struct FILE {
-    int _id;
+    long long _id;
     int state;
     char buffer[FILE_BUFFER_SIZE];
-    unsigned int buffer_index;
+    unsigned long long buffer_index;
 } FILE;
 
 #define EOF -1
 
-int	 fclose(FILE *);
+int	    fclose(FILE *);
 FILE	*fopen(const char *, const char *);
 size_t	 fread(void *, size_t, size_t, FILE *);
 size_t	 fwrite(const void *, size_t, size_t, FILE *);
@@ -61,5 +61,9 @@ int	scanf(const char *, ...);
 #define lltoa(value, str, base) number_to_string(value, base, str, ULLONG_MAX)
 #define ltoa(value, str, base)  number_to_string(value, base, str, ULONG_MAX)
 #define itoa(value, str, base)  number_to_string(value, base, str, UINT_MAX)
+
+extern char number_to_char_table[256];
+#define digit_ch(__numb__) (number_to_char_table[(__numb__)])
+
 
 #endif

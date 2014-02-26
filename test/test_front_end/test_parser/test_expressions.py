@@ -4,9 +4,9 @@ from unittest import TestCase
 from front_end.loader.load import source
 from front_end.tokenizer.tokenize import tokenize
 from front_end.preprocessor.preprocess import preprocess
-from front_end.parser.expressions.expression import expression
+from front_end.parser import expression
 
-from front_end.parser.ast.expressions import CompoundLiteral, exp
+from front_end.parser.ast.expressions import CompoundLiteral
 
 
 class TestExpressions(TestCase):
@@ -21,7 +21,7 @@ class TestExpressions(TestCase):
 
         for raw_exp, expected_result in expressions:
             tokens = tokenize(source(raw_exp))
-            actual_result = expression(preprocess(tokens), {})
+            actual_result = expression(preprocess(tokens))
             self.assertEqual(
                 expected_result, actual_result.exp,
                 'Raw exp {exp}, expected {e}, got {g}'.format(exp=raw_exp, e=expected_result, g=actual_result.exp)

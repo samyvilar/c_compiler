@@ -2,17 +2,21 @@ __author__ = 'samyvilar'
 
 from unittest import TestCase
 
+from front_end.parser.ast.expressions import exp
+from front_end.parser.types import c_type
+
 from front_end.loader.load import source
 from front_end.tokenizer.tokenize import tokenize
 from front_end.preprocessor.preprocess import preprocess
 
-from front_end.parser.parse import parse
-from front_end.parser.symbol_table import SymbolTable
+from front_end.parser import parse
+from utils.symbol_table import SymbolTable
 
 from back_end.emitter.emit import emit
 from back_end.linker.link import executable, set_addresses, resolve
-from back_end.emitter.cpu import CPU, VirtualMemory, evaluate, base_element
-from back_end.emitter.c_types import size, exp
+from back_end.emitter.cpu import CPU, VirtualMemory, evaluate, base_element, word_type_factories
+
+from back_end.emitter.c_types import get_word_type_name
 
 from front_end.parser.ast.expressions import ConstantExpression, IntegerType
 
@@ -33,7 +37,8 @@ class TestDeclarations(TestCase):
         evaluate(self.cpu, self.mem)
 
     def assert_base_element(self, element):
-        self.assertEqual(base_element(self.cpu, self.mem, size(element)), exp(element))
+        machine_word_type = word_type_factories[get_word_type_name(c_type(element))]
+        self.assertEqual(base_element(self.cpu, self.mem, machine_word_type), exp(element))
 
 
 class TestDefinitions(TestDeclarations):
@@ -115,11 +120,29 @@ class TestInitializer(TestDeclarations):
         self.assert_base_element(ConstantExpression(1, IntegerType()))
         # self.assertEqual(1, self.mem[self.cpu.stack_pointer])
 
+    def test_global_initializer_and_postfix_increment(self):
+        code = """
+        int values[2] = {0};
+        int main()
+        {
+	        ++values[0];
+	        return values[0];
+        }
+        """
+        self.evaluate(code)
+        self.assert_base_element(ConstantExpression(1, IntegerType()))
+
     def test_local_initializer(self):
         code = """
         int main()
         {
-            struct {int a; char b; int c[10]; struct {int a; double c;} foo[10];}
+            char start;
+            struct {
+                int a;
+                char b;
+                int c[10];
+                struct {int a; double c;} foo[10];
+            }
                 foo = {.a=10, .c[1] = -1, .foo[0 ... 2] = {-1, -1} };
 
             return foo.a == 10 && foo.c[1] == -1 && foo.foo[0].a == -1 && foo.foo[1].c == -1.0 && foo.foo[3].c == 0.0;
@@ -131,7 +154,9 @@ class TestInitializer(TestDeclarations):
 
     def test_global_union_initializer(self):
         code = """
-            union {unsigned long long a; double b; char c[20]; int d[0];} foo = {.a=10, .b=10.5};
+            union {
+                unsigned long long a; double b; char c[20]; int d[0];
+            } foo = {.a=10, .b=10.5};
 
             int main()
             {

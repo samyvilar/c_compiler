@@ -1,6 +1,7 @@
 __author__ = 'samyvilar'
 
 from test.test_back_end.test_emitter.test_statements.test_compound import TestStatements
+from front_end.parser.types import CharType
 from front_end.parser.ast.expressions import ConstantExpression, IntegerType
 
 
@@ -17,7 +18,17 @@ class TestCompoundAssignment(TestStatements):
 
 
 class TestPointerArithmetic(TestStatements):
-    def test_pointer_subtraction(self):
+    def test_array_assignment(self):
+        code = """
+        {
+            char values[2];
+            values[1] = 127;
+        }
+        """
+        self.evaluate(code)
+        self.assert_base_element(ConstantExpression(127, CharType()))
+
+    def test_pointer_subtraction_zero(self):
         code = """
         {
             unsigned int size = -1;

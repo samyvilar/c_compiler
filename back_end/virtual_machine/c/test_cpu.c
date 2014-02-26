@@ -119,9 +119,10 @@ TEST_FUNC_SIGNATURE(test_load_set_registers) {
                 12309707, 109740972,        \
                 1070213, 242,               \
                 470927, 12,                 \
-                970237, 74927,              \
+                970237, 12,              \
                 429740, 47373,              \
                 242380, 412,                \
+                123123, 5124123,            \
                 1232                        \
             )};  \
         int index = -1;\
@@ -139,7 +140,7 @@ TEST_FUNC_SIGNATURE(test_load_set_registers) {
             get_instr(NOT, _type_)(values[20]),\
             HALT_INSTR()\
         };\
-        EXECUTE(instrs); index = 20;\
+        EXECUTE(instrs); index = 20; \
         assert_equal((get_c_type(_type_))(~values[index]), peek_from_base(base_pointer(cpu), 11, _type_), "test_not" #_type_);\
         assert_equal((get_c_type(_type_))(values[index - 2] ^ values[index - 1]), peek_from_base(base_pointer(cpu), 10, _type_), "test_xor"#_type_);\
         assert_equal((get_c_type(_type_))(values[index - 4] & values[index - 3]),  peek_from_base(base_pointer(cpu), 9, _type_), "test_and"#_type_);\
@@ -219,12 +220,76 @@ TEST_FUNC_SIGNATURE(test_arithmetic_floats) {
     assert_equal(float_as_word((float_type)123.12423 + (float_type)1482424.12322), pop_word(cpu, mem, os), "test_add_float");
 }
 
-TEST_FUNC_SIGNATURE(test_conversions) {
+TEST_FUNC_SIGNATURE(test_convert_to_float) {
+    word_type values[] = {1231242, 323423, 12123, 126, -123123, -325234, -12323, -123};
     word_type instrs[] = {
-            CONVERT_TO_FLOAT_INSTR(12312323),
+        CONVERT_TO_FLOAT_FROM_SIGNED_INSTR(values[0]),
+        CONVERT_TO_FLOAT_FROM_SIGNED_HALF_INSTR(values[1]),
+        CONVERT_TO_FLOAT_FROM_SIGNED_QUARTER_INSTR(values[2]),
+        CONVERT_TO_FLOAT_FROM_SIGNED_ONE_EIGHTH_INSTR(values[3]),
+    
+        CONVERT_TO_FLOAT_FROM_INSTR(values[4]),
+        CONVERT_TO_FLOAT_FROM_HALF_INSTR(values[5]),
+        CONVERT_TO_FLOAT_FROM_QUARTER_INSTR(values[6]),
+        CONVERT_TO_FLOAT_FROM_ONE_EIGHTH_INSTR(values[7]),
+        
+        CONVERT_TO_FLOAT_FROM_HALF_FLOAT_INSTR(128.0),
+        
+        HALT_INSTR()
+    };
+    EXECUTE(instrs);
+    assert_equal(float_as_word((float_type)values[0]), peek_from_base(base_pointer(cpu), 1, ), "test_convert_to_float_from_signed");
+    assert_equal(float_as_word((float_type)values[1]), peek_from_base(base_pointer(cpu), 2, ), "test_convert_to_float_from_signed_half");
+    assert_equal(float_as_word((float_type)values[2]), peek_from_base(base_pointer(cpu), 3, ), "test_convert_to_float_from_signed_quarter");
+    assert_equal(float_as_word((float_type)values[3]), peek_from_base(base_pointer(cpu), 4, ), "test_convert_to_float_from_signed_one_eighth");
+    
+    assert_equal(float_as_word((float_type)values[4]), peek_from_base(base_pointer(cpu), 5, ), "test_convert_to_float_from_unsigned");
+    assert_equal(float_as_word((float_type)(get_c_type(_HALF))values[5]), peek_from_base(base_pointer(cpu), 6, ), "test_convert_to_float_from_unsigned_half");
+    assert_equal(float_as_word((float_type)(get_c_type(_QUARTER))values[6]), peek_from_base(base_pointer(cpu), 7, ), "test_convert_to_float_from_unsigned_quarter");
+    assert_equal(float_as_word((float_type)(get_c_type(_ONE_EIGHTH))values[7]), peek_from_base(base_pointer(cpu), 8, ), "test_convert_to_float_from_unsigned_one_eighth");
+    
+    assert_equal(float_as_word((float_type)128.0f), peek_from_base(base_pointer(cpu), 9, ), "test_convert_to_float_from_half_float");
+}
+
+TEST_FUNC_SIGNATURE(test_convert_to_half_float) {
+    word_type values[] = {123123, 123123, 543243, 123, -123213, -124123, -1232, -1242243};
+    word_type instrs[] = {
+        CONVERT_TO_HALF_FLOAT_FROM_SIGNED_INSTR(values[0]),
+        CONVERT_TO_HALF_FLOAT_FROM_SIGNED_HALF_INSTR(values[1]),
+        CONVERT_TO_HALF_FLOAT_FROM_SIGNED_QUARTER_INSTR(values[2]),
+        CONVERT_TO_HALF_FLOAT_FROM_SIGNED_ONE_EIGHTH_INSTR(values[3]),
+        
+        CONVERT_TO_HALF_FLOAT_FROM_INSTR(values[4]),
+        CONVERT_TO_HALF_FLOAT_FROM_HALF_INSTR(values[5]),
+        CONVERT_TO_HALF_FLOAT_FROM_QUARTER_INSTR(values[6]),
+        CONVERT_TO_HALF_FLOAT_FROM_ONE_EIGHTH_INSTR(values[7]),
+        
+        CONVERT_TO_HALF_FLOAT_FROM_FLOAT_INSTR(4.5),
+        
+        HALT_INSTR()
+    };
+    
+    EXECUTE(instrs);
+    assert_equal(half_float_as_half_word_type((half_float_type)values[0]), peek_from_base(base_pointer(cpu), 1, _HALF), "test_convert_to_half_float_from");
+    assert_equal(half_float_as_half_word_type((half_float_type)values[1]), peek_from_base(base_pointer(cpu), 2, _HALF), "test_convert_to_half_float_from_half");
+    assert_equal(half_float_as_half_word_type((half_float_type)(get_c_type(_QUARTER))values[2]), peek_from_base(base_pointer(cpu), 3, _HALF), "test_convert_to_half_float_from_quarter");
+    assert_equal(half_float_as_half_word_type((half_float_type)values[3]), peek_from_base(base_pointer(cpu), 4, _HALF), "test_convert_to_half_float_from_one_eighth");
+    
+    assert_equal(half_float_as_half_word_type((half_float_type)values[4]), peek_from_base(base_pointer(cpu), 5, _HALF), "test_convert_to_half_float_from_unsigned");
+    assert_equal(half_float_as_half_word_type((half_float_type)(get_c_type(_HALF))values[5]), peek_from_base(base_pointer(cpu), 6, _HALF), "test_convert_to_half_float_from_unsigned_half");
+    assert_equal(half_float_as_half_word_type((half_float_type)(get_c_type(_QUARTER))values[6]), peek_from_base(base_pointer(cpu), 7, _HALF), "test_convert_to_half_float_from_unsigned_quarter");
+    assert_equal(half_float_as_half_word_type((half_float_type)(get_c_type(_ONE_EIGHTH))values[7]), peek_from_base(base_pointer(cpu), 8, _HALF), "test_convert_to_half_float_from_unsigned_one_eighth");
+    
+    assert_equal(half_float_as_half_word_type((half_float_type)4.5), peek_from_base(base_pointer(cpu), 9, _HALF), "test_convert_to_half_float_from_float");
+
+}
+
+TEST_FUNC_SIGNATURE(to_from_float) {
+    word_type instrs[] = {
+            CONVERT_TO_FLOAT_FROM_INSTR(12312323),
             CONVERT_TO_INTEGER_INSTR((float_type)1232123.1232),
-            CONVERT_TO_FLOAT_FROM_UNSIGNED_INSTR((word_type)-1),
-            CONVERT_TO_FLOAT_INSTR(-1),
+            CONVERT_TO_FLOAT_FROM_INSTR((word_type)-1),
+            CONVERT_TO_FLOAT_FROM_SIGNED_INSTR(-1),
             HALT_INSTR()
     };
     EXECUTE(instrs);
@@ -233,6 +298,8 @@ TEST_FUNC_SIGNATURE(test_conversions) {
     assert_equal((word_type)1232123, pop_word(cpu, mem, os), "test_convert_to_int");
     assert_equal(float_as_word((float_type)12312323.0), pop_word(cpu, mem, os), "test_convert_to_float");
 }
+
+#define test_conversions test_convert_to_float, test_convert_to_half_float, to_from_float
 
 TEST_FUNC_SIGNATURE(test_comparison_flags_equality) {
     word_type instrs[] = {
@@ -585,25 +652,41 @@ TEST_FUNC_SIGNATURE(test_jumps) {
 
 // jump_table takes variable number of operands so it needs to be manually created
 TEST_FUNC_SIGNATURE(test_jump_table) {
+    #define _(...) __VA_ARGS__
+    #define JUMP_TABLE_VALUES _
+    #define JUMP_TABLE_OFFSETS _
+    #define JUMP_TABLE_ADDRESS_OFFSET(offset) ADDRESS_OFFSET(JUMP_TABLE, offset),
+    #define JUMP_TABLE_INSTR(default_offset, value, sorted_values, offsets) \
+        SINGLE_OPERAND_INSTR(JUMP_TABLE, JUMP_TABLE_ADDRESS_OFFSET(default_offset)) \
+        sorted_values, MAP(JUMP_TABLE_ADDRESS_OFFSET, offsets)
+    
+//    JUMP_TABLE_INSTR(9, 4, JUMP_TABLE_VALUES(1, 2, 14, 15), JUMP_TABLE_OFFSETS(9, 9, 10, 9))
+    
     word_type instrs[] = {
             PUSH_INSTR(14),  // [0] = PUSH, [1] = 14,
             // test successful jump ...
-            SINGLE_OPERAND_INSTR(JUMP_TABLE, ADDRESS_OFFSET(JUMP_TABLE, 9)), // [2] = JUMP_TABLE [3] = default jump offset ...
-            4, //  [4] = number of cases
-        
-            // values:
-            1, 2, 14, 15,
-            // offsets:
-            ADDRESS_OFFSET(JUMP_TABLE, 9), ADDRESS_OFFSET(JUMP_TABLE, 9), ADDRESS_OFFSET(JUMP_TABLE, 10), ADDRESS_OFFSET(JUMP_TABLE, 9),
+//            SINGLE_OPERAND_INSTR(JUMP_TABLE, ADDRESS_OFFSET(JUMP_TABLE, 9)), // [2] = JUMP_TABLE [3] = default jump offset ...
+//            4, //  [4] = number of cases
+//            // values:
+//            1, 2, 14, 15,
+//            // offsets:
+//            ADDRESS_OFFSET(JUMP_TABLE, 9),
+//            ADDRESS_OFFSET(JUMP_TABLE, 9),
+//            ADDRESS_OFFSET(JUMP_TABLE, 10),
+//            ADDRESS_OFFSET(JUMP_TABLE, 9),
+            JUMP_TABLE_INSTR(9, 4, JUMP_TABLE_VALUES(1, 2, 14, 15), JUMP_TABLE_OFFSETS(9, 9, 10, 9))
 
             HALT_INSTR(),  // [13]
+
             PUSH_INSTR(1001), // [14], [15]
             // test default jump ...
             PUSH_INSTR(10), // [16], [17]
-            SINGLE_OPERAND_INSTR(JUMP_TABLE, ADDRESS_OFFSET(JUMP_TABLE, 6)),  // [18]
-            2, // [19], [20]
-            5, 8, // [21], [22], ...
-            ADDRESS_OFFSET(JUMP_TABLE, 8), ADDRESS_OFFSET(JUMP_TABLE, 8), // [23], [24]
+            SINGLE_OPERAND_INSTR(JUMP_TABLE, ADDRESS_OFFSET(JUMP_TABLE, 6)),  // [18], [19]
+            2,      // [20]
+            5, 8,   // [21], [22], ...
+            ADDRESS_OFFSET(JUMP_TABLE, 8), // [23]
+            ADDRESS_OFFSET(JUMP_TABLE, 8), // [23]
+        
             HALT_INSTR(),  // [25]
             PUSH_INSTR(1111),  // [26], [27], ...
             HALT_INSTR() // [28]

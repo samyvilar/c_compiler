@@ -82,7 +82,8 @@ ordered_set_tree_node_type *allocate_node()
     ordered_set_tree_node_type *tree;
 
     if (!number_of_allocated_nodes) /* if we don't have any pre-allocated nodes, allocate a block just in case. */
-    {                                                                         /* allocate block plus a few bytes for                                                                                  address to previous block. */
+    {                                                                         /* allocate block plus a few bytes for
+                                                                                  address to previous block. */
         tree = malloc((sizeof(ordered_set_tree_node_type) * NODE_BLOCK_SIZE) + sizeof(ordered_set_tree_node_type *));
         number_of_allocated_nodes = NODE_BLOCK_SIZE;
         *(ordered_set_tree_node_type **)(&tree[NODE_BLOCK_SIZE]) = allocated_nodes_block; /* link previous block to current block. */
@@ -98,7 +99,7 @@ ordered_set_tree_node_type *allocate_node()
     else    /* if no recycled nodes, use allocated nodes. */
         tree = &allocated_nodes_block[--number_of_allocated_nodes];
 
-    memset(tree, 0, sizeof(*tree));      /* set all fields to 0, no need to worry about setting each fields, memset is quite fast. */
+    memset(tree, 0, sizeof(tree));      /* set all fields to 0, no need to worry about setting each fields, memset is quite fast. */
     return tree;
 }
 
@@ -141,8 +142,11 @@ ordered_set_tree_node_type * create_order()
 ordered_set_tree_node_type *find_node(ordered_set_tree_node_type *key_order, key_type key)
 {
     while (IS_TREE(key_order)) /* while we are not in a leaf. */
-        key_order = (key < KEY(key_order)) ?  LEFT_NODE(key_order) : RIGHT_NODE(key_order);
-    
+        if (key < KEY(key_order))
+            key_order = LEFT_NODE(key_order);
+        else
+            key_order = RIGHT_NODE(key_order);
+
     return key_order;
 }
 
@@ -392,16 +396,15 @@ void _insert_ordered_value(ordered_set_tree_node_type *tree, key_type key, int b
     #ifdef SAFE_MODE
         check_ordered_set_tree(tree);
     #endif
-    
+
     if (IS_EMPTY_TREE(KEY_TREE(tree))) /* if trees are empty then just have them point to each other ... */
     {
         VALUE(KEY_TREE(tree)) = ORDER_TREE(tree);
         VALUE(ORDER_TREE(tree)) = KEY_TREE(tree);
         KEY(KEY_TREE(tree)) = key;
-        
         return ;
     }
-    
+
     ordered_set_tree_node_type *ordered_tree = ORDER_TREE(tree);
 
     if (before)
@@ -412,7 +415,6 @@ void _insert_ordered_value(ordered_set_tree_node_type *tree, key_type key, int b
             ordered_tree = RIGHT_NODE(ordered_tree);
 
     tree = find_node(KEY_TREE(tree), key);
-
     if (KEY(tree) == key)
         error("Trying to insert duplicate key!");
 
@@ -424,8 +426,7 @@ void _insert_ordered_value(ordered_set_tree_node_type *tree, key_type key, int b
                 0,
                 before),
             key,
-            (key < KEY(tree))
-    );
+            (key < KEY(tree)));
 }
 /*
     As predefined by the assignment:
@@ -439,9 +440,7 @@ void insert_top(ordered_set_tree_node_type *tree, key_type key)
         inserts the key a as smallest element in the ordered set
  */
 void insert_bottom(ordered_set_tree_node_type *tree, key_type key)
-{
-    _insert_ordered_value(tree, key, BEFORE);
-}
+{   _insert_ordered_value(tree, key, BEFORE);   }
 
 
 
@@ -551,7 +550,7 @@ unsigned int find_first_common_node(unsigned int node_a_depth, unsigned int node
     node_a_depth = maximum_index; /* save maximum depth so we can return index from the top of each array ... */
     while (minimum_index < maximum_index)
     {
-        middle_index = minimum_index + ((maximum_index - minimum_index) / 2);
+        middle_index = minimum_index + ((maximum_index - minimum_index)/2);
         if (leveled_path_a[middle_index] == leveled_path_b[middle_index]) /* if they equal go down. */
             maximum_index = middle_index;
         else /* if they don't equal go up. */
@@ -589,9 +588,9 @@ int is_before(ordered_set_tree_node_type *tree, key_type key_a, key_type key_b)
             node_b_depth       = 0;
 
     temp = VALUE(temp); /* JUMP to order tree. */
-    path_a[node_a_depth++] = temp; /* record path up to root for key a. */
+    path_a[node_a_depth ++] = temp; /* record path up to root for key a. */
     while ((temp = PARENT_NODE(temp)))
-        path_a[node_a_depth++] = temp;
+        path_a[node_a_depth ++] = temp;
 
     temp = find_node(KEY_TREE(tree), key_b);
     if (KEY(temp) != key_b)
@@ -618,36 +617,31 @@ int is_before(ordered_set_tree_node_type *tree, key_type key_a, key_type key_b)
 }
 
 typedef ordered_set_tree_node_type o_t;
-#define key_t key_type;
+typedef key_type key_t;
 
 
-long int p(long int q)
-{ return( (1247 * q + 104729) % 300007 );
+long p(long q)
+{ return( (1247*q +104729) % 300007 );
 }
 
 int main()
-{
-    long i;
-    o_t *o;
-    
-    //printf("starting \n");
+{  long i; o_t *o;
+    printf("starting \n");
     o = create_order();
-    //printf("done creating order \n");
-    for(i=100000; i>=0; i--)
-        insert_bottom( o, p(i) );    
-    //printf("done inserting ... \n");
+    for(i=100000; i>=0; i-- )
+        insert_bottom( o, p(i) );
     for(i=100001; i< 300007; i+=2 )
     {  insert_after(o, p(i+1), p(i-1) );
         insert_before( o, p(i), p(i+1) );
     }
-    //printf("inserted 300000 elements.\n");
+    printf("inserted 300000 elements. ");
     for(i = 250000; i < 300007; i++ )
         delete_o( o, p(i) );
-    //printf("deleted 50000 elements.\n");
+    printf("deleted 50000 elements. ");
     insert_top( o, p(300006) );
     for(i = 250000; i < 300006; i++ )
         insert_before( o, p(i) , p(300006) );
-    //printf("reinserted. now testing order\n");
+    printf("reinserted. now testing order\n");
     for( i=0; i < 299000; i +=42 )
     {  if( is_before( o, p(i), p(i+23) ) != 1 )
     {  printf(" found error (1) \n"); exit(0);
@@ -658,9 +652,7 @@ int main()
     {  printf(" found error (0) \n"); exit(0);
     }
     }
-    //printf("finished. no problem found.\n");
-    
-    return 0;
+    printf("finished. no problem found.\n");
 }
 
 

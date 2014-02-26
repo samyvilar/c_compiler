@@ -24,9 +24,16 @@ class Location(tuple):  # we want locations to be immutable.
         raise TypeError
 
     def __repr__(self):
-        return '@{file_name}:{line_number}:{column_number}'.format(
-            file_name=self.file_name, line_number=self.line_number, column_number=self.column_number
+        return '{cls_name}(@{file_name}:{line_number}:{column_number})'.format(
+            file_name=self.file_name,
+            line_number=self.line_number,
+            column_number=self.column_number,
+            cls_name=self.__class__.__name__
         )
+
+
+class EOLLocation(Location):  # End of Line Location
+    pass
 
 
 class LocationNOTSET(Location):
@@ -56,7 +63,7 @@ LocationNotSet = LocationNOTSET()
 EOFLocation = Location('__EOF__', '', '')
 
 
-class Str(str):
+class LocatedStr(str):
     # noinspection PyInitNewSignature
     def __new__(cls, value, location=LocationNotSet):
         value = str.__new__(cls, value)
@@ -68,7 +75,23 @@ class Str(str):
         return self._location
 
 
-def loc(obj):
+class Str(LocatedStr):
+    pass
+
+
+class NewLineStr(LocatedStr):
+    pass
+
+
+def loc(obj, default=LocationNotSet):
     if isinstance(obj, Location):
         return obj
-    return getattr(obj, 'location', LocationNotSet)
+    return getattr(obj, 'location', default)
+
+
+def line_number(obj):
+    return loc(obj).line_number
+
+
+def column_number(obj):
+    return loc(obj).column_number

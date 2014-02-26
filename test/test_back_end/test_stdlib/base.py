@@ -1,6 +1,8 @@
 __author__ = 'samyvilar'
 
 from StringIO import StringIO
+from itertools import product, starmap, ifilter
+from os import path
 
 from c_comp import instrs, std_include_dirs, std_libraries_dirs, std_libraries
 
@@ -15,5 +17,11 @@ from test.test_back_end.test_emitter.test_declarations.test_definitions import T
 class TestStdLib(TestDeclarations):
     def evaluate(self, code, cpu=None, mem=None, os=None):
         self.cpu, self.mem, self.os = cpu or CPU(), mem or VirtualMemory(), os or Kernel(CALLS)
-        load(set_addresses(instrs((StringIO(code),), std_include_dirs, std_libraries_dirs, std_libraries)), self.mem)
+        load(set_addresses(
+            instrs(
+                (StringIO(code),),
+                std_include_dirs,
+                libraries=ifilter(path.isfile, starmap(path.join, product(std_libraries_dirs, std_libraries)))
+            )
+        ), self.mem)
         evaluate(self.cpu, self.mem, self.os)

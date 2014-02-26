@@ -3,30 +3,75 @@ __author__ = 'samyvilar'
 # raise ImportError
 import os
 import sys
+import inspect
 
-from itertools import imap
+from itertools import imap, izip, chain, repeat, ifilter, izip_longest
 
 from ctypes import c_ulonglong, c_uint, Structure, POINTER, CDLL, CFUNCTYPE, byref, c_int, c_char_p, c_void_p
-from ctypes import c_float, c_double, cast, sizeof, addressof, pointer, c_ushort, c_ubyte
+from ctypes import c_float, c_double, cast, sizeof, addressof, pointer, c_ushort, c_ubyte, c_longlong, c_short, c_byte
 from ctypes import pythonapi, py_object
+
+import struct
 from struct import pack, unpack
 
-from back_end.virtual_machine.instructions.architecture import Double, Address, operns
-from back_end.virtual_machine.instructions.architecture import Allocate, Dup, Swap, Load, Set, Offset
+from front_end.loader.locations import loc
+import back_end.virtual_machine.instructions.architecture as architecture
+from back_end.virtual_machine.instructions.architecture import Address, RealOperand
+from back_end.virtual_machine.instructions.architecture import Word, Half, Quarter, OneEighth, DoubleHalf, Double
 
 from logging_config import logging
 
 logger = logging.getLogger('virtual_machine')
+current_module = sys.modules[__name__]
 
-sorted_word_types, sorted_float_types = (c_ulonglong, c_uint, c_ushort, c_ubyte), (c_double, c_float)
-word_type, half_word_type, quarter_word_type, one_eighth_word_type = sorted_word_types
-word_format, half_word_format, quarter_word_format, one_eighth_word_format = 'Q', 'I', 'H', 'B'
-word_size, half_word_size, quarter_word_size, one_eighth_word_size = imap(
-    sizeof, (c_ulonglong, c_uint, c_ushort, c_ubyte)
+word_names = tuple((p + 'word') for p in ('', 'half_', 'quarter_', 'one_eighth_'))
+signed_word_names = tuple(imap('signed_'.__add__, word_names))
+float_names = 'float', 'half_float'
+
+word_factories = c_ulonglong, c_uint, c_ushort, c_ubyte
+signed_word_factories = c_longlong, c_int, c_short, c_byte
+float_factories = c_double, c_float
+
+word_formats = 'Q', 'I', 'H', 'B'
+signed_word_formats = tuple(imap(str.lower, word_formats))
+float_formats = 'd', 'f'
+
+
+kind_of_types = 'word', 'signed_word', 'float'
+
+
+def get_info_on_kind(type_kind, info_name):
+    return globals()['{kind}_{info}'.format(kind=type_kind, info=info_name)]
+
+
+def get_type_names(type_kind):
+    return get_info_on_kind(type_kind, 'names')
+
+
+def get_type_factories(type_kind):
+    return get_info_on_kind(type_kind, 'factories')
+
+
+def get_type_formats(type_kind):
+    return get_info_on_kind(type_kind, 'formats')
+
+
+word_type_factories = dict(
+    chain.from_iterable(imap(izip, imap(get_type_names, kind_of_types), imap(get_type_factories, kind_of_types)))
 )
 
-float_type, half_float_type = sorted_float_types
-float_format, half_float_format = 'd', 'f'
+word_type_sizes = dict(izip(word_type_factories.iterkeys(), imap(sizeof, word_type_factories.itervalues())))
+
+
+word_type_formats = dict(
+    chain.from_iterable(imap(izip, imap(get_type_names, kind_of_types), imap(get_type_formats, kind_of_types)))
+)
+
+
+for word_type_name in word_type_factories:
+    setattr(sys.modules[__name__], word_type_name + '_size', word_type_sizes[word_type_name])
+    setattr(sys.modules[__name__], word_type_name + '_type', word_type_factories[word_type_name])
+    setattr(sys.modules[__name__], word_type_name + '_format', word_type_formats[word_type_name])
 
 
 try:
@@ -117,6 +162,66 @@ libvm.allocate_entire_physical_address_space.restype = POINTER(word_type)
 # Allocate entire virtual memory space so it can be shared across multiple uses ...
 shared_c_physical_memory_pointer = libvm.allocate_entire_physical_address_space()
 
+architecture_types = set(
+    ifilter(
+        lambda cls: inspect.isclass(cls)
+        and issubclass(cls, architecture.Operand)
+        and cls not in {architecture.Operand, architecture.RealOperand},
+        imap(getattr, repeat(architecture), dir(architecture))
+    )
+)
+
+architecture_float_types = set(ifilter(
+    lambda cls: issubclass(cls, RealOperand) and cls is not RealOperand, architecture_types
+))
+architecture_integral_types = architecture_types - architecture_float_types
+
+
+def architecture_word_name(cls):
+    signed = 'signed_'
+    if issubclass(cls, OneEighth):
+        return signed + 'one_eighth_word'
+    elif issubclass(cls, Half):
+        return signed + 'half_word'
+    elif issubclass(cls, Quarter):
+        return signed + 'quarter_word'
+    elif issubclass(cls, Word):
+        return signed + 'word'
+    elif issubclass(cls, DoubleHalf):
+        return 'half_float'
+    elif issubclass(cls, Double):
+        return 'float'
+    else:
+        raise ValueError('{c} could not be identified!'.format(c=cls))
+
+architecture_type_to_word_type = dict(izip(architecture_types, imap(architecture_word_name, architecture_types)))
+
+
+def get_bytes(value):
+    try:
+        return pack(word_type_formats[architecture_type_to_word_type[type(value)]], value)
+    except struct.error as er:
+        return pack(word_type_formats[architecture_type_to_word_type[type(value)]].upper(), value)
+
+
+def pack_binaries(elements, to_type=Word):
+    assert sys.byteorder == 'little'  # TODO: deal with 'big' endianness where the zeros need to be pre-appended
+    assert not word_type_sizes[architecture_type_to_word_type[to_type]] % min(word_type_sizes.itervalues())
+    return imap(to_type, chain.from_iterable(imap(  # unpack returns a tuple ...
+        unpack,
+        repeat(word_type_formats[architecture_type_to_word_type[to_type]]),
+        imap(
+            ''.join,
+            izip_longest(
+                *repeat(
+                    chain.from_iterable(imap(get_bytes, iter(elements))),
+                    word_type_sizes[architecture_type_to_word_type[to_type]]/min(word_type_sizes.itervalues())
+                ),
+                fillvalue=pack(word_type_formats[min(word_type_sizes.iteritems(), key=lambda i: i[1])[0]], 0)
+            )
+        )
+    )))  # the fillvalue will be appended which is OK for little endian but NOT for BIG endian!!!
+
 
 class VirtualMemory(object):
     def __init__(self, factory_type=None, c_physical_memory_pointer=None):
@@ -142,11 +247,9 @@ class VirtualMemory(object):
             self.start_of_virtual_addr = key
 
         self.code[key] = value  # record instructions in python for debugging purposes ...
-        if isinstance(value, Double):
-            value = unpack(word_format, pack(float_format, float(value)))[0]  # re-interpret floats as machine words ...
 
-        if isinstance(value, (Dup, Swap, Load, Set)):  # this instrs count in words ... we need to update ...
-            self.instrs_word_operands[key] = value
+        if isinstance(value, RealOperand):
+            value = next(pack_binaries((value,)))
 
         # keep track of address since they need to be translated from virtual to phys
         if isinstance(value, Address):
@@ -154,8 +257,12 @@ class VirtualMemory(object):
 
         cast(self.start_of_physical_addr + key, POINTER(word_type))[0] = self.factory_type(value)
 
-    def __getitem__(self, addr):
-        return cast(addr, POINTER(word_type))[0]
+    def __getitem__(self, addr, element_type):
+        return cast(addr, POINTER(element_type))[0]
+
+    def update(self, values, **kwargs):
+        for key, value in chain(getattr(values, 'iteritems', lambda v=values: v)(), kwargs.iteritems()):
+            self[key] = value
 
 
 # libvm.evaluate_without_vm.argtypes = libvm.evaluate.argtypes
@@ -165,21 +272,15 @@ def c_evaluate(cpu, mem, os=None):
     cpu.instr_pointer = mem.start_of_physical_addr
     cpu.base_pointer = cpu.stack_pointer = mem.end_of_physical_addr
 
-    for v_addr, addr in mem.addresses.iteritems():  # translate all virtual addresses ...
-        mem[v_addr] = mem.start_of_physical_addr + addr.obj
+    # translate all virtual addresses ...
+    mem.update((v_addr, mem.start_of_physical_addr + addr.obj) for v_addr, addr in mem.addresses.iteritems())
 
-    for virtual_addr, instr in mem.instrs_word_operands.iteritems():  # update operands since machine will use word
-        mem[virtual_addr + word_size] = long(operns(instr)[0])/word_size
-
-    if os is None:
-        os = Kernel()
-
-    libvm.evaluate(byref(cpu), mem.c_vm_p, os.c_kernel_p)
+    libvm.evaluate(byref(cpu), mem.c_vm_p, (Kernel() if os is None else os).c_kernel_p)
 
     cpu.instr_pointer = cpu.instr_pointer
     cpu.base_pointer = cpu.base_pointer
     cpu.stack_pointer = cpu.stack_pointer
 
 
-def base_element(cpu, mem, element_size):
-    return mem[cpu.base_pointer - element_size]
+def base_element(cpu, mem, element_type):
+    return mem.__getitem__(cpu.base_pointer - sizeof(element_type), element_type)

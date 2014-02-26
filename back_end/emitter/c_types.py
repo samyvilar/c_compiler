@@ -1,208 +1,152 @@
 __author__ = 'samyvilar'
 
-from collections import Iterable
-from itertools import chain, izip, imap, repeat
+from itertools import chain, izip, imap, repeat, ifilter, takewhile
 
-from front_end.loader.locations import loc
-
-from front_end.parser.ast.declarations import Declaration, Definition, initialization
-from front_end.parser.ast.expressions import ConstantExpression, exp, CastExpression, CompoundLiteral, EmptyExpression
+from utils.rules import set_rules, rules
 
 from front_end.parser.types import CharType, ShortType, IntegerType, LongType, FloatType, DoubleType, VoidType, EnumType
 from front_end.parser.types import StructType, PointerType, ArrayType, c_type, StringType, VAListType, void_pointer_type
-from front_end.parser.types import UnionType, integer_type, double_type
+from front_end.parser.types import UnionType, unsigned, IntegralType, AddressType
+from front_end.parser.types import StrictlySigned, StrictlyUnsigned, FunctionType, members
 
-from back_end.virtual_machine.instructions.architecture import Integer, Double, Pass, Byte
+from front_end.parser.ast.expressions import ConstantExpression
+
+from back_end.virtual_machine.instructions.architecture import Word, Double, Pass, Byte
 from back_end.virtual_machine.instructions.architecture import Half, Quarter, OneEighth, DoubleHalf
 
-from back_end.emitter.cpu import word_size
+from back_end.emitter.cpu import float_names, word_names, signed_word_names, word_type_sizes
 
-from utils.rules import rules
+from back_end.emitter.cpu import word_size, half_word_size, quarter_word_size, one_eighth_word_size
+from back_end.emitter.cpu import word_type, half_word_type, quarter_word_type, one_eighth_word_type
+from back_end.emitter.cpu import float_size, half_float_size, pack_binaries
+
+
+def numeric_type_size(ctype):
+    return rules(numeric_type_size)[type(ctype)]
+set_rules(
+    numeric_type_size,
+    chain(
+        izip((LongType, PointerType, AddressType, DoubleType), repeat(word_size)),
+        izip((IntegerType, EnumType, FloatType), repeat(half_word_size)),
+        (
+            (CharType, one_eighth_word_size),
+            (ShortType, quarter_word_size),
+        )
+    )
+)
+# numeric_type_size.rules = {
+#     CharType: word_size,  # note we have to update vm system calls when working with char_arrays ...
+#     ShortType: word_size,
+#
+#     IntegerType: word_size,
+#     EnumType: word_size,
+#
+#     LongType: word_size,
+#     PointerType: word_size,
+#
+#     FloatType: word_size,
+#     DoubleType: word_size,
+# }
 
 
 def struct_size(ctype):
-    return sum(size(c_type(member)) for member in ctype.members.itervalues())
+    return sum(imap(size, imap(c_type, members(ctype))))
 
 
 def union_size(ctype):
-    return max(imap(size, imap(c_type, ctype.members.itervalues())))
+    return max(imap(size, imap(c_type, members(ctype))))
 
 
 def array_size(ctype):
     return size(c_type(ctype)) * len(ctype)
 
 
-def numeric_type(ctype):
-    return rules(numeric_type)[type(ctype)]
-numeric_type.rules = {  # Virtual Machine is word based, all non-composite types are 1 word, 64 bits.
-    CharType: word_size,
-    ShortType: word_size,
-    IntegerType: word_size,
-
-    EnumType: word_size,
-
-    LongType: word_size,
-    PointerType: word_size,
-    FloatType: word_size,
-    DoubleType: word_size,
-}
-
-
-def machine_types(_type):
-    return rules(machine_types)[type(_type)]
-machine_types.rules = {
-    Integer: rules(numeric_type)[IntegerType],
-    Pass: word_size
-}
-
-
-def size(ctype, overrides=()):
-    if type(ctype) in overrides:
-        return overrides[type(ctype)]
-    return rules(size)[type(ctype)](ctype)
-size.rules = {                          # all non-composite types are 1 word (except for Enum ...), 64 bits.
+def size(ctype, overrides=None):
+    return overrides[type(ctype)] if type(ctype) in (overrides or ()) else rules(size)[type(ctype)](ctype)
+size.rules = {
     StructType: struct_size,
     UnionType: union_size,
     ArrayType: array_size,
     StringType: array_size,
     VAListType: lambda _: 0,
-    ConstantExpression: lambda cexp: size(c_type(cexp))
+    ConstantExpression: lambda e: size(c_type(e))
 }
-size.rules.update(chain(
-    izip(numeric_type.rules, repeat(numeric_type)),
-    izip(machine_types.rules, repeat(machine_types)),
+size.rules.update(izip(rules(numeric_type_size), repeat(numeric_type_size)))
+
+
+ # The C standard dictates that Void pointers are incremented by 1... though you are not allowed to take the sizeof
+ # of an expression with an incomplete type such as Void
+def size_extended(ctype):
+    return size(ctype, overrides={VoidType: 1})
+
+
+address_types = {ArrayType, StringType, FunctionType, AddressType}
+
+
+def size_arrays_as_pointers(ctype, overrides=()):
+    return size(
+        ctype,
+        overrides=dict(chain(
+            izip(address_types, repeat(size(void_pointer_type))), getattr(overrides, 'iteritems', lambda: overrides)()
+        ))
+    )
+
+
+float_sizes_to_words = dict(izip(imap(word_type_sizes.__getitem__, float_names), float_names))  # float word sizes
+float_ctypes = set(ifilter(lambda cls: issubclass(cls, FloatType), rules(numeric_type_size).iterkeys()))  # CFloat types
+float_ctypes_word_types = dict(izip(    # Convert CType to its size then convert that size to machine word type name
+    float_ctypes, imap(float_sizes_to_words.__getitem__, imap(rules(numeric_type_size).__getitem__, float_ctypes))
+))
+
+strictly_unsigned_ctypes = set(
+    ifilter(lambda cls: issubclass(cls, StrictlyUnsigned), rules(numeric_type_size).iterkeys())
+) - float_ctypes  # just to be safe even though floats are strictly signed!
+strictly_signed_ctypes = set(
+    ifilter(lambda cls: issubclass(cls, StrictlySigned), rules(numeric_type_size).iterkeys())
+) - float_ctypes
+
+integral_ctypes = set(ifilter(lambda cls: issubclass(cls, IntegralType), rules(numeric_type_size).iterkeys()))
+
+
+unsigned_ctypes_to_words = dict(izip(imap(word_type_sizes.__getitem__, word_names), word_names))
+unsigned_ctypes = integral_ctypes - (strictly_unsigned_ctypes | strictly_signed_ctypes) | strictly_unsigned_ctypes
+unsigned_ctypes_word_types = dict(izip(
+    unsigned_ctypes,
+    imap(unsigned_ctypes_to_words.__getitem__, imap(rules(numeric_type_size).__getitem__, unsigned_ctypes))
 ))
 
 
- # The C standard dictates that Void pointers are incremented by 1...
-size_extended = lambda ctype: size(ctype, overrides={VoidType: 1})
+signed_ctypes_to_words = dict(izip(imap(word_type_sizes.__getitem__, signed_word_names), signed_word_names))
+signed_ctypes = integral_ctypes - (strictly_unsigned_ctypes | strictly_signed_ctypes) | strictly_signed_ctypes
+signed_ctypes_word_types = dict(izip(
+    signed_ctypes, imap(signed_ctypes_to_words.__getitem__, imap(rules(numeric_type_size).__getitem__, signed_ctypes))
+))
 
-function_operand_type_sizes = lambda ctype: size(ctype, overrides={
-    ArrayType: size(void_pointer_type),
-    StringType: size(void_pointer_type),
-    VoidType: 0
-})
+
+def get_word_type_name(ctype):
+    return get_word_type_name.rules[unsigned(ctype), type(ctype)]
+get_word_type_name.rules = dict(chain(
+    # return factory type name based on whether the ctype is unsigned or not and what kind of size it has ...
+    izip(izip(repeat(True), unsigned_ctypes_word_types.iterkeys()), unsigned_ctypes_word_types.itervalues()),
+    izip(izip(repeat(False), signed_ctypes_word_types.iterkeys()), signed_ctypes_word_types.itervalues()),
+    izip(izip(repeat(False), float_ctypes_word_types.iterkeys()), float_ctypes_word_types.itervalues())
+))
+
 
 machine_integral_types = {
-    CharType: OneEighth,
-    ShortType: Quarter,
-    IntegerType: Half,
-    LongType: Integer,
-    PointerType: Integer,
-
-    FloatType: DoubleHalf,
-    DoubleType: Double,
+    one_eighth_word_size: OneEighth,
+    quarter_word_size: Quarter,
+    half_word_size: Half,
+    word_size: Word,
 }
-
-
-def integral_const(const_exp):
-    yield machine_integral_types[type(c_type(const_exp, integer_type))](exp(const_exp, 0), loc(const_exp))
-
-
-def numeric_const(const_exp):
-    yield machine_integral_types[type(c_type(const_exp, double_type))](exp(const_exp, 0.0), loc(const_exp))
-
-
-def array_const(const_exp):
-    if isinstance(exp(const_exp, None), Iterable):
-        bins = (binaries(value) for value in exp(const_exp))
-    elif isinstance(const_exp, EmptyExpression):
-        assert isinstance(c_type(const_exp), ArrayType)
-        bins = (binaries(c_type(c_type(const_exp))) for _ in xrange(len(c_type(const_exp))))
-    else:
-        assert isinstance(const_exp, ArrayType)
-        bins = (binaries(c_type(const_exp)) for _ in xrange(len(const_exp)))
-    return chain.from_iterable(bins)
-
-
-def struct_const(const_exp):
-    if isinstance(exp(const_exp, None), Iterable):
-        bins = (binaries(value) for value in exp(const_exp))
-    else:
-        assert isinstance(const_exp, StructType)
-        bins = imap(binaries, imap(c_type, const_exp.members.itervalues()))
-    return chain.from_iterable(bins)
-
-
-def union_const(const_exp):
-    if isinstance(exp(const_exp, None), Iterable):
-        # initialize union expression add any remaining default values if initializing to a smaller type then largest
-        bins = chain(
-            (binaries(value) for value in exp(const_exp)),
-            (Byte(0) for _ in xrange(size(c_type(const_exp)) - sum(imap(size, imap(c_type, exp(const_exp))))))
-        )
-    else:
-        assert isinstance(const_exp, UnionType)
-        # get largest type ...
-        bins = binaries(sorted(imap(c_type, const_exp.members.itervalues()), size)[-1])
-    return chain.from_iterable(bins)
-
-
-def dec_binaries(_):
-    return ()
-
-
-def def_binaries(definition):
-    return binaries(initialization(definition))
-
-
-def const_exp_binaries(const_exp):
-    if type(const_exp) in rules(const_exp_binaries):
-        return rules(const_exp_binaries)[type(const_exp)](const_exp)
-
-    return rules(const_exp_binaries)[type(c_type(const_exp))](const_exp)
-const_exp_binaries.rules = {
-    CharType: integral_const,
-    ShortType: integral_const,
-    IntegerType: integral_const,
-    LongType: integral_const,
-    PointerType: integral_const,
-
-    FloatType: numeric_const,
-    DoubleType: numeric_const,
-
-    ArrayType: array_const,
-    StringType: array_const,
-    StructType: struct_const,
-    UnionType: union_const,
+machine_floating_types = {
+    half_float_size: DoubleHalf,
+    float_size: Double
 }
-
-
-def cast_expr(obj):
-    if isinstance(exp(obj), (ConstantExpression, CastExpression)):
-        return binaries(exp(obj).__class__(exp(exp(obj)), c_type(obj), loc(obj)))
-    else:
-        raise ValueError('{l} Could not generate binaries for {g}'.format(l=loc(obj), g=obj))
-
-
-def compound_literal(expr):
-    return chain.from_iterable(imap(binaries, expr))
-
-
-def binaries(obj):
-    return rules(binaries)[type(obj)](obj)
-binaries.rules = {
-    Declaration: dec_binaries,
-    Definition: def_binaries,
-    EmptyExpression: const_exp_binaries,
-    ConstantExpression: const_exp_binaries,
-    CastExpression: cast_expr,
-    CompoundLiteral: compound_literal,
-}
-binaries.rules.update(izip(const_exp_binaries.rules, repeat(const_exp_binaries)))
 
 
 def struct_member_offset(struct_type, member_exp):
-    if isinstance(struct_type, UnionType):  # unions can only store one value at a time ...
-        return 0
-
-    assert member_exp
-    offset = 0
-    for name in struct_type:
-        if member_exp == name:
-            return offset
-        offset += size(c_type(struct_type.members[name]))
-    raise ValueError
-
-from types import MethodType
-bind_load_address_func = MethodType
+    assert member_exp and member_exp in struct_type
+    return 0 if isinstance(struct_type, UnionType) else sum(
+        imap(size, imap(c_type, imap(struct_type.members.__getitem__, takewhile(member_exp.__ne__, struct_type))))
+    )

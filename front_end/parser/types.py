@@ -1,22 +1,57 @@
 __author__ = 'samyvilar'
 
-from itertools import izip, imap
-from collections import Iterable
+import sys
+import inspect
+
+from itertools import izip, imap, ifilter, repeat, starmap, takewhile
+from utils.sequences import exhaust
 
 from logging_config import logging
 
-from front_end.loader.locations import loc, LocationNotSet
+from front_end.loader.locations import loc, LocationNotSet, Location
 from front_end.tokenizer.tokens import TOKENS
 
 from utils import get_attribute_func
 
 logger = logging.getLogger('parser')
+current_module = sys.modules[__name__]
 
 
-class CType(object):
-    rank = 0
-    supported_operations = set()
+class StrictlySigned(object):
+    @property
+    def unsigned(self):
+        return False
 
+
+class StrictlyUnsigned(object):
+    @property
+    def unsigned(self):
+        return True
+
+
+class SignType(object):
+    pass
+
+
+class StrictlyIncomplete(object):
+    @property
+    def rank(self):
+        return 0
+
+    @property
+    def supported_operations(self):
+        return set()
+
+    @property
+    def unsigned(self):
+        raise TypeError('{l} {ctype} does not support signed/unsigned'.format(l=loc(self), ctype=self))
+
+    @property
+    def incomplete(self):
+        return True
+
+
+class CType(StrictlyIncomplete):
     def __init__(self, location=LocationNotSet):
         self.location = location
 
@@ -29,14 +64,6 @@ class CType(object):
         raise TypeError('{l} {c_type} is not a chained type, chaining {to}'.format(
             c_type=self, to=_c_type, l=loc(self)
         ))
-
-    @property
-    def unsigned(self):
-        raise TypeError('{l} {ctype} does not support signed/unsigned'.format(l=loc(self), ctype=self))
-
-    @property
-    def incomplete(self):
-        return True
 
     def __call__(self, location):
         return self.__class__(location)
@@ -69,7 +96,11 @@ class ConcreteType(CType):
         return 1
 
 
-class VoidType(ConcreteType):
+class CoreType(ConcreteType):  # used to describe core types ...
+    pass
+
+
+class VoidType(CoreType):
     pass
 
 LOGICAL_OPERATIONS = {
@@ -97,12 +128,16 @@ MEMBER_ACCESS_OPERATOR = TOKENS.DOT
 MEMBER_ACCESS_THROUGH_POINTER_OPERATOR = TOKENS.ARROW
 
 
+def get_supported_operations(ctype):
+    return getattr(ctype, 'supported_operations')
+
+
 class NumericType(ConcreteType):
     supported_operations = LOGICAL_OPERATIONS | ARITHMETIC_OPERATIONS | COMPOUND_OPERATIONS  # TODO check for lvalue
 
 
 class IntegralType(NumericType):  # Integral types support all the same as Numeric including bitwise operation.
-    supported_operations = NumericType.supported_operations | BITWISE_OPERATIONS
+    supported_operations = get_supported_operations(NumericType) | BITWISE_OPERATIONS
 
     def __init__(self, location=LocationNotSet, unsigned=False):
         self._unsigned = unsigned
@@ -130,24 +165,24 @@ class IntegralType(NumericType):  # Integral types support all the same as Numer
         self._unsigned = value
 
 
-class CharType(IntegralType):
+class CharType(IntegralType, CoreType):
     rank = 1
 
 
-class IntegerType(IntegralType):
-    rank = 4
+class IntegerType(IntegralType, CoreType):
+    rank = 3
 
 
-class FloatType(NumericType):
-    rank = 5
-
-    @property
-    def unsigned(self):
-        return False
+class FloatType(StrictlySigned, NumericType, CoreType):
+    rank = 7
 
 
-class DoubleType(FloatType):
+class DoubleType(FloatType, CoreType):
     rank = 8
+
+
+class VAListType(CType):
+    pass
 
 
 class ChainedType(CType):
@@ -173,36 +208,35 @@ class ChainedType(CType):
         return incomplete(c_type(self))
 
 
-class VAListType(CType):
-    pass
-
-
 class WidthType(ChainedType, IntegralType):
-    incomplete = False
-
     def __init__(self, ctype=None, location=LocationNotSet, unsigned=False):
+        assert not isinstance(ctype, Location)
         ctype = ctype or IntegerType(location, unsigned=unsigned)
         super(WidthType, self).__init__(ctype, location)
         self.unsigned = unsigned
 
-    def __call__(self, location):
+    def __call__(self, location=LocationNotSet):
         return self.__class__(c_type(self)(location), location, unsigned=self.unsigned)
 
     @property
     def rank(self):
         return c_type(self).rank
 
+    @property
+    def incomplete(self):
+        return False
 
-class LongType(WidthType):
-    rank = 4
 
-
-class ShortType(WidthType):
+class ShortType(WidthType, CoreType):
     rank = 2
 
 
-class PointerType(ChainedType, IntegralType):
+class LongType(WidthType, CoreType):
     rank = 4
+
+
+class PointerType(ChainedType, IntegralType, StrictlyUnsigned, CoreType):
+    rank = 5
     supported_operations = LOGICAL_OPERATIONS | {
         TOKENS.PLUS, TOKENS.MINUS, TOKENS.PLUS_EQUAL, TOKENS.MINUS_EQUAL, SUBSCRIPT_OPERATOR
     }
@@ -213,17 +247,15 @@ class PointerType(ChainedType, IntegralType):
     def __repr__(self):
         return 'Pointer to {to}'.format(to=c_type(self))
 
-    @property
-    def unsigned(self):
-        return True
-
     def __nonzero__(self):
         return bool(c_type(self))
 
 
-class ArrayType(PointerType):
-    supported_operations = PointerType.supported_operations - COMPOUND_OPERATIONS
+class AddressType(PointerType):
+    pass
 
+
+class ArrayType(PointerType):
     def __init__(self, __c_type, length, location=LocationNotSet):
         self.length = length
         super(ArrayType, self).__init__(__c_type, location)
@@ -241,10 +273,17 @@ class ArrayType(PointerType):
     def const(self):
         return True
 
+    @property
+    def incomplete(self):
+        return self.length is not None and incomplete(super(ArrayType, self))
+
 
 class StringType(ArrayType):
     def __init__(self, length, location=LocationNotSet):
         super(StringType, self).__init__(CharType(location), length, location)
+
+    def __call__(self, location):
+        return StringType(len(self), location)
 
 
 class FunctionType(ChainedType, list):
@@ -267,6 +306,9 @@ class FunctionType(ChainedType, list):
             c_type(s) == c_type(o) for s, o in izip(self, other)
         )
 
+    def __nonzero__(self):
+        return 0
+
     @property
     def const(self):
         return True
@@ -286,9 +328,16 @@ class UserDefinedTypes(CType):
         return (value and cls.__name__.split('Type')[0].lower() + ' ' + value) or value
 
 
+no_default = object()
+
+
 class CompositeType(UserDefinedTypes):
-    def __init__(self, name, members, location=LocationNotSet):
-        self._members = members
+    supported_operations = {MEMBER_ACCESS_OPERATOR, TOKENS.EQUAL}
+
+    def __init__(self, name, _members, location=LocationNotSet):
+        self._members = None
+        if _members is not None:
+            self.members = _members
         super(CompositeType, self).__init__(name, location)
 
     def __call__(self, location):
@@ -302,6 +351,18 @@ class CompositeType(UserDefinedTypes):
     def __iter__(self):
         return iter(self.members)
 
+    def offset(self, member_name, default=no_default):
+        if member_name not in self and default is no_default:
+            raise ValueError('{l} member {n} not in ctype {c}'.format(l=loc(member_name), n=member_name, c=self))
+        return self.offset_from_name.get(member_name, default)
+
+    def member(self, member_name_or_offset, default=no_default):
+        # if offset then get name ...
+        if isinstance(member_name_or_offset, (int, long)) and member_name_or_offset < len(self.offset_from_name):
+            member_name_or_offset = self.name_from_offset[member_name_or_offset]
+        return self._members[member_name_or_offset] if default is no_default \
+            else self._members.get(member_name_or_offset, no_default)
+
     @property
     def members(self):
         return self._members
@@ -310,8 +371,11 @@ class CompositeType(UserDefinedTypes):
     def members(self, _members):
         if self.members is None:
             self._members = _members
+            self.name_from_offset = dict(enumerate(imap(getattr, members(self), repeat('name'))))
+            self.offset_from_name = dict(imap(reversed, self.name_from_offset.iteritems()))
         elif _members != self._members:
             raise TypeError('{l} {t} already has members'.format(t=self.__class__.__name__, l=loc(self)))
+
 
     @property
     def incomplete(self):
@@ -322,47 +386,22 @@ class CompositeType(UserDefinedTypes):
 
     def __eq__(self, other):
         return self is other or (  # Composites are self referencing each other when nested, TODO: fix this!!!!
-            super(CompositeType, self).__eq__(other) and
-            len(self.members) == len(other.members) and
-            all(member == other_member for member, other_member in izip(
-                self.members.itervalues(), other.members.itervalues()))
+            super(CompositeType, self).__eq__(other)
+            and len(self.members) == len(other.members)
+            and not any(starmap(cmp, izip(self.members.itervalues(), other.members.itervalues())))
         )
 
 
 class StructType(CompositeType):
-    supported_operations = {MEMBER_ACCESS_OPERATOR, TOKENS.EQUAL}
-
-    def __init__(self, name, members, location=LocationNotSet):
-        if isinstance(members, Iterable):
-            self._offsets = dict(imap(reversed, enumerate(members)))
-        else:
-            self._offsets = None
-        super(StructType, self).__init__(name, members, location)
-
-    def offset(self, member_name):
-        return self._offsets[member_name]
-
-    @property
-    def members(self):
-        return super(StructType, self).members
-
-    @members.setter
-    def members(self, _members):
-        CompositeType.members.fset(self, _members)
-        # Unfortunately the only way to get the setter of Parent class is to look for it manually :( ...
-        # (without explicitly using the base class Name ...)
-        # sub_classes = iter(self.__class__.mro()[1:])
-        # _ = next(sub_classes)  # skip current class or infinite recursion ..
-        # next(ifilter(lambda cls: hasattr(cls, 'members'), sub_classes)).members.fset(self, _members)
-        if _members is not None:
-            self._offsets = dict(imap(reversed, enumerate(_members)))
-
-
-class UnionType(StructType):  # Unfortunately
     pass
 
 
-class EnumType(CompositeType, IntegerType):
+class UnionType(CompositeType):
+    def offset(self, member_name, default=no_default):
+        return super(UnionType, self).offset(member_name, default) and 0  # return (0 or default) or 0 ...
+
+
+class EnumType(StrictlySigned, IntegerType):
     pass
 
 
@@ -372,42 +411,107 @@ def safe_type_coercion(from_type, to_type):
         # if unsigned(from_type) != unsigned(to_type):
         #     logger.warning('{l} mixing unsigned and signed values'.format(l=loc(from_type)))
         return True
-    if isinstance(from_type, VAListType) or isinstance(to_type, VAListType):
+    if isinstance(from_type, VAListType) or isinstance(to_type, (VAListType, UnionType)):
         return True
+    if isinstance(from_type, FunctionType) and isinstance(to_type, PointerType):
+        to_type = c_type(to_type)
     return from_type == to_type
 
 
-unsigned_char_type = CharType(unsigned=True)
 char_type = CharType()
-unsigned_short = ShortType(unsigned=True)
 short_type = ShortType()
 integer_type = IntegerType()
+long_type = LongType()
+
+unsigned_char_type = CharType(unsigned=True)
+unsigned_short_type = ShortType(unsigned=True)
 unsigned_integer_type = IntegerType(unsigned=True)
 unsigned_long_type = LongType(unsigned=True)
-long_type = LongType()
+
 float_type = FloatType()
 double_type = DoubleType()
 
-void_pointer_type = PointerType(VoidType(LocationNotSet), LocationNotSet)
-char_array_type = ArrayType(CharType(LocationNotSet), None, LocationNotSet)
+logical_type = LongType(LongType())
+
+void_pointer_type = PointerType(VoidType(LocationNotSet))
+char_array_type = ArrayType(CharType(LocationNotSet), None)
+
+# c_scalar_core_types = CharType, ShortType, IntegerType, LongType, FloatType, DoubleType, EnumType, PointerType
+kind_of_types = {NumericType, IntegralType, WidthType, CoreType}
+scalar_types = set(ifilter(
+    lambda cls: cls not in kind_of_types and issubclass(cls, NumericType),
+    ifilter(inspect.isclass, imap(getattr, repeat(current_module), dir(current_module)))
+))
+integral_types, real_types = imap(
+    set,
+    imap(
+        ifilter,
+        imap(lambda cls_type: (lambda cls, cls_type=cls_type: issubclass(cls, cls_type)), (IntegralType, FloatType)),
+        repeat(scalar_types)
+    )
+)
 
 
 def base_c_type(ctype):
+    if isinstance(ctype, FunctionType):
+        return IntegralType
     assert isinstance(ctype, NumericType)
     if isinstance(ctype, IntegralType):
         return IntegralType
     return NumericType
 
 
-def set_core_type(base_type, fundamental_type):
-    while type(c_type(base_type)) is not CType:
-        base_type = c_type(base_type)
-    base_type.c_type = fundamental_type
+def core_c_type(ctype):
+    next_ctype = c_type(ctype)
+    return ctype if type(next_ctype) is CType else core_c_type(next_ctype)
 
 
-c_type = get_attribute_func('c_type')
-unsigned = get_attribute_func('unsigned')
-const = get_attribute_func('const')
-volatile = get_attribute_func('volatile')
-supported_operators = get_attribute_func('supported_operations')
-incomplete = get_attribute_func('incomplete')
+def set_core_type(top_type, bottom_type):
+    # while type(c_type(base_type)) is not CType:
+    #     base_type = c_type(base_type)
+    core_c_type(top_type).c_type = bottom_type
+    return top_type
+
+type_property_names = 'c_type', 'unsigned', 'const', 'volatile', 'supported_operations', 'incomplete'
+for _name in type_property_names:
+    setattr(current_module, _name, get_attribute_func(_name))
+
+
+def get_not_a_composite_func(ctype, default=no_default, name_or_offset=''):
+    def not_a_composite(_name_or_offset=name_or_offset, _default=default, _ctype=ctype):
+        if _default is not no_default:
+            return _default
+        raise ValueError('{l} ctype {c} is not a composite type'.format(l=loc(_name_or_offset), c=_ctype))
+    return not_a_composite
+
+
+def members(ctype, default=no_default):
+    return getattr(
+        getattr(ctype, 'members', get_not_a_composite_func(ctype, default)),
+        'itervalues',
+        lambda: default
+    )()
+
+
+def member(ctype, name_or_offset, default=no_default):
+    return getattr(ctype, 'member', get_not_a_composite_func(ctype, default, name_or_offset))(name_or_offset, default)
+
+
+def offset(ctype, name, default=no_default):
+    return getattr(ctype, 'offset', get_not_a_composite_func(ctype))(name, default)
+
+
+suggested_size_rules = {
+    CharType: 1,
+    ShortType: 2,
+    IntegerType: 4,
+    LongType: 8,
+    PointerType: 8,
+
+    FloatType: 4,
+    DoubleType: 8
+}
+
+
+def suggested_size(ctype):  # TODO: find alternative!!!
+    return suggested_size_rules[type(ctype)]

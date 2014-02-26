@@ -10,7 +10,7 @@ from front_end.preprocessor.preprocess import preprocess
 from front_end.parser.ast.declarations import Declaration, Definition, AbstractDeclarator, Extern
 from front_end.parser.ast.expressions import ConstantExpression, exp
 from front_end.parser.types import IntegerType, VoidType, PointerType, ArrayType, FunctionType
-from front_end.parser.declarations.declarations import translation_unit
+from front_end.parser import translation_unit
 
 
 class TestDeclarations(TestCase):

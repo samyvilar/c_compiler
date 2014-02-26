@@ -2,16 +2,16 @@ __author__ = 'samyvilar'
 
 from collections import defaultdict
 
-from front_end.loader.locations import loc, LocationNotSet
+from front_end.loader.locations import loc
 from front_end.parser.ast.general import Node, EmptyNode
 
-from front_end.parser.ast.declarations import Declaration, Definition, Declarator, name
+from front_end.parser.ast.declarations import Definition, Declarator, name
 
 from front_end.parser.ast.expressions import ConstantExpression, SizeOfExpression, IdentifierExpression, TrueExpression
-from front_end.parser.ast.expressions import EmptyExpression, Expression
+from front_end.parser.ast.expressions import Expression, EmptyExpression, ExpressionNode
 from front_end.parser.types import c_type, FunctionType
 
-from front_end.errors import error_if_not_type
+from utils.errors import error_if_not_type
 
 
 class FunctionDefinition(Definition):
@@ -101,9 +101,15 @@ class WhileStatement(IterationStatement):
 
 
 class DoWhileStatement(IterationStatement):
-    @property  # do while statement is the only iteration statement that calculates the expr after the body ...
+    def __init__(self, exp, body, location):
+        self.exp_iter = exp
+        super(ExpressionBody, self).__init__(body, location)
+
+    @property  # do while statement is the only iteration statement that has the loop invariant expr after the body ...
     def exp(self):
-        return next(self._exp)
+        if not hasattr(self, '_exp'):
+            self._exp = next(self.exp_iter)
+        return self._exp
 
     @exp.setter
     def exp(self, value):
@@ -157,7 +163,7 @@ class CaseStatement(SelectionStatement):
 
 class DefaultStatement(CaseStatement):
     def __init__(self, statement, location):
-        super(DefaultStatement, self).__init__(TrueExpression(location), statement, location)
+        super(DefaultStatement, self).__init__(ExpressionNode('default', None), statement, location)
 
 
 def no_effect(stmnt):

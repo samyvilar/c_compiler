@@ -3,7 +3,8 @@ __author__ = 'samyvilar'
 from test.test_back_end.test_emitter.test_declarations.test_definitions import TestDeclarations
 from test.test_back_end.test_emitter.test_statements.test_compound import TestStatements
 
-from front_end.parser.ast.expressions import ConstantExpression, IntegerType
+from front_end.parser.ast.expressions import ConstantExpression
+from front_end.parser.types import ShortType, IntegerType, DoubleType
 
 
 class TestPostfix(TestStatements):
@@ -68,9 +69,10 @@ class TestPostfix(TestStatements):
                 int d[0];
             } foo = {.a=10, .b=10.5};
             value = 10.5 - foo.b;
+        }
         """
         self.evaluate(source)
-        self.assert_base_element(ConstantExpression(0, IntegerType()))
+        self.assert_base_element(ConstantExpression(0, DoubleType()))
 
     def test_struct_member_selection(self):
         source = """
@@ -87,7 +89,7 @@ class TestPostfix(TestStatements):
         }
         """
         self.evaluate(source)
-        self.assert_base_element(ConstantExpression(4, IntegerType()))
+        self.assert_base_element(ConstantExpression(4, ShortType()))
 
     def test_nested_struct_member_selection(self):
         source = """

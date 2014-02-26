@@ -1,14 +1,15 @@
 __author__ = 'samyvilar'
 
 from collections import defaultdict
+from itertools import imap, repeat
 
 from front_end.loader.locations import loc
-from front_end.parser.types import IntegerType, c_type
+from front_end.parser.types import c_type, logical_type
 from front_end.tokenizer.tokens import TOKENS
 
 from front_end.parser.ast.expressions import ConstantExpression, UnaryExpression, BinaryExpression, CastExpression
 from front_end.parser.ast.expressions import EmptyExpression
-from front_end.parser.types import IntegralType, FloatType
+from front_end.parser.types import IntegralType, FloatType, ArrayType
 
 from front_end.parser.ast.expressions import left_exp, right_exp, oper, exp
 
@@ -21,15 +22,15 @@ unary_exp.rules.update({
     TOKENS.PLUS: lambda expr: ConstantExpression(exp(expr), c_type(expr)(loc(expr)), loc(expr)),
     TOKENS.MINUS: lambda expr: ConstantExpression(-1 * exp(expr), c_type(expr)(loc(expr)), loc(expr)),
     TOKENS.TILDE: lambda expr: ConstantExpression(~exp(expr), c_type(expr)(loc(expr)), loc(expr)),
-    TOKENS.EXCLAMATION: lambda expr: ConstantExpression(int(bool(exp(expr))), IntegerType(loc(expr)), loc(expr)),
+    TOKENS.EXCLAMATION: lambda expr: ConstantExpression(int(bool(exp(expr))), logical_type(loc(expr)), loc(expr)),
 })
 
 
 def binary_exp(expr):
-    if not (isinstance(left_exp(expr), ConstantExpression) and isinstance(right_exp(expr), ConstantExpression)):
+    if not all(imap(isinstance, (left_exp(expr), right_exp(expr)), repeat(ConstantExpression))):
         return expr
 
-    exp_type = max(c_type(left_exp(expr)), c_type(right_exp(expr)))(loc(expr))
+    exp_type = max(imap(c_type, (left_exp(expr), right_exp(expr))))(loc(expr))
     l_exp, r_exp, location = exp(left_exp(expr)), exp(right_exp(expr)), loc(expr)
 
     # noinspection PyUnresolvedReferences  '1 + 2 - 3 * 7 / 4'
@@ -78,42 +79,46 @@ binary_exp.rules.update({
     lambda **kwargs: ConstantExpression(
         kwargs['left_exp'] | kwargs['right_exp'], kwargs['exp_type'], kwargs['location']),
 
+
+
     TOKENS.LOGICAL_AND:
     lambda **kwargs: ConstantExpression(
-        int(bool(kwargs['left_exp'] and kwargs['right_exp'])), IntegerType(kwargs['location']), kwargs['location']),
+        int(bool(kwargs['left_exp'] and kwargs['right_exp'])), logical_type(kwargs['location']), kwargs['location']),
 
     TOKENS.LOGICAL_OR:
     lambda **kwargs: ConstantExpression(
-        int(bool(kwargs['left_exp'] or kwargs['right_exp'])), IntegerType(kwargs['location']), kwargs['location']),
+        int(bool(kwargs['left_exp'] or kwargs['right_exp'])), logical_type(kwargs['location']), kwargs['location']),
 
     TOKENS.LESS_THAN:
     lambda **kwargs: ConstantExpression(
-        kwargs['left_exp'] < kwargs['right_exp'], IntegerType(kwargs['location']), kwargs['location']),
+        kwargs['left_exp'] < kwargs['right_exp'], logical_type(kwargs['location']), kwargs['location']),
 
     TOKENS.GREATER_THAN:
     lambda **kwargs: ConstantExpression(
-        int(kwargs['left_exp'] > kwargs['right_exp']), IntegerType(kwargs['location']), kwargs['location']),
+        int(kwargs['left_exp'] > kwargs['right_exp']), logical_type(kwargs['location']), kwargs['location']),
 
     TOKENS.LESS_THAN_OR_EQUAL:
     lambda **kwargs: ConstantExpression(
-        int(kwargs['left_exp'] <= kwargs['right_exp']), IntegerType(kwargs['location']), kwargs['location']),
+        int(kwargs['left_exp'] <= kwargs['right_exp']), logical_type(kwargs['location']), kwargs['location']),
 
     TOKENS.GREATER_THAN_OR_EQUAL:
     lambda **kwargs: ConstantExpression(
-        int(kwargs['left_exp'] >= kwargs['right_exp']), IntegerType(kwargs['location']), kwargs['location']),
+        int(kwargs['left_exp'] >= kwargs['right_exp']), logical_type(kwargs['location']), kwargs['location']),
 
     TOKENS.EQUAL_EQUAL:
     lambda **kwargs: ConstantExpression(
-        int(kwargs['left_exp'] == kwargs['right_exp']), IntegerType(kwargs['location']), kwargs['location']),
+        int(kwargs['left_exp'] == kwargs['right_exp']), logical_type(kwargs['location']), kwargs['location']),
 
     TOKENS.NOT_EQUAL:
     lambda **kwargs: ConstantExpression(
-        int(kwargs['left_exp'] != kwargs['right_exp']), IntegerType(kwargs['location']), kwargs['location']),
+        int(kwargs['left_exp'] != kwargs['right_exp']), logical_type(kwargs['location']), kwargs['location']),
 })
 
 
 def cast_exp(expr):
-    if isinstance(exp(expr), ConstantExpression):
+    if c_type(expr) == c_type(exp(expr)):
+        return exp(expr)
+    if isinstance(exp(expr), ConstantExpression) and not isinstance(c_type(exp(expr)), ArrayType):
         to_type = c_type(expr)
         expr = exp(expr)
         location = loc(expr)
@@ -121,12 +126,9 @@ def cast_exp(expr):
             return EmptyExpression(to_type, loc(expr))
         if isinstance(to_type, IntegralType):
             return ConstantExpression(int(exp(expr)), to_type(location), location)
-        elif isinstance(to_type, FloatType):
+        if isinstance(to_type, FloatType):
             return ConstantExpression(float(exp(expr)), to_type(location), location)
-        else:
-            return expr
-    else:
-        return expr
+    return expr
 
 
 def reduce_to_constant(expr):

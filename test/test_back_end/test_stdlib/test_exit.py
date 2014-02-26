@@ -1,6 +1,7 @@
 __author__ = 'samyvilar'
 
 from test.test_back_end.test_stdlib.base import TestStdLib
+from front_end.parser.ast.expressions import ConstantExpression, LongType
 
 
 class TestExit(TestStdLib):
@@ -15,7 +16,7 @@ class TestExit(TestStdLib):
         }
         """
         self.evaluate(code)
-        self.assertEqual(int(self.mem[self.cpu.stack_pointer]), 0)
+        self.assert_base_element(ConstantExpression(0, LongType()))
 
     def test_exit_nested(self):
         code = """
@@ -41,5 +42,5 @@ class TestExit(TestStdLib):
         }
         """
         self.evaluate(code)
-        self.assertEqual(int(self.mem[self.cpu.stack_pointer]), 100)
+        self.assert_base_element(ConstantExpression(100, LongType()))
 

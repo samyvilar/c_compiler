@@ -8,7 +8,7 @@ from front_end.tokenizer.tokenize import tokenize
 from front_end.preprocessor.preprocess import preprocess
 from front_end.parser.parse import parse
 
-from front_end.parser.symbol_table import SymbolTable
+from utils.symbol_table import SymbolTable
 
 from back_end.emitter.emit import emit
 from back_end.linker.link import executable, set_addresses, resolve

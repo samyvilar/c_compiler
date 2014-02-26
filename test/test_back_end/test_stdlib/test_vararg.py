@@ -3,6 +3,7 @@ __author__ = 'samyvilar'
 from test.test_back_end.test_stdlib.base import TestStdLib
 from front_end.parser.ast.expressions import ConstantExpression, IntegerType
 
+
 class TestVarArg(TestStdLib):
     def test_var_arg_function(self):
         code = """
@@ -20,14 +21,15 @@ class TestVarArg(TestStdLib):
             double d = va_arg(values, double);
             struct temp s = va_arg(values, struct temp);
             int last = va_arg(values, int);
+            int *ptr = va_arg(values, int *);
 
-             return a == -1 && c == 'c'&& d == 12.5 && s.i == 1 && s.s.c == 'f' && last == 10;
+             return a == -1 && c == 'c'&& d == 12.5 && s.i == 1 && s.s.c == 'f' && last == 10 && ptr == 10;
         }
 
         int main()
         {
             struct temp s = {1, .s = {.c = 'f'}};
-            return foo(0, -1, 'c', 12.5, s, 10);
+            return foo(0, -1, 'c', 12.5, s, 10, (int *)10);
         }
         """
         self.evaluate(code)

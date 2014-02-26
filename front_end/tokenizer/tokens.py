@@ -1,13 +1,17 @@
 __author__ = 'samyvilar'
 
 import string
-from itertools import imap, chain
-from utils.sequences import permute_case
-from front_end.loader.locations import LocationNotSet
+from itertools import imap, chain, repeat, ifilter, ifilterfalse
+from utils.sequences import permute_case, consume
+from front_end.loader.locations import LocationNotSet, loc
 from front_end.loader.load import Str
+
+from utils.errors import raise_error
+
 
 letters = set(string.letters) | {'_'}
 digits = set(string.digits)
+
 octal_digits = digits - {'9', '8'}
 hexadecimal_digits = digits | {'a', 'b', 'c', 'd', 'e', 'f', 'A', 'B', 'C', 'D', 'E', 'F'}
 hexadecimal_prefix = '0x', '0X'
@@ -27,7 +31,11 @@ lower_case_possible_numeric_suffix = lower_case_suffix | {
     long_long_suffix + unsigned_suffix
 }
 numeric_suffix_letters = {unsigned_suffix, unsigned_suffix.upper(), long_suffix, long_suffix.upper()}
-possible_numeric_suffix = set(chain.from_iterable(imap(permute_case, lower_case_possible_numeric_suffix)))
+possible_numeric_suffix = set(chain.from_iterable(imap(permute_case, lower_case_possible_numeric_suffix))) | {''}
+
+
+def digit(number):
+    return string.digits[number]
 
 
 class Symbol(Str):
@@ -101,6 +109,10 @@ class TOKENS(object):
     SHIFT_LEFT_EQUAL = Symbol('<<=')
     SHIFT_RIGHT_EQUAL = Symbol('>>=')
 
+    START_OF_COMMENT = Symbol('//')
+    START_OF_MULTI_LINE_COMMENT = Symbol('/*')
+    END_OF_MULTI_LINE_COMMENT = Symbol('*/')
+
     # IDs of all keywords
     AUTO = KeywordSymbol('auto')
 
@@ -136,12 +148,13 @@ class TOKENS(object):
     VOLATILE = KeywordSymbol('volatile')
     WHILE = KeywordSymbol('while')
 
-    NUMBER_SIGN = Symbol('#')
     PINCLUDE = PreprocessorSymbol('#include')
     PDEFINE = PreprocessorSymbol('#define')
     PUNDEF = PreprocessorSymbol('#undef')
 
+    NUMBER_SIGN = PreprocessorSymbol('#')
     PP = PreprocessorSymbol('##')
+
     PIF = PreprocessorSymbol('#if')
     PELIF = PreprocessorSymbol('#elif')
     PELSE = PreprocessorSymbol('#else')
@@ -157,24 +170,15 @@ class TOKENS(object):
     pre_processing_directives = set()
 
 
-TOKENS.keyword_symbols = {
-    getattr(TOKENS, symbol)
-    for symbol in dir(TOKENS)
-    if isinstance(getattr(TOKENS, symbol), KeywordSymbol)
-}
+all_symbols = set(ifilter(lambda symbol: isinstance(symbol, Symbol), imap(getattr, repeat(TOKENS), dir(TOKENS))))
 
-TOKENS.non_keyword_symbols = {
-    getattr(TOKENS, symbol)
-    for symbol in dir(TOKENS)
-    if type(getattr(TOKENS, symbol)) is Symbol
-    and getattr(TOKENS, symbol) not in TOKENS.keyword_symbols
-}
+TOKENS.keyword_symbols = set(ifilter(lambda symbol: isinstance(symbol, KeywordSymbol), all_symbols))
 
-TOKENS.pre_processing_directives = {
-    getattr(TOKENS, symbol)
-    for symbol in dir(TOKENS)
-    if isinstance(getattr(TOKENS, symbol), PreprocessorSymbol)
-}
+TOKENS.non_keyword_symbols = set(
+    ifilter(lambda symbol: type(symbol) is Symbol and symbol not in TOKENS.keyword_symbols, all_symbols)
+)
+
+TOKENS.pre_processing_directives = set(ifilter(lambda symbol: isinstance(symbol, PreprocessorSymbol), all_symbols))
 
 
 class TOKEN(Str):
@@ -228,7 +232,8 @@ class SYMBOL(TOKEN):
 
 
 class IGNORE(TOKEN):
-    pass
+    def __new__(cls, value='', location=LocationNotSet):
+        return super(IGNORE, cls).__new__(cls, value, location)
 
 
 class WHITESPACE(IGNORE):
@@ -250,10 +255,24 @@ class MULTI_LINE_COMMENT(COMMENT):
 class PRE_PROCESSING_SYMBOL(TOKEN):
     # noinspection PyInitNewSignature
     def __new__(cls, values, location=LocationNotSet):
-        if values not in TOKENS.pre_processing_directives:
-            raise ValueError('{l} Could not locate pre_processing directive {d}'.format(l=location, d=values))
+        _ = values not in TOKENS.pre_processing_directives and raise_error(
+            '{l} Could not locate pre_processing directive {d}'.format(l=location, d=values)
+        )
         return super(PRE_PROCESSING_SYMBOL, cls).__new__(cls, values, location)
 
 
 def suffix(token):
     return getattr(token, 'suffix')
+
+
+def copy_token(token, new_location=LocationNotSet):
+    if hasattr(token, 'suffix'):
+        return token.__new__(token.__class__, str(token), new_location or loc(token), suffix=suffix(token))
+    return token.__new__(token.__class__, str(token), new_location or loc(token))
+
+
+def filter_out_empty_tokens(tokens, obj_type=IGNORE):
+    return ifilterfalse(lambda t, obj_type=obj_type: isinstance(t, obj_type), imap(consume, repeat(iter(tokens))))
+
+
+empty_token = IGNORE()

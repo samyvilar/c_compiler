@@ -3,21 +3,25 @@ __author__ = 'samyvilar'
 from front_end.loader.locations import loc, LocationNotSet
 
 from utils import get_attribute_func
-from front_end.parser.types import CType, c_type, safe_type_coercion
+from front_end.parser.types import CType, c_type, safe_type_coercion, ArrayType
 from front_end.parser.ast.general import Node, EmptyNode
-from front_end.parser.ast.expressions import ConstantExpression, TypedNode
+
+from front_end.parser.ast.expressions import TypedNode
+from front_end.parser.ast.expressions import ConstantExpression, CompoundLiteral, Initializer, EmptyExpression
+
+from utils.errors import error_if_not_type, raise_error
 
 
-class Designation(Node):
-    pass
-
-
-class Identifier(Designation):
-    pass
-
-
-class Range(Designation):
-    pass
+# class Designation(Node):
+#     pass
+#
+#
+# class Identifier(Designation):
+#     pass
+#
+#
+# class Range(Designation):
+#     pass
 
 
 class StorageClass(Node):
@@ -69,14 +73,16 @@ class Definition(Declaration):
 
     @initialization.setter
     def initialization(self, value):
-        if value and c_type(self) and not safe_type_coercion(c_type(self), c_type(value)):
-            raise ValueError('{l} Could not coerce types from {from_type} to {to_type}'.format(
+        _ = value and c_type(self) and not safe_type_coercion(c_type(self), c_type(value)) and raise_error(
+            '{l} Could not coerce types from {from_type} to {to_type}'.format(
                 l=loc(self), from_type=c_type(value), to_type=c_type(self)
             ))
-        if isinstance(self.storage_class, (Static, Extern)) and not isinstance(value, ConstantExpression):
-            raise ValueError('{l} Static/Extern definition may only be initialized with constant expressions'.format(
-                l=loc(value)
-            ))
+
+        if isinstance(c_type(self), ArrayType):
+            _ = error_if_not_type(value, (ConstantExpression, CompoundLiteral, Initializer, EmptyExpression))
+            if c_type(self).length is None:
+                c_type(self).length = len(c_type(value))
+
         self._initialization = value
 
     def __eq__(self, other):
@@ -95,16 +101,14 @@ class TypeDef(Definition, StorageClass):
 
 
 class EmptyDeclaration(Declaration, EmptyNode):
-    c_type = CType
-
     def __init__(self, location, storage_class):
         super(EmptyDeclaration, self).__init__('', CType(location), location, storage_class)
 
 
 class Declarator(TypedNode):
-    def __init__(self, name, c_type, initialization, location=LocationNotSet):
+    def __init__(self, name, ctype, initialization, location=LocationNotSet):
         self.name, self.initialization = name, initialization
-        super(Declarator, self).__init__(c_type, location)
+        super(Declarator, self).__init__(ctype, location)
 
     @property
     def name(self):
@@ -112,19 +116,13 @@ class Declarator(TypedNode):
 
     @name.setter
     def name(self, value):
-        if not name:
+        if not value:
             raise ValueError('{l} Declarator names cannot be empty, got "{got}"'.format(l=loc(value), got=value))
         self._name = value
 
 
 class AbstractDeclarator(TypedNode):
-    @property
-    def name(self):
-        raise TypeError
-
-    @name.setter
-    def name(self, value):
-        raise TypeError
+    pass
 
 
 name = get_attribute_func('name')

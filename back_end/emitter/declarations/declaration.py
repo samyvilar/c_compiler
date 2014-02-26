@@ -2,25 +2,24 @@ __author__ = 'samyvilar'
 
 from types import MethodType
 from collections import defaultdict
-from itertools import chain
+from itertools import chain, imap, repeat, izip
 
 from front_end.loader.locations import loc
-from front_end.parser.symbol_table import push, pop, SymbolTable
+from utils.symbol_table import push, pop, SymbolTable
 
 from front_end.parser.ast.statements import FunctionDefinition
 from front_end.parser.ast.declarations import Declaration, Definition, name, initialization
-from front_end.parser.types import c_type, void_pointer_type, FunctionType
+from front_end.parser.types import c_type, void_pointer_type, FunctionType, VoidType, ArrayType
 
 
-from back_end.emitter.statements.statement import statement
 from back_end.emitter.statements.jump import return_instrs
 from back_end.emitter.object_file import Data, Code, Reference
-from back_end.emitter.c_types import binaries, size
+from back_end.emitter.c_types import size, size_arrays_as_pointers
 from back_end.emitter.stack_state import Stack, bind_instructions
 
-from back_end.virtual_machine.instructions.architecture import Address, push as push_instr
+from back_end.virtual_machine.instructions.architecture import Address, push as push_instr, Pass
 
-from back_end.emitter.c_types import bind_load_address_func, function_operand_type_sizes
+from back_end.emitter.expressions.static import static_def_binaries, bind_load_address_func
 
 
 def no_rule(dec, *_):
@@ -30,11 +29,7 @@ def no_rule(dec, *_):
 def get_directives():
     return defaultdict(
         lambda: no_rule,
-        (
-            (Declaration, declaration),
-            (Definition, definition),
-            (FunctionDefinition, function_definition),
-        )
+        ((Declaration, declaration), (Definition, definition), (FunctionDefinition, function_definition))
     )
 
 
@@ -62,7 +57,8 @@ def definition(dec, symbol_table):  # Global definition.
     assert not isinstance(c_type(dec), FunctionType)
     symbol_table[name(dec)] = bind_load_instructions(dec)
     symbol_table[name(dec)].symbol = Data(  # Add reference of symbol to definition to keep track of references
-        name(dec), binaries(dec), size(c_type(dec)), dec.storage_class, loc(dec),
+        # static binaries, (packed binaries since machine may require alignment ...)
+        name(dec), static_def_binaries(dec), size(c_type(dec)), dec.storage_class, loc(dec),
     )
     return symbol_table[name(dec)].symbol
 
@@ -83,7 +79,7 @@ def function_definition(dec, symbol_table):
         Jump to callee code segment
 
         callee references values passed on the stack by pushing the base_stack_pointer,
-        (+offsets) for previous frame (-offset) for current frame ...
+        (+offsets) for previous frame and (-offset) for current frame ...
 
         Callee will place the return value in the specified pointer.
         Caller Pops frame, and uses the set (returned) value.
@@ -94,28 +90,33 @@ def function_definition(dec, symbol_table):
 
     def binaries(body, symbol_table):
         symbol_table = push(symbol_table)
-        stack = Stack()  # Each function call has its own Frame which is nothing more than a stack.
+        symbol_table['__ stack __'] = Stack()  # Each function call has its own Frame which is nothing more than a stack
 
-        # Skip return address and pointer to return value ...
-        offset = size(void_pointer_type) + (
+        # Skip return address ...
+        offset = size_arrays_as_pointers(void_pointer_type) + (
             # if function has zero return size then the return pointer will be omitted ...
-            size(void_pointer_type) * bool(function_operand_type_sizes(c_type(c_type(dec))))
+            size_arrays_as_pointers(void_pointer_type) *
+            bool(size_arrays_as_pointers(c_type(c_type(dec)), overrides={VoidType: 0}))
         )
 
         for parameter in c_type(dec):
             # monkey patch declarator objects add Load commands according to stack state; add to symbol table.
             symbol_table[name(parameter)] = bind_instructions(parameter, offset)
-            offset += size(c_type(parameter))
+            assert not type(parameter) is ArrayType  # TODO: fix this.
+            offset += size_arrays_as_pointers(c_type(parameter))
 
-        symbol_table['__ CURRENT FUNCTION __'] = dec
-        symbol_table['__ LABELS __'] = SymbolTable()
-        symbol_table['__ GOTOS __'] = defaultdict(list)
-        for instr in chain(
-                chain.from_iterable(statement(s, symbol_table, stack) for s in chain.from_iterable(body)),
-                return_instrs(loc(dec))
-        ):
-            yield instr
-        _ = pop(symbol_table)
+        symbol_table.update(
+            izip(('__ CURRENT FUNCTION __', '__ LABELS __', '__ GOTOS __'), (dec, SymbolTable(), defaultdict(list)))
+        )
+
+        def pop_symbol_table(symbol_table, location=loc(dec)):  # pop symbol table once all binaries have being emitted
+            yield (pop(symbol_table) or 1) and Pass(location)
+
+        return chain(   # body of function ...
+            chain.from_iterable(imap(symbol_table['__ statement __'], chain.from_iterable(body), repeat(symbol_table))),
+            return_instrs(loc(dec)),        # default return instructions, in case one was not giving ...
+            pop_symbol_table(symbol_table)  # pop symbol_table once complete ...
+        )
 
     symbol.binaries = binaries(initialization(dec), symbol_table)
     return symbol

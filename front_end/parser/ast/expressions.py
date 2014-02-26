@@ -1,18 +1,21 @@
 __author__ = 'samyvilar'
 
-from itertools import izip
+import sys
+
+from itertools import izip, imap, repeat
+from utils.sequences import exhaust
+from collections import OrderedDict
 
 from utils import get_attribute_func
 from front_end.loader.locations import loc, LocationNotSet
 from front_end.tokenizer.tokens import TOKENS
-
 from front_end.parser.ast.general import Node, EmptyNode
 from front_end.parser.types import CType, IntegerType, IntegralType, c_type, safe_type_coercion, unsigned
-from front_end.parser.types import ArrayType, StructType, NumericType, PointerType
+from front_end.parser.types import ArrayType, StructType, NumericType, LongType
+from utils.errors import error_if_not_type, raise_error
 
 
-from front_end.errors import error_if_not_type
-from collections import OrderedDict
+current_module = sys.modules[__name__]
 
 
 class TypedNode(Node):
@@ -120,9 +123,13 @@ class AddressOfExpression(UnaryExpression):
         super(AddressOfExpression, self).__init__(TOKENS.AMPERSAND, exp, ctype, location)
 
 
+class AddressOfLabelExpression(AddressOfExpression):
+    pass
+
+
 class SizeOfExpression(UnaryExpression):
     def __init__(self, exp, location=LocationNotSet):
-        super(SizeOfExpression, self).__init__(TOKENS.SIZEOF, exp, IntegerType(location, unsigned=True), location)
+        super(SizeOfExpression, self).__init__(TOKENS.SIZEOF, exp, LongType(location=location, unsigned=True), location)
 
 
 class CastExpression(UnaryExpression):
@@ -161,7 +168,7 @@ class TernaryExpression(OperatorNode):
 class AssignmentExpression(BinaryExpression):
     def __init__(self, left_exp, operator, right_exp, ctype, location=LocationNotSet):
         # error_if_not_assignable(left_exp, location) TODO: implement.
-        if not safe_type_coercion(c_type(left_exp), c_type(right_exp)):
+        if not safe_type_coercion(c_type(right_exp), c_type(left_exp)) or isinstance(c_type(left_exp), ArrayType):
             raise ValueError('{l} Cannot assign from type {from_type} to {to_type}'.format(
                 l=location, from_type=c_type(right_exp), to_type=c_type(left_exp),
             ))
@@ -183,7 +190,7 @@ class PrefixExpression(UnaryExpression):
 class DereferenceExpression(PrefixExpression):
     def __init__(self, exp, ctype, location=LocationNotSet):
         self.lvalue = lvalue(ctype, False)
-        super(DereferenceExpression, self).__init__(TOKENS.STAR, exp, ctype, location)
+        super(DereferenceExpression, self).__init__(TOKENS.STAR, exp, ctype, location=location)
 
 
 class ArraySubscriptingExpression(PostfixExpression):
@@ -230,10 +237,71 @@ class ElementSelectionThroughPointerExpression(ElementSelection):
         )
 
 
-class CompoundLiteral(PostfixExpression, list):
+class DesignatedExpression(ExpressionNode):
+    def __init__(self, designation, expr, location=LocationNotSet):
+        self.designation = designation
+        super(DesignatedExpression, self).__init__(expr, c_type(expr), location)
+
+
+class IdentifierDesignatedExpression(DesignatedExpression):
+    pass
+
+
+class NumericalDesignation(long):
+    def __new__(cls, designation):
+        _ = error_if_not_type(designation, (int, long)) and designation < 0 and raise_error(
+            '{l} array indices must be greater than or equal to 0 got {g}'.format(l=loc(value), g=exp(value)))
+        return super(NumericalDesignation, cls).__new__(cls, designation)
+
+
+class OffsetDesignatedExpression(DesignatedExpression):
+    pass
+
+
+class DefaultOffsetDesignationExpression(OffsetDesignatedExpression):
+    pass
+
+
+class RangeDesignatedExpression(DesignatedExpression):
+    def __init__(self, start, end, expr, location=LocationNotSet):
+        _ = (end - start) <= 0 and raise_error('{l} designated range {v} produce an empty sequence'.format(
+            l=location, v=' ... '.join(imap(str, (start, end)))))
+        super(RangeDesignatedExpression, self).__init__((start, end), expr, location)
+
+
+class Initializer(ExpressionNode, dict):
     def __init__(self, expr, ctype, location=LocationNotSet):
-        super(CompoundLiteral, self).__init__(ctype, '(TYPE_NAME *)initializer_list', expr, ctype, location)
-        list.__init__(self, expr)
+        super(Initializer, self).__init__(expr, ctype, location)
+        dict.__init__(self, expr)
+
+
+def get_expressions(expr):
+    return expr.itervalues()
+
+
+class CompoundLiteral(PostfixExpression):
+    def __init__(self, initializer, ctype, location=LocationNotSet):  # TODO check expr and ctype ....
+        assert self is not initializer
+        super(CompoundLiteral, self).__init__(
+            ctype,
+            '(TYPE_NAME *)initializer_list',
+            initializer,
+            ctype,
+            location
+        )
+
+        # def __init__(self, left_exp, oper, right_exp, ctype, location=LocationNotSet):
+    def __iter__(self):
+        return iter(right_exp(self))
+
+    def __getitem__(self, item):
+        return right_exp(self)[item]
+
+    def __setitem__(self, key, value):
+        right_exp(self)[key] = value
+
+    def __len__(self):
+        return len(right_exp(self))
 
 
 class IntegralExpression(TypedNode):
@@ -280,8 +348,5 @@ class PostfixDecrementExpression(DecrementExpression):
     pass
 
 
-oper = get_attribute_func('oper')
-exp = get_attribute_func('exp')
-lvalue = get_attribute_func('lvalue')
-right_exp = get_attribute_func('right_exp')
-left_exp = get_attribute_func('left_exp')
+property_names = 'oper', 'exp', 'lvalue', 'right_exp', 'left_exp', 'designation'
+exhaust(imap(setattr, repeat(current_module), property_names, imap(get_attribute_func, property_names)))

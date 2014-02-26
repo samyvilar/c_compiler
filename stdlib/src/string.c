@@ -33,22 +33,23 @@ void *memmove(void *dest, const void *src, size_t numb)
 
 int memcmp(const void *src_0, const void *src_1, size_t numb)
 {
-    unsigned char
+    char
         *source_0 = src_0,
         *source_1 = src_1;
 
-    numb /= sizeof(unsigned char);
-    while (numb && *source_0 == *source_1)
+    numb /= sizeof(char);
+    while (numb && (*source_0 == *source_1))
         numb--, source_0++, source_1++; // safe guard against numb == 0;
 
-    return numb ? *source_0 - *source_1 : 0;
+    return numb ? (*source_0 - *source_1) : 0;
 }
 
 void *memchr(const void *dest, int value, size_t numb)
 {
-    unsigned char *values = dest;
+    unsigned char *values = dest, char_value = value;
     numb /= sizeof(unsigned char);
-    while (numb && *values != (unsigned char)value)
+
+    while (numb && (*values != char_value))
         numb--, values++;
 
     return numb ? values : NULL;   // if numb is 0 then byte wasn't found.
@@ -120,6 +121,9 @@ int strncmp(const char *str1, const char *str2, size_t numb)
 
 char *strchr(const char *str, int ch)
 {
+    if (!str)
+        return NULL;
+
     while (*str && *str != (char)ch)
         str++;
     return (*str == (char)ch) ? (char *)str : NULL;
@@ -152,7 +156,7 @@ char *strrchr(const char *str, int ch)
 
 size_t strspn(const char *str, const char *set)
 {
-    if (!*set) // if set is empty just return 0;
+    if (!(str && set && *set && *str)) // if str or set are either NULL or empty just return 0;
         return 0;
 
     const char *temp = str;
@@ -163,7 +167,7 @@ size_t strspn(const char *str, const char *set)
 
 char *strstr(const char *str, const char *sub_str)
 {
-    if (!(*sub_str && *str)) // return NULL if either is empty ...
+    if (!(str && sub_str && *sub_str && *str)) // return NULL if either are empty or NULL ...
         return NULL;
 
     char *temp = str - 1; // remove one char otherwise infinite loop may occur
@@ -205,7 +209,6 @@ char *strtok(char *str, const char *delimiters)
 size_t strlen(const char *str)
 {
     const char *temp = str;
-    while (*str)
-        str++;
-    return str - temp;
+    while (*temp) temp++;
+    return temp - str;
 }

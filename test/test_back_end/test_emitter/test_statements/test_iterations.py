@@ -13,7 +13,7 @@ class TestWhile(TestStatements):
                 sum += 1;
         }
         """
-        super(TestWhile, self).evaluate(source)
+        self.evaluate(source)
         self.assert_base_element(ConstantExpression(0, IntegerType()))
 
     def test_true_while_loop(self):
@@ -24,7 +24,7 @@ class TestWhile(TestStatements):
                 sum += 1;
         }
         """
-        super(TestWhile, self).evaluate(source)
+        self.evaluate(source)
         self.assert_base_element(ConstantExpression(10, IntegerType()))
 
     def test_compound_while_loop(self):
@@ -39,7 +39,7 @@ class TestWhile(TestStatements):
             }
         }
         """
-        super(TestWhile, self).evaluate(source)
+        self.evaluate(source)
         self.assert_base_element(ConstantExpression(10, IntegerType()))
         # self.assertEqual(int(self.mem[self.cpu.stack_pointer]), 10)
 
@@ -54,7 +54,7 @@ class TestDoWhile(TestStatements):
             while (0);
         }
         """
-        super(TestDoWhile, self).evaluate(source)
+        self.evaluate(source)
         self.assert_base_element(ConstantExpression(10, IntegerType()))
         # self.assertEqual(int(self.mem[self.cpu.stack_pointer]), 10)
 
@@ -67,7 +67,7 @@ class TestDoWhile(TestStatements):
             while(sum < index);
         }
         """
-        super(TestDoWhile, self).evaluate(source)
+        self.evaluate(source)
         self.assert_base_element(ConstantExpression(10, IntegerType()))
         # self.assertEqual(self.mem[self.cpu.stack_pointer], 10)
 
@@ -81,7 +81,7 @@ class TestDoWhile(TestStatements):
             } while (sum < index);
         }
         """
-        super(TestDoWhile, self).evaluate(source)
+        self.evaluate(source)
         self.assert_base_element(ConstantExpression(10, IntegerType()))
         # self.assertEqual(self.mem[self.cpu.stack_pointer], 10)
 
@@ -95,7 +95,7 @@ class TestFor(TestStatements):
                 index = 0;
         }
         """
-        super(TestFor, self).evaluate(source)
+        self.evaluate(source)
         self.assert_base_element(ConstantExpression(10, IntegerType()))
         # self.assertEqual(int(self.mem[self.cpu.stack_pointer]), 10)
 
@@ -106,7 +106,7 @@ class TestFor(TestStatements):
             for (index = 0; index < 10; index += 1);
         }
         """
-        super(TestFor, self).evaluate(source)
+        self.evaluate(source)
         self.assert_base_element(ConstantExpression(10, IntegerType()))
         # self.assertEqual(self.mem[self.cpu.stack_pointer], 10)
 
@@ -121,6 +121,6 @@ class TestFor(TestStatements):
             }
         }
         """
-        super(TestFor, self).evaluate(source)
+        self.evaluate(source)
         self.assert_base_element(ConstantExpression(0, IntegerType()))
         # self.assertEqual(self.mem[self.cpu.stack_pointer], 0)
