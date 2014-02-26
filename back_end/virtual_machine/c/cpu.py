@@ -8,13 +8,12 @@ import inspect
 from itertools import imap, izip, chain, repeat, ifilter, izip_longest
 
 from ctypes import c_ulonglong, c_uint, Structure, POINTER, CDLL, CFUNCTYPE, byref, c_int, c_char_p, c_void_p
-from ctypes import c_float, c_double, cast, sizeof, addressof, pointer, c_ushort, c_ubyte, c_longlong, c_short, c_byte
+from ctypes import c_float, c_double, cast, sizeof, pointer, c_ushort, c_ubyte, c_longlong, c_short, c_byte
 from ctypes import pythonapi, py_object
 
 import struct
 from struct import pack, unpack
 
-from front_end.loader.locations import loc
 import back_end.virtual_machine.instructions.architecture as architecture
 from back_end.virtual_machine.instructions.architecture import Address, RealOperand
 from back_end.virtual_machine.instructions.architecture import Word, Half, Quarter, OneEighth, DoubleHalf, Double

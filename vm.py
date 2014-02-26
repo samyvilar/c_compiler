@@ -23,7 +23,7 @@ def start(instrs):
 
 
 def main():
-    cli = argparse.ArgumentParser(description='Object Based Virtual Machine')
+    cli = argparse.ArgumentParser(description='Virtual Machine')
     cli.add_argument('binary_file', nargs=1, help='Executable file (pickled list of Instruction of objects...)')
 
     args = cli.parse_args()

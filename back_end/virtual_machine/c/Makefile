@@ -13,8 +13,8 @@ build:
 		$(CC) -shared -o libvm.so $(cpu).o $(virtual_memory).o
         
 clean:
-		rm *.o
-		rm libvm.so
+		rm -f *.o
+		rm -f libvm.so
 
 test: build test_cpu
 

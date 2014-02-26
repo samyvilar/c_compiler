@@ -4,7 +4,7 @@ from StringIO import StringIO
 from itertools import product, starmap, ifilter
 from os import path
 
-from c_comp import instrs, std_include_dirs, std_libraries_dirs, std_libraries
+from cc import instrs, std_include_dirs, std_libraries_dirs, std_libraries
 
 from back_end.emitter.cpu import evaluate, CPU, VirtualMemory, Kernel
 from back_end.linker.link import set_addresses

@@ -39,7 +39,7 @@ from back_end.emitter.optimizer.optimize import optimize, zero_level_optimizatio
 from utils.errors import error_if_not_value
 from utils.rules import identity
 
-import ovm
+import vm
 
 
 def get_line(tokens):
@@ -121,7 +121,7 @@ def main():
     cli.add_argument('-c', '--compile', action='store_true', default=False, help='Compile, but not link.')
     cli.add_argument('-static', '--static', action='store_true', default=True, help='Static Linking (default).')
     cli.add_argument('-shared', '--shared', action='store_true', default=False, help='Shared Linking.')
-    cli.add_argument('--ovm', action='store_true', default=False, help='Execute code on the Object Based Virtual Mach.')
+    cli.add_argument('--vm', action='store_true', default=False, help='Execute code on the Virtual Machine.')
     cli.add_argument('-a', '--archive', action='store_true', default=False, help='Archive files into a single output')
 
     cli.add_argument('-o', '--output', default=[], nargs='?', action='append',
@@ -173,17 +173,17 @@ def main():
         for input_file in args.files:
             symbol_table = linker.library(symbols(input_file, args.Include, optimizer), symbol_table)
         error_if_not_value(repeat(len(args.output), 1), 1)
-        with open(args.output[0], 'wb') as file_obj:
+        with open(args.output[0], 'w') as file_obj:
             pickle.dump(symbol_table, file_obj)
     elif args.shared:
         raise NotImplementedError
     else:  # static linking ...
         instructions = optimizer(instrs(args.files, args.Include, libraries))
-        error_if_not_value(repeat(len(args.output), 1), 1, Location(__name__, 182, ''))
 
-        if args.ovm:
-            ovm.start(instructions)
+        if args.vm:
+            vm.start(instructions)
         else:
+            error_if_not_value(repeat(len(args.output), 1), 1, Location(__name__, 182, ''))
             file_output = args.output and args.output[0] or 'a.out.p'
             with open(file_output, 'wb') as file_obj:
                 pickle.dump(tuple(instructions), file_obj)
