@@ -173,7 +173,7 @@ def main():
         for input_file in args.files:
             symbol_table = linker.library(symbols(input_file, args.Include, optimizer), symbol_table)
         error_if_not_value(repeat(len(args.output), 1), 1)
-        with open(args.output[0], 'w') as file_obj:
+        with open(args.output[0], 'wb') as file_obj:
             pickle.dump(symbol_table, file_obj)
     elif args.shared:
         raise NotImplementedError

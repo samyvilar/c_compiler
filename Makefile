@@ -3,6 +3,7 @@
 all: vm stdlib
 
 stdlib:
+		mkdir -p stdlib/libs
 		./cc.py -a stdlib/src/unistd.c stdlib/src/stdlib.c stdlib/src/string.c stdlib/src/stdio.c -o stdlib/libs/libc.p
 
 test:
