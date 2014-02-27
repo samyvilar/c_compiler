@@ -74,7 +74,7 @@ def preprocess(files, include_dirs):
 
 
 def symbols(file_name, include_dirs=(), optimizer=identity):
-    if isinstance(file_name, str) and os.path.splitext(file_name)[1] == '.o.p':
+    if isinstance(file_name, str) and file_name.endswith('.o.p'):
         with open(file_name) as file_obj:
             symbol_table = pickle.load(file_obj)
         symbol_seq = symbol_table.itervalues()
