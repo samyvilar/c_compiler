@@ -12,18 +12,6 @@ from front_end.parser.ast.expressions import ConstantExpression, CompoundLiteral
 from utils.errors import error_if_not_type, raise_error
 
 
-# class Designation(Node):
-#     pass
-#
-#
-# class Identifier(Designation):
-#     pass
-#
-#
-# class Range(Designation):
-#     pass
-
-
 class StorageClass(Node):
     def __str__(self):
         return self.__class__.__name__

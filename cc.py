@@ -41,6 +41,9 @@ from utils.rules import identity
 
 import vm
 
+curr_dir = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
+sys.path.append(curr_dir)
+
 
 def get_line(tokens):
     return iter(()) if peek_or_terminal(tokens) is terminal else takewhile(
@@ -86,7 +89,6 @@ def symbols(file_name, include_dirs=(), optimizer=identity):
     return symbol_seq
 
 
-curr_dir = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
 str_src_dirs = [os.path.join(curr_dir, 'stdlib', 'src')]
 std_include_dirs = [curr_dir, os.path.join(curr_dir, 'stdlib', 'include')]
 std_libraries_dirs = [curr_dir, os.path.join(curr_dir, 'stdlib', 'libs')]

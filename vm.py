@@ -2,6 +2,9 @@
 __author__ = 'samyvilar'
 
 import argparse
+import os
+import inspect
+import sys
 
 try:
     import cPickle as pickle
@@ -12,6 +15,10 @@ from back_end.emitter.cpu import CPU, VirtualMemory, Kernel, evaluate
 from back_end.linker.link import set_addresses
 from back_end.emitter.system_calls import CALLS
 from back_end.loader.load import load
+
+
+curr_dir = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
+sys.path.append(curr_dir)
 
 
 def start(instrs):

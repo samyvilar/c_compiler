@@ -13,12 +13,12 @@ from front_end.parser.ast.declarations import EmptyDeclaration, Declaration, Aut
 from front_end.parser.ast.declarations import Extern, Definition, TypeDef
 from front_end.parser.ast.declarations import initialization
 from front_end.parser.ast.statements import FunctionDefinition
-from front_end.parser.ast.expressions import Initializer, EmptyExpression, ConstantExpression, exp
+from front_end.parser.ast.expressions import Initializer, EmptyExpression, exp
 
 from front_end.parser.types import CType, StructType, set_core_type, c_type, FunctionType, VAListType, StringType
 from front_end.parser.types import ArrayType
 
-from front_end.parser.expressions.initializer import parse_initializer, initializer_defaults
+from front_end.parser.expressions.initializer import parse_initializer
 
 
 from utils.errors import error_if_not_value, error_if_not_type, raise_error

@@ -1,8 +1,6 @@
 __author__ = 'samyvilar'
 
-import os
-from itertools import chain, ifilter, ifilterfalse, imap, product, starmap, izip, repeat
-from collections import OrderedDict
+from itertools import chain, ifilter, ifilterfalse, imap, starmap, izip, repeat
 from back_end.emitter.cpu import word_size
 
 try:
@@ -25,6 +23,7 @@ from back_end.emitter.statements.statement import statement
 from back_end.emitter.expressions.expression import expression
 
 from front_end.parser.ast.declarations import Declaration, name, Extern
+
 from front_end.parser.ast.expressions import FunctionCallExpression, IdentifierExpression
 from front_end.parser.types import IntegerType, FunctionType, c_type
 

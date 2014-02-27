@@ -3,17 +3,11 @@ __author__ = 'samyvilar'
 from itertools import imap, ifilter, chain
 
 from front_end.loader.locations import loc
-from front_end.parser.ast.declarations import Declaration, name
-from front_end.parser.types import c_type
 
 from utils.rules import identity
 
 
 no_default = object()
-
-
-def declaration(dec):
-    return Declaration(dec.name, c_type(dec), loc(dec), dec.storage_class)
 
 
 class SymbolTable(object):
