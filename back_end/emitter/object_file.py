@@ -1,17 +1,14 @@
 __author__ = 'samyvilar'
 
-from front_end.parser.ast.declarations import Extern
+from front_end.parser.ast.declarations import Static
 from utils import get_attribute_func
 
 
 class Symbol(object):
     def __init__(self, name, binaries, size, storage_class, location):
         self.binaries, self.storage_class, self.size = binaries, storage_class, size
-        self.location = location
-        if isinstance(storage_class, Extern) or not storage_class:
-            self.name = name
-        else:
-            self.name = '{f}.{n}'.format(f=location.file_name, n=name)
+        self.location = location  # Static definitions have the names mangled so as to isolate them to each file ...
+        self.name = '{f}.{n}'.format(f=location.file_name, n=name) if isinstance(storage_class, Static) else name
 
 
 class Data(Symbol):  # Global definition or declaration of a data type.

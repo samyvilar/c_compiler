@@ -6,7 +6,7 @@ import inspect
 from itertools import izip, imap, ifilter, repeat, starmap, takewhile
 from utils.sequences import exhaust
 
-from logging_config import logging
+from loggers import logging
 
 from front_end.loader.locations import loc, LocationNotSet, Location
 from front_end.tokenizer.tokens import TOKENS

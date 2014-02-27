@@ -8,7 +8,7 @@ from struct import pack, unpack
 
 from utils.sequences import exhaust
 
-from logging_config import logging
+from loggers import logging
 from back_end.virtual_machine.instructions.architecture import no_operand_instr_ids, wide_instr_ids
 from back_end.virtual_machine.instructions.architecture import Push, Pop, Halt, Pass, Jump
 from back_end.virtual_machine.instructions.architecture import Add, Subtract, Multiply, Divide, Mod

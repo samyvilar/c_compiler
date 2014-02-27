@@ -18,7 +18,7 @@ import back_end.virtual_machine.instructions.architecture as architecture
 from back_end.virtual_machine.instructions.architecture import Address, RealOperand
 from back_end.virtual_machine.instructions.architecture import Word, Half, Quarter, OneEighth, DoubleHalf, Double
 
-from logging_config import logging
+from loggers import logging
 
 logger = logging.getLogger('virtual_machine')
 current_module = sys.modules[__name__]

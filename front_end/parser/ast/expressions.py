@@ -91,7 +91,7 @@ class ConstantExpression(ExpressionNode):
 
 class EmptyExpression(ConstantExpression, EmptyNode):
     def __init__(self, ctype=CType(), location=LocationNotSet):
-        super(EmptyExpression, self).__init__(0, ctype(location), location)
+        super(EmptyExpression, self).__init__(0, ctype, location)
 
     def __eq__(self, other):
         return isinstance(other, EmptyExpression)

@@ -1,4 +1,4 @@
 __author__ = 'samyvilar'
 
-from logging_config import logging
+from loggers import logging
 logger = logging.getLogger('tokenizer')

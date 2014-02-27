@@ -7,12 +7,12 @@ from utils.rules import set_rules, rules
 
 from front_end.loader.locations import loc, LocationNotSet
 
-from front_end.parser.ast.expressions import exp, ConstantExpression, CastExpression, EmptyExpression
-from front_end.parser.ast.expressions import CompoundLiteral, Initializer, get_expressions
+from front_end.parser.ast.expressions import exp, ConstantExpression, CastExpression, EmptyExpression, SizeOfExpression
+from front_end.parser.ast.expressions import CompoundLiteral, Initializer, get_expressions, BinaryExpression
 
 from front_end.parser.declarations.declarations import Declaration, Definition, initialization
 
-from front_end.parser.types import c_type, members
+from front_end.parser.types import c_type, members, CType
 from front_end.parser.types import StructType, ArrayType, PointerType, UnionType, StringType, integral_types, real_types
 
 from back_end.emitter.c_types import size, machine_integral_types, machine_floating_types, pack_binaries

@@ -10,7 +10,7 @@ from front_end.parser.types import c_type
 
 from front_end.parser.ast.expressions import CommaExpression
 
-from logging_config import logging
+from loggers import logging
 
 
 logger = logging.getLogger('parser')

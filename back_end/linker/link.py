@@ -2,6 +2,7 @@ __author__ = 'samyvilar'
 
 import os
 from itertools import chain, ifilter, ifilterfalse, imap, product, starmap, izip, repeat
+from collections import OrderedDict
 from back_end.emitter.cpu import word_size
 
 try:
@@ -11,7 +12,7 @@ except ImportError as _:
 
 from front_end.loader.locations import loc
 from utils.symbol_table import SymbolTable
-from back_end.emitter.object_file import Data, Reference
+import back_end.emitter.object_file as object_file
 from back_end.emitter.c_types import size
 
 from front_end.parser.types import void_pointer_type
@@ -29,13 +30,14 @@ from front_end.parser.types import IntegerType, FunctionType, c_type
 
 
 def insert_definition(symbol, symbol_table):
-    _ = symbol.name in symbol_table and not symbol.binaries and isinstance(symbol_table[symbol.name], Data) \
+    _ = symbol.name in symbol_table and not symbol.binaries and isinstance(symbol_table[symbol.name], object_file.Data)\
         and symbol_table.pop(symbol.name)  # replace data declaration by definition
     symbol_table[symbol.name] = symbol
 
 
 def insert_declaration(symbol, symbol_table):  # declarations ...
-    if isinstance(symbol, Data) and not isinstance(symbol.storage_class, Extern):  # insert non-extern declarations
+    if isinstance(symbol, object_file.Data) and not isinstance(symbol.storage_class, Extern):
+        # insert non-extern declarations
         if symbol.name not in symbol_table:
             symbol_table[symbol.name] = symbol
         else:  # C coalesces multiple declarations across multiple files ...
@@ -53,7 +55,7 @@ def static(instrs, symbol_table=None, libraries=()):
     references = {}
     for instr in instrs:
         for o in operns(instr, ()):
-            if isinstance(referenced_obj(o, None), Reference):
+            if isinstance(referenced_obj(o, None), object_file.Reference):
                 references[referenced_obj(o).name] = o
         yield instr
 
@@ -92,7 +94,7 @@ def binaries(symbol, symbol_table):
 
 
 def set_binaries(symbol):
-    assert not symbol.binaries and isinstance(symbol, Data)
+    assert not symbol.binaries and isinstance(symbol, object_file.Data)
     instrs = starmap(Byte, repeat((0, loc(symbol)), symbol.size))
     first_instr = next(instrs, terminal)
     symbol.first_element = Pass(loc(symbol)) if first_instr is terminal else first_instr  # zero sized decl use Pass
@@ -134,8 +136,12 @@ def executable(symbols, symbol_table=None, entry_point=default_entry_point, libr
     symbols = chain(
         symbols,  # add heap pointer(s) ...
         (
-            Data('__base_heap_ptr__', (Address(__end__, location),), size(void_pointer_type), None, location),
-            Data('__heap_ptr__', (Address(__end__, location),), size(void_pointer_type), None, location),
+            object_file.Data(
+                '__base_heap_ptr__', (Address(__end__, location),), size(void_pointer_type), None, location
+            ),
+            object_file.Data(
+                '__heap_ptr__', (Address(__end__, location),), size(void_pointer_type), None, location
+            ),
         )
     )
 
@@ -167,9 +173,9 @@ def resolve(instrs, symbol_table):
     # resolve all references ... replace Address(obj=Reference(symbol_name)) by Address(obj=instr)
     references = []
     for instr in instrs:
-        for o in operns(instr, ()):
-            if isinstance(referenced_obj(o, None), Reference):
-                references.append(o)
+        references.extend(
+            ifilter(lambda o: isinstance(referenced_obj(o, None), object_file.Reference), operns(instr, ()))
+        )
         yield instr
 
     for operand in references:
@@ -183,8 +189,7 @@ def set_addresses(instrs, addresses=None):  # assign addresses ...
     def default_address_gen():
         previous_address = 0
         _ = (yield)
-        while True:
-            # TODO: calculate address based on size of previous instr (for now all 1 word)
+        while True:  # TODO: calculate address based on size of previous instr (for now all 1 word)
             _ = (yield previous_address)
             previous_address += word_size
 
@@ -216,8 +221,10 @@ def set_addresses(instrs, addresses=None):  # assign addresses ...
 
     # At this point all address have being generated and resolve() should have checked or set first_element on Refs ...
     # so update addresses replace Address(obj=instr) by Address(obj=address or offset)
-
+    # print '\n'.join(imap(str, references))
     for instr, operand, operand_index in references:
+        if not hasattr(operand.obj, 'address'):
+            print instr, loc(operand), '  no_address ---> ', id(operand.obj), operand.obj
         if isinstance(operand, Offset):
             operand.obj = operand.obj.address - (
                 instr.address + (2 * word_size if isinstance(instr, RelativeJump) else 0)

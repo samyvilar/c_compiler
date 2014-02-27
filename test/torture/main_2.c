@@ -8,30 +8,15 @@
 
 #include <stdio.h>
 #include <stdlib.h>
-#include <time.h>
 #include <string.h>
 
 #define TRACK_STATISTICS
 //#define SEED_RANDOM_NUMBER_GENERATOR
 
-/* There is a slight performance boost when working with words.  */
-#if __GNUC__
-    #if __x86_64__ || __ppc64__ /* check that we are on a 64 bit machine. */
-        typedef unsigned long long word_type; /* use 64 bit words. */
-        /* prime number that can be stored using 32 bits, unsigned. for signed you can use 2147483647. */
-        #define MAX_PRIME 4294967291
-
-    #else
-        typedef unsigned int word_type;
-    #endif
-#else /* if we are not using gcc just stick with unsigned int, note we can still use 64 bit ints though they are quite slower on 32 bit machines. */
-    typedef unsigned int word_type;
-    /* prime number that can be stored using 16 bits, unsigned. for signed you can use 32749. */
-    #define MAX_PRIME 65521
-#endif
-/* work with unsigned characters since we are working with unsigned words, mixing signs affects performance. */
+typedef unsigned long long word_type; /* use 64 bit words. */
+#define MAX_PRIME 4294967291
 typedef unsigned char char_type;
-const word_type number_of_bits_per_word = (sizeof(word_type) * 8);
+#define number_of_bits_per_word 64
 
 
 /* masks to update bit
@@ -39,7 +24,17 @@ const word_type number_of_bits_per_word = (sizeof(word_type) * 8);
  * use bitwise and operator to get a single bit.
  * setting the bit to 0 would require inverting
  * the mask and applying the bitwise and operator not needed here ... */
-static word_type masks[(sizeof(word_type) * 8)] = {0};
+#define BIT(index) (1LLU << index)
+static word_type masks[] = {
+    BIT(0),  BIT(1),  BIT(2),  BIT(3),  BIT(4),  BIT(5),  BIT(6),  BIT(7),
+    BIT(8),  BIT(9),  BIT(10), BIT(11), BIT(12), BIT(13), BIT(14), BIT(15),
+    BIT(16), BIT(17), BIT(18), BIT(19), BIT(20), BIT(21), BIT(22), BIT(23),
+    BIT(24), BIT(25), BIT(26), BIT(27), BIT(28), BIT(29), BIT(30), BIT(31),
+    BIT(32), BIT(33), BIT(34), BIT(35), BIT(36), BIT(37), BIT(38), BIT(39),
+    BIT(40), BIT(41), BIT(42), BIT(43), BIT(44), BIT(45), BIT(46), BIT(47),
+    BIT(48), BIT(49), BIT(50), BIT(51), BIT(52), BIT(53), BIT(54), BIT(55),
+    BIT(56), BIT(57), BIT(58), BIT(59), BIT(60), BIT(61), BIT(62), BIT(63),
+};
 
 /* Set of macros to allow us to work with individual bits from our field. */
 
@@ -191,7 +186,7 @@ typedef struct membership_type
 #define hashing_func_parameters(membership) membership->hashing_function_parameters
 #define set_hashing_func_parameters(membership, param) (hashing_func_parameters(membership) = param)
 
-void error(char message[])
+void error(char *message)
 {
     printf("Error: %s\n", message);
     exit(-1);
@@ -203,8 +198,8 @@ membership_type *create_membership(word_type size)
     if (size >= MAX_PRIME)
         error("The bit field cannot be created with size larger then MAX_PRIME!");
 
-    if (!masks[0]) /* if we haven't initialized our masks initialize them. */
-        initialize_masks();
+    //if (!masks[0]) /* if we haven't initialized our masks initialize them. */
+    //    initialize_masks();
 
     membership_type *membership = calloc(1, sizeof(membership_type)); /* zero out all fields ... */
 
@@ -216,9 +211,9 @@ membership_type *create_membership(word_type size)
     set_next_parameter(next_parameter(hashing_func_parameters(membership)), allocate_node()); /* third node for coefficient a */
 
     /* seed the random number generator, note if seeded by time hashes will differ at every run ... */
-    #ifdef SEED_RANDOM_NUMBER_GENERATOR
-        srand((unsigned int)time(NULL));
-    #endif
+    //#ifdef SEED_RANDOM_NUMBER_GENERATOR
+    //    srand((unsigned int)time(NULL));
+    //#endif
 
     set_table_size(hashing_func_parameters(membership), size); /* set coefficient the table size */
     set_coefficient_b(hashing_func_parameters(membership), (rand() % MAX_PRIME)); /* set coefficient b */
@@ -332,9 +327,9 @@ char **get_combinations(word_type number_of_words, char *alphabet)
 word_type factorial(word_type value)
 {
     word_type sum = value;
-    while (--value)
+    while (value-- > 1)
         sum *= value;
-    return sum;
+    return sum + !sum; // if sum is zero return 1 otherwise return sum ...
 
 }
 
@@ -357,6 +352,7 @@ char **permute_string(char *str, word_type number_of_permutations)
         *original_string = calloc(length + 1, sizeof(char)),
         *string = calloc(length + 1, sizeof(char)),
         temp;
+
 
     memcpy(original_string, str, length);
     memcpy(string, str, length);
@@ -420,11 +416,11 @@ void do_statistical_tests()
 
         printf("Bitfield size %u number_of_strings %u\n", sizes_to_test[index_0], number_of_strings);
 
-        printf("%u, %3.2f%% collisions while inserting.\n",
+        printf("%u, %f%% collisions while inserting.\n",
                 (unsigned int)(number_of_strings - membership->number_of_set_bits),
                 (((unsigned int)(number_of_strings - membership->number_of_set_bits)/(double)(number_of_strings)) * 100));
 
-        printf("%u, %3.2f%% collisions while searching.\n",
+        printf("%u, %f%% collisions while searching.\n",
                 (unsigned int)(membership->number_of_false_positives),
                 (((unsigned int)(membership->number_of_false_positives)/(double)(number_of_strings)) * 100) );
         printf("\n");
@@ -454,11 +450,11 @@ void do_statistical_tests()
 
         printf("Bitfield size %u number_of_strings %u\n", sizes_to_test[index_0], number_of_strings);
 
-        printf("%u, %3.2f%% collisions while inserting.\n",
+        printf("%u, %f%% collisions while inserting.\n",
                 (unsigned int)(number_of_strings - membership->number_of_set_bits),
                 (((unsigned int)(number_of_strings - membership->number_of_set_bits)/(double)(number_of_strings)) * 100));
 
-        printf("%u, %3.2f%% collisions while searching.\n",
+        printf("%u, %f%% collisions while searching.\n",
                 (unsigned int)(membership->number_of_false_positives),
                 (((unsigned int)(membership->number_of_false_positives)/(double)(number_of_strings)) * 100) );
         printf("\n");
@@ -471,51 +467,50 @@ void do_statistical_tests()
         free(inserted_strings[index_0]);
         free(non_inserted_strings[index_0]);
     }
-
     #endif
 }
 
 
-void do_benchmark()
-{
-    word_type total = 10000000,
-              temp = total;
+//void do_benchmark()
+//{
+//    word_type total = 10000000,
+//              temp = total;
+//
+//    char **strings = permute_string("kjlasdfjh02h3rpogasepgb", total);
+//
+//    double start_time, end_time;
+//
+//    membership_type *membership = create_membership(total * 10);
+//    start_time = ((double)clock())/CLOCKS_PER_SEC;
+//    while (temp--)
+//        insert_string(membership, strings[temp]);
+//    end_time = ((double)clock())/CLOCKS_PER_SEC;
+//
+//    printf("Inserted %u in %.2f seconds at an avg of %.2f/s\n",
+//            (unsigned int)total,
+//            (end_time - start_time),
+//            (unsigned int)total/(end_time - start_time));
+//
+//    temp = total;
+//    start_time = ((double)clock())/CLOCKS_PER_SEC;
+//    while (temp--)
+//        is_member(membership, strings[temp], 1);
+//    end_time = ((double)clock())/CLOCKS_PER_SEC;
+//
+//    printf("Queried %u elements in %.2fs at an avg of %.2f/s\n",
+//            (unsigned int)total,
+//            (end_time - start_time),
+//            (unsigned int)total/(end_time - start_time));
+//
+//
+//
+//}
 
-    char **strings = permute_string("kjlasdfjh02h3rpogasepgb", total);
 
-    double start_time, end_time;
-
-    membership_type *membership = create_membership(total * 10);
-    start_time = ((double)clock())/CLOCKS_PER_SEC;
-    while (temp--)
-        insert_string(membership, strings[temp]);
-    end_time = ((double)clock())/CLOCKS_PER_SEC;
-
-    printf("Inserted %u in %.2f seconds at an avg of %.2f/s\n",
-            (unsigned int)total,
-            (end_time - start_time),
-            (unsigned int)total/(end_time - start_time));
-
-    temp = total;
-    start_time = ((double)clock())/CLOCKS_PER_SEC;
-    while (temp--)
-        is_member(membership, strings[temp], 1);
-    end_time = ((double)clock())/CLOCKS_PER_SEC;
-
-    printf("Queried %u elements in %.2fs at an avg of %.2f/s\n",
-            (unsigned int)total,
-            (end_time - start_time),
-            (unsigned int)total/(end_time - start_time));
-
-
-
-}
-
-
-int main (int argc, const char * argv[])
+int main ()
 {
     do_statistical_tests();
-    do_benchmark();
+//    do_benchmark();
 
     return 0;
 }

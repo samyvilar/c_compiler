@@ -20,7 +20,7 @@ from front_end.parser.expressions.cast import cast
 
 from utils.errors import error_if_not_value, error_if_not_type, raise_error
 
-from logging_config import logging
+from loggers import logging
 
 
 logger = logging.getLogger('parser')
@@ -201,7 +201,7 @@ def update_default_value(desig_expr, default_values):
                 loc(desig_expr), desig, expr
             ))
     else:
-        _ = (not safe_type_coercion(c_type(expr), c_type(default_values.get(desig)))) and raise_error(
+        _ = (not safe_type_coercion(c_type(expr), c_type(default_values[desig]))) and raise_error(
             '{l} Unable to coerce from {f} to {t}'.format(l=loc(expr), f=c_type(expr), t=c_type(default_values[desig]))
         )
         update_func = update_composite_type_initializer \
@@ -258,9 +258,10 @@ set_rules(
 
 def expand_defaults(desig_expr, default_values):
     desig, ctype = max_designation_mag(desig_expr), c_type(default_values)
+
     length_diff = getattr(ctype, 'length', 0) is None and (desig - len(default_values) + 1)
     _ = length_diff > 0 and default_values.update(  # expand defaults if incomplete ArrayType ...
-        enumerate(initializer_defaults(ArrayType(ctype, length_diff)), length_diff + 1))
+        enumerate(initializer_defaults(ArrayType(c_type(ctype), length_diff)).itervalues(), len(default_values)))
 
 
 def initializer_desig_exprs(initializer, default_values):
@@ -278,7 +279,6 @@ def initializer_desig_exprs(initializer, default_values):
                 exp(expr_or_desig_expr),
                 loc(expr_or_desig_expr)
             )
-
         expand_defaults(expr_or_desig_expr, default_values)  # expand defaults for incomplete array types
 
         yield expr_or_desig_expr

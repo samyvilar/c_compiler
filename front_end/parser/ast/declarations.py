@@ -80,9 +80,8 @@ class Definition(Declaration):
 
         if isinstance(c_type(self), ArrayType):
             _ = error_if_not_type(value, (ConstantExpression, CompoundLiteral, Initializer, EmptyExpression))
-            if c_type(self).length is None:
-                c_type(self).length = len(c_type(value))
-
+            if c_type(self).length is None and isinstance(value, (Initializer, CompoundLiteral)):
+                c_type(self).length = len(value)
         self._initialization = value
 
     def __eq__(self, other):

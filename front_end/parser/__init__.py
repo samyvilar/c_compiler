@@ -29,7 +29,7 @@ from front_end.parser.expressions.expression import expression as _expression_fu
 from front_end.parser.statements.compound import statement as _statement_func
 from front_end.parser.declarations.declarations import translation_unit as _translation_unit_func
 
-from logging_config import logging
+from loggers import logging
 
 
 logger = logging.getLogger('parser')

@@ -1,5 +1,4 @@
-
-
+// __author__ = "samyvilar"
 #include <stdlib.h>
 #include <unistd.h>
 #include <string.h>
@@ -12,7 +11,7 @@ typedef struct block_type {
         *_next,  // to be used by the pools (small and large)
         *_prev_free_block, // to be used to keep track of all blocks sorted in descending order by address ...
         *_next_free_block;
-    word_type _length;
+    word_type _length; // legnth of the block in 32 byte chunks sizeof(block_type)
 } block_type;
 #define next_block(block) (*(block_type **)(block))
 #define set_next_block(block, value) (next_block(block) = (value))
@@ -23,18 +22,13 @@ typedef struct block_type {
 #define block_length(block) ((block)->_length)
 #define set_block_length(block, value) (block_length(block) = (value))
 
-
-
-#define NUMBER_OF_POOLS 256
-block_type
-    *recycled_small_blocks[NUMBER_OF_POOLS] = {NULL},
-    *recycled_large_blocks = NULL,  // Anything that's bigger than a page 4096 bytes (page)
+#define NUMBER_OF_POOLS 128
+#define BLOCK_SIZE 32  // make sure sizeof(block_type) == BLOCK_SIZE
+block_type  
+    *recycled_small_blocks[NUMBER_OF_POOLS] = {[0 ... (NUMBER_OF_POOLS - 1)] = NULL},
+	*recycled_large_blocks = NULL, // Anything that's bigger than a page 4096 bytes (page)
     *recycled_blocks = NULL;
-
-#define BLOCK_SIZE 32
-#if ((BLOCK_SIZE - 1) & BLOCK_SIZE)
-    #error "BLOCK_SIZE must be a power of 2"
-#endif
+#define get_pool(blen) ((blen < NUMBER_OF_POOLS) ? recycled_small_blocks[blen] : recycled_large_blocks) 
 
 void free(void *);
 
@@ -68,27 +62,28 @@ void detach_recycled_block(block_type *block)
 }
 
 
-void *malloc(size_t amount)
+void *malloc(size_t amount) 
 {
-    word_type blk_len = 1 + ((amount + (BLOCK_SIZE - (amount & (BLOCK_SIZE - 1)))) / BLOCK_SIZE);
+    word_type blk_len = 1 + ((amount + (BLOCK_SIZE - (amount & (BLOCK_SIZE - 1)))) / BLOCK_SIZE); // make sure is a multiple of BLOCK_SIZE
     block_type *block;
     if ((blk_len < NUMBER_OF_POOLS) && is_not_null(block = recycled_small_blocks[blk_len]))  // get a small block
         detach_recycled_block(block), recycled_small_blocks[blk_len] = next_block(block);
     else if (is_not_null(block = recycled_large_blocks) && (blk_len <= block_length(block))) // get a large block ...
     {
-        detach_recycled_block(block), recycled_large_blocks = next_block(block);  // remove it
-        if (blk_len != block_length(block))  // create and recycle any of the remaining block(s) ...
+        detach_recycled_block(block), (recycled_large_blocks = next_block(block));  // remove it
+        if (blk_len != block_length(block))  // create and recycle the remaining block if it should remain 
             initialize_block(block + blk_len, block_length(block) - blk_len), free(block + blk_len);
     }
-    else  // TODO: see if we can merge large sequential blocks to serve request ...
+    else  
         block = sbrk(blk_len * BLOCK_SIZE);  // allocate a new sequence of bytes ...
+	// TODO: see if we can merge large sequential blocks to serve request if sbrk failed ...
 
     initialize_block(block, blk_len);
     return ((void *)block) + sizeof(block_type);
 }
 
 
-void de_fragment(block_type *block)  // recycled blocks are inserted in descending order by the blocks address ...
+void de_fragment(block_type *block)  // recycled blocks are inserted in descending order by their address ...
 {
     if (block > recycled_blocks) // if recycled_blocks is either NULL or block has an address greater than recycled_blocks
     {
@@ -111,16 +106,16 @@ void de_fragment(block_type *block)  // recycled blocks are inserted in descendi
 
     word_type blk_len;
     while (is_not_null(recycled_blocks) && (sbrk(0) == (recycled_blocks + block_length(recycled_blocks))))
-    {   // we have at least 1 recycled block check if its at the end of heap ...
+    {   // while we have at least 1 recycled block and its at the end of the heap ...
         blk_len = block_length(recycled_blocks);
 
-        if (recycled_blocks == recycled_large_blocks)
-            recycled_large_blocks = next_block(recycled_blocks);
-        else if ((blk_len < NUMBER_OF_POOLS) && (recycled_blocks == recycled_small_blocks[blk_len]))
-            recycled_small_blocks[blk_len] = next_block(recycled_blocks);
+        if (recycled_blocks == recycled_large_blocks) 
+            recycled_large_blocks = next_block(recycled_blocks);  // remove initial block from large pool ...
+        else if ((blk_len < NUMBER_OF_POOLS) && (recycled_blocks == recycled_small_blocks[blk_len])) 			
+            recycled_small_blocks[blk_len] = next_block(recycled_blocks);  // remove initial block from small pool
         else
-        {
-            block = (blk_len < NUMBER_OF_POOLS) ? recycled_small_blocks[blk_len] : recycled_large_blocks;
+        {  // we have to search for block in pool ...
+            block = get_pool(blk_len);
 
             while (recycled_blocks != next_block(block))
             #ifdef SAFE_MODE
@@ -132,12 +127,12 @@ void de_fragment(block_type *block)  // recycled blocks are inserted in descendi
                 block = next_block(block);
             #endif
 
-            set_next_block(block, next_block(block));
+            set_next_block(block, next_block(block));  // remove block from pool ...
         }
 
         if (brk(recycled_blocks))  // shrink the heap ...
             printf("error resetting brk %p\n", brk(block)), exit(-3);
-        detach_recycled_block(recycled_blocks);
+        detach_recycled_block(recycled_blocks);  // remove block from all recycled blocks it will update recycled_blocks
     }
 }
 
@@ -159,8 +154,8 @@ void free(void *addr)
     else if (is_not_null(recycled_large_blocks) && (block_length(recycled_large_blocks) > block_length(block)))
     {
         block_type *large_blocks = recycled_large_blocks;  // sort large blocks in descending order by block length ...
-        while (next_block(large_blocks) && (block_length(next_block(large_blocks)) > blk_length))
-            large_blocks = next_block(large_blocks);
+        while (is_not_null(next_block(large_blocks)) && (block_length(next_block(large_blocks)) > blk_length))
+			large_blocks = next_block(large_blocks);		
         set_next_block(block, next_block(large_blocks)), set_next_block(large_blocks, block);
     }
     else // otherwise empty or first block ...
@@ -212,8 +207,6 @@ void srand(unsigned int seed)
     while (index++ < RAND_GEN_STATE_LENGTH)
         _mt_state[index] = 1812433253U * (_mt_state[index - 1] ^ (_mt_state[index - 1] >> 30)) + index;
 }
-
-
 
 unsigned int rand()
 {

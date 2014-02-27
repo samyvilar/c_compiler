@@ -1367,7 +1367,7 @@ wide_instr_ids = dict(
         ids.iteritems()
     )
 )
-no_operand_instr_ids = dict(ifilter(lambda item: not issubclass(item[0], WideInstruction), ids.iteritems()))
+no_operand_instr_ids = dict(ifilterfalse(lambda item: issubclass(item[0], WideInstruction), ids.iteritems()))
 
 
 def allocate(amount, location):
@@ -1416,19 +1416,19 @@ def convert_to_camel_case_from_space(operation_name):
         for word in ifilter(None, imap(str.strip, operation_name.replace('_', ' ').split(' ')))
     )
 
-_sizes = {8: '', 4: '_half', 2: '_quarter', 1: '_one_eighth'}
-float_sizes = {8: '', 4: '_half'}
+_sizes = {8: '', 4: '_half', 2: '_quarter', 1: '_one_eighth'}  # convert integral operand size to instruction postfix
+float_sizes = {8: '', 4: '_half'}  # convert real operand size to instruction name postfix ...
 
 
-jump_table_by_max_value = {
-    2**(s * 8) - 1: getattr(current_module, convert_to_camel_case_from_space('jump_table' + pf))
-    for s, pf in _sizes.iteritems()
+jump_table_by_max_value_instrs = {
+    2**(operand_size * 8) - 1: getattr(current_module, convert_to_camel_case_from_space('jump_table' + postfix))
+    for operand_size, postfix in _sizes.iteritems()
 }
 
 
 def jump_table(location, addresses, allocations, switch_max_value, switch_body_instrs):
     return chain(
-        (jump_table_by_max_value[switch_max_value](location, addresses),),
+        (jump_table_by_max_value_instrs[switch_max_value](location, addresses),),
         chain.from_iterable(allocations),
         switch_body_instrs
     )
@@ -1452,7 +1452,9 @@ for _name in instructions_with_no_operand_alternative_instr_names:
 
 def get_single_alternative_if_present(instr_name, amount, location):
     if amount in getattr(current_module, instr_name + '_instrs'):
-        instr = getattr(current_module, convert_to_camel_case_from_space(instr_name + '_single' + _sizes[amount]))(location)
+        instr = getattr(current_module, convert_to_camel_case_from_space(instr_name + '_single' + _sizes[amount]))(
+            location
+        )
     else:
         _operand_size = next(ifilterfalse(lambda i, amount=amount: amount % i, sorted(_sizes, reverse=True)), None)
         if not _operand_size:
@@ -1486,8 +1488,7 @@ def dup_single(location):
 
 
 def swap(amount, location):
-    # extremely expensive instruction
-    # requiring at a minimum 4 address translations (instr, operand, stack, stack - operand)
+    # very expensive instruction requiring at a minimum 4 address translations (instr, operand, stack, stack - operand)
     if amount:
         yield get_single_alternative_if_present('swap', amount, location)
 
@@ -1819,6 +1820,7 @@ add_types_to_current_module(
     repeat({})
 )
 
+
 def compare(l_instr, r_instr, location, flags=()):
     return chain(l_instr, r_instr, (Compare(location),), chain.from_iterable(flags))
 
@@ -2136,7 +2138,7 @@ class logical_or(single_iteration, logical, Or):
         )
 
 
-instr_word_names = 'push', 'jump_false', 'jump_true', 'compare', 'not_bitwise', 'postfix_update'
+instr_word_names = 'pop', 'push', 'jump_false', 'jump_true', 'compare', 'not_bitwise', 'postfix_update'
 for instr_name in instr_word_names:
     _size = get_operations_by_size(instr_name)
     setattr(current_module, instr_name + '_instrs', _size)

@@ -14,7 +14,7 @@ from front_end.parser.types import VoidType, safe_type_coercion, c_type
 from utils.errors import error_if_not_value, error_if_not_type
 
 
-from logging_config import logging
+from loggers import logging
 
 
 logger = logging.getLogger('parser')

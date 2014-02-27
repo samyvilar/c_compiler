@@ -34,7 +34,7 @@ import back_end.emitter.system_calls as system_calls
 
 from back_end.virtual_machine.instructions.architecture import Instruction
 
-from back_end.emitter.optimizer.optimize import optimize, zero_level_optimizations, first_level_optimizations
+from back_end.emitter.optimizer.optimize import optimize, zero_level_optimization, first_level_optimization
 
 from utils.errors import error_if_not_value
 from utils.rules import identity
@@ -94,20 +94,28 @@ std_libraries = ['libc.p']
 std_symbols = system_calls.SYMBOLS
 
 
-def instrs(files, include_dirs=(), libraries=()):
+def instrs(files, include_dirs=(), libraries=(), optimizer=identity):
     symbol_table = SymbolTable()
-    return linker.resolve(
-        linker.executable(
-            chain(
-                std_symbols.itervalues(),
-                chain.from_iterable(starmap(symbols, izip(files, repeat(include_dirs))))
+    return optimizer(
+        linker.resolve(
+            linker.executable(
+                chain(
+                    std_symbols.itervalues(), chain.from_iterable(starmap(symbols, izip(files, repeat(include_dirs))))
+                ),
+                symbol_table=symbol_table,
+                libraries=libraries,
+                linker=linker.static,
             ),
-            symbol_table=symbol_table,
-            libraries=libraries,
-            linker=linker.static,
-        ),
-        symbol_table
+            symbol_table
+        )
     )
+
+
+def assembly(files, includes=(), libraries=(), optimizer=identity):
+    mem = OrderedDict()
+    load_binaries(linker.set_addresses(instrs(files, includes, libraries, optimizer)), mem)
+    for addr, instr in ifilter(lambda i: isinstance(i[1], Instruction), mem.iteritems()):
+        yield '{l}:{addr}: {elem}\n'.format(l=loc(instr), addr=addr, elem=instr)
 
 
 def main():
@@ -116,25 +124,24 @@ def main():
     cli.add_argument('files', nargs='+')
     cli.add_argument('-O', '--optimize', default=0, nargs=1, help='Optimization Level')
     cli.add_argument('-E', '--preprocess', action='store_true', default=False, help='Output preprocessor and stop.')
-    cli.add_argument('-S', '--assembly', action='store_true', default=False,
-                     help='Output instructions (assembly) as readable text')
+    cli.add_argument('-S', '--assembly', action='store_true', default=False, help='Output instructions readable text.')
     cli.add_argument('-c', '--compile', action='store_true', default=False, help='Compile, but not link.')
     cli.add_argument('-static', '--static', action='store_true', default=True, help='Static Linking (default).')
     cli.add_argument('-shared', '--shared', action='store_true', default=False, help='Shared Linking.')
-    cli.add_argument('--vm', action='store_true', default=False, help='Execute code on the Virtual Machine.')
+    cli.add_argument('--vm', action='store_true', default=False, help='Execute code on Virtual Machine.')
     cli.add_argument('-a', '--archive', action='store_true', default=False, help='Archive files into a single output')
 
     cli.add_argument('-o', '--output', default=[], nargs='?', action='append',
                      help='Name of output, file(s) default is the original')
 
     cli.add_argument('-I', '--Include', default=[], nargs='?', action='append',
-                     help='Directories to be used by the preprocessor')
+                     help='Directories to be used by the preprocessor when searching for files.')
 
     cli.add_argument('-L', '--Libraries', default=[], nargs='?', action='append',
-                     help='Directories to be used to search for libraries')
+                     help='Directories to be used by the linker when searching for libraries')
 
     cli.add_argument('-l', '--libraries', default=[], nargs='?', action='append',
-                     help='Name of libraries to search for symbols')
+                     help='Name of libraries to be used when searching for symbols.')
 
     args = cli.parse_args()
     args.Include += std_include_dirs + list(set(imap(os.path.dirname, args.files)))
@@ -143,23 +150,16 @@ def main():
 
     libraries = ifilter(os.path.isfile, starmap(os.path.join, product(args.Libraries, args.libraries)))
 
+    optimizer = lambda instrs: optimize(instrs, zero_level_optimization)
     if args.optimize and args.optimize[0] == '1':
-        optimizer = lambda instrs: optimize(instrs, first_level_optimizations)
-    else:
-        optimizer = lambda instrs: optimize(instrs, zero_level_optimizations)
+        optimizer = lambda instrs: optimize(instrs, first_level_optimization)
 
     if args.preprocess:
         exhaust(imap(sys.stdout.write, preprocess(args.files, args.Include)))
-        # print(preprocess(args.files, args.Include))
     elif args.assembly:
-        mem = OrderedDict()
-        load_binaries(linker.set_addresses(optimizer(instrs(args.files, args.Include, libraries))), mem)
-        exhaust(imap(sys.stdout.write, imap(
-            lambda i: '{l}:{addr}: {elem}\n'.format(l=loc(i[1]), addr=i[0], elem=i[1]),
-            ifilter(lambda i: isinstance(i[1], Instruction), mem.iteritems())
-        )))
+        exhaust(imap(sys.stdout.write, assembly(args.files, args.Include, libraries, optimizer)))
     elif args.compile:
-        if args.output:
+        if args.output:  # if output(s) giving then check it matches the number of inputs ...
             output_files = error_if_not_value(repeat(len(args.output), 1), len(args.files)) and args.output
         else:
             output_files = imap('{0}.o.p'.format, imap(lambda f: os.path.splitext(f)[0], args.files))
@@ -170,21 +170,21 @@ def main():
                 pickle.dump(symbol_table, file_obj)
     elif args.archive:
         symbol_table = SymbolTable()
-        for input_file in args.files:
+        error_if_not_value(repeat(len(args.output), 1), 1)  # archives require a single output which has no default ...
+        for input_file in args.files:  # compile all files into a single symbol_table ...
             symbol_table = linker.library(symbols(input_file, args.Include, optimizer), symbol_table)
-        error_if_not_value(repeat(len(args.output), 1), 1)
-        with open(args.output[0], 'wb') as file_obj:
+        with open(args.output[0], 'wb') as file_obj:  # dump symbol_table ...
             pickle.dump(symbol_table, file_obj)
     elif args.shared:
         raise NotImplementedError
-    else:  # static linking ...
-        instructions = optimizer(instrs(args.files, args.Include, libraries))
+    else:  # default compile, and and statically link ...
+        instructions = instrs(args.files, args.Include, libraries, optimizer)
 
-        if args.vm:
+        if args.vm:  # if we requested a vm then execute instructions ...
             vm.start(instructions)
-        else:
-            error_if_not_value(repeat(len(args.output), 1), 1, Location(__name__, 182, ''))
-            file_output = args.output and args.output[0] or 'a.out.p'
+        else:  # other wise emit single executable file ...
+            _ = args.output and error_if_not_value(repeat(len(args.output), 1), 1, Location('cc.py', '', ''))
+            file_output = args.output and args.output[0] or 'a.out.p'  # if not giving an output use default a.out.p
             with open(file_output, 'wb') as file_obj:
                 pickle.dump(tuple(instructions), file_obj)
 

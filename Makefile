@@ -9,6 +9,13 @@ stdlib:
 test:
 		nosetests
 
+torture:
+		./cc.py test/torture/main.c --vm
+		./cc.py test/torture/main_1.c --vm
+		./cc.py test/torture/main_2.c --vm
+		./cc.py test/torture/main_4.c --vm
+		./cc.py test/torture/main_5.c --vm
+
 vm:
 		$(MAKE) -C back_end/virtual_machine/c all
 clean:

@@ -1,6 +1,6 @@
 __author__ = 'samyvilar'
 
-from logging_config import logging
+from loggers import logging
 from back_end.virtual_machine.legacy.memory import VirtualMemory
 from back_end.virtual_machine.legacy.cpu.core import CPU, HaltException
 
